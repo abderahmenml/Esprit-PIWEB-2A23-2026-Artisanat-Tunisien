@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CraftLink Tunisie — Connexion</title>
+<link href="style.css" rel="stylesheet">
+
+</head>
+<body>
+
+<!-- ── LEFT ── -->
+<div class="left-panel">
+  <div class="brand">
+    <div class="logo-ring">
+      <img src="logo.png" alt="CraftLink Logo" class="logo-img">
+    </div>
+    <div class="brand-title">CraftLink Tunisie</div>
+    <div class="brand-arabic">حرفة تونس</div>
+    <div class="brand-sub">L'artisanat tunisien, à l'ère du numérique.</div>
+  </div>
+
+  <div class="divider-ornament"><div class="divider-diamond"></div></div>
+
+  <div class="roles-title">Rejoignez notre écosystème</div>
+  <div class="roles">
+    <div class="role-card entrepreneur">🎨 Entrepreneur</div>
+    <div class="role-card mentor">🧑‍🎨 Mentor / Artisan</div>
+    <div class="role-card investisseur">💼 Investisseur</div>
+  </div>
+
+  <p class="left-quote">
+    « Connecter les créateurs, les artisans et les investisseurs pour faire vivre l'artisanat tunisien. »
+  </p>
+</div>
+
+<!-- ── RIGHT ── -->
+<div class="right-panel">
+  <div class="form-header">
+    <div class="form-label-small">Bienvenue</div>
+    <div class="form-title">Connexion à votre espace</div>
+    <div class="form-subtitle">Accédez à votre tableau de bord CraftLink</div>
+  </div>
+
+  <!-- Role tabs -->
+  <div class="role-tabs">
+    <button class="role-tab active" onclick="setRole(this,'entrepreneur')">
+      <span class="tab-icon">🎨</span> Entrepreneur
+    </button>
+    <button class="role-tab" onclick="setRole(this,'artisan')">
+      <span class="tab-icon">🧑‍🎨</span> Artisan
+    </button>
+    <button class="role-tab" onclick="setRole(this,'mentor')">
+      <span class="tab-icon">🎓</span> Mentor
+    </button>
+    <button class="role-tab" onclick="setRole(this,'investisseur')">
+      <span class="tab-icon">💼</span> Investisseur
+    </button>
+  </div>
+
+  <!-- Email -->
+  <div class="field-group">
+    <label class="field-label" for="email">Adresse e-mail</label>
+    <div class="field-wrap">
+      <span class="field-icon">✉</span>
+      <input type="email" id="email" placeholder="votre@email.com" autocomplete="email">
+    </div>
+    <div class="error-msg" id="email-err">Veuillez entrer une adresse e-mail valide.</div>
+  </div>
+
+  <!-- Password -->
+  <div class="field-group">
+    <label class="field-label" for="password">Mot de passe</label>
+    <div class="field-wrap">
+      <span class="field-icon">🔒</span>
+      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+      <button class="toggle-pw" onclick="togglePw()" id="pw-toggle" title="Afficher / masquer">👁</button>
+    </div>
+    <div class="error-msg" id="pw-err">Le mot de passe est requis.</div>
+  </div>
+
+  <!-- Remember / Forgot -->
+  <div class="options-row">
+    <label class="checkbox-label">
+      <input type="checkbox"> Se souvenir de moi
+    </label>
+    <a href="#" class="forgot-link">Mot de passe oublié ?</a>
+  </div>
+
+  <!-- Submit -->
+  <button class="btn-login" onclick="handleLogin()">Se connecter →</button>
+
+  <div class="or-divider"><span class="or-text">Nouveau sur CraftLink ?</span></div>
+
+  <div class="register-link">
+    Pas encore de compte ? <a href="#">Créez votre profil gratuitement</a>
+  </div>
+
+  <div class="form-footer">
+    <span class="footer-brand">Projet CraftLink · 2025–2026</span>
+    <div class="footer-lang">
+      <button class="lang-btn active">FR</button>
+      <button class="lang-btn">AR</button>
+      <button class="lang-btn">EN</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  function setRole(el, role) {
+    document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function togglePw() {
+    const pw = document.getElementById('password');
+    const btn = document.getElementById('pw-toggle');
+    if (pw.type === 'password') { pw.type = 'text'; btn.textContent = '🙈'; }
+    else { pw.type = 'password'; btn.textContent = '👁'; }
+  }
+
+  function handleLogin() {
+    const email = document.getElementById('email');
+    const pw    = document.getElementById('password');
+    const emailErr = document.getElementById('email-err');
+    const pwErr    = document.getElementById('pw-err');
+    let valid = true;
+
+    email.classList.remove('error'); emailErr.style.display = 'none';
+    pw.classList.remove('error');    pwErr.style.display    = 'none';
+
+    if (!email.value || !/\S+@\S+\.\S+/.test(email.value)) {
+      email.classList.add('error'); emailErr.style.display = 'block'; valid = false;
+    }
+    if (!pw.value) {
+      pw.classList.add('error'); pwErr.style.display = 'block'; valid = false;
+    }
+    if (valid) {
+      const btn = document.querySelector('.btn-login');
+      btn.textContent = '⏳ Connexion en cours…';
+      btn.disabled = true;
+      setTimeout(() => {
+        btn.textContent = '✓ Connecté !';
+        btn.style.background = '#2E6B3E';
+      }, 1400);
+    }
+  }
+
+  // Language toggle
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+</script>
+</body>
+</html>
