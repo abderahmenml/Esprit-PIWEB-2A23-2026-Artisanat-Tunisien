@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CraftLink — Tableau de bord</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --marron:  #8B5A3A;
+    --vert:    #2E6B3E;
+    --caramel: #C49A6C;
+    --creme:   #F5ECD7;
+    --brun:    #3B2314;
+    --brun-mid:#5C3A1E;
+    --text-muted: #A08060;
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--creme);
+    font-family: 'Calibri', 'Segoe UI', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  .card {
+    background: white;
+    border-radius: 16px;
+    padding: 3rem 3.5rem;
+    box-shadow: 0 8px 40px rgba(59,35,20,.12);
+    text-align: center;
+    max-width: 480px;
+    width: 100%;
+    animation: popIn .5s ease both;
+  }
+
+  .success-icon {
+    font-size: 3.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .card-title {
+    font-family: Georgia, serif;
+    font-size: 1.8rem;
+    color: var(--brun);
+    margin-bottom: .5rem;
+  }
+
+  .card-sub {
+    font-size: .9rem;
+    color: var(--text-muted);
+    margin-bottom: 2rem;
+    line-height: 1.6;
+  }
+
+  .info-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .75rem 1rem;
+    border-radius: 8px;
+    background: rgba(196,154,108,.1);
+    margin-bottom: .6rem;
+    font-size: .88rem;
+  }
+  .info-label { color: var(--text-muted); font-weight: 600; }
+  .info-value { color: var(--brun); font-weight: bold; }
+
+  .role-badge {
+    display: inline-block;
+    padding: .3rem .8rem;
+    border-radius: 20px;
+    font-size: .8rem;
+    font-weight: bold;
+  }
+  .role-entrepreneur { background: var(--marron); color: white; }
+  .role-artisan      { background: #7B5EA7;       color: white; }
+  .role-mentor       { background: var(--vert);   color: white; }
+  .role-investisseur { background: #C49A6C;       color: white; }
+
+  .btn-logout {
+    margin-top: 2rem;
+    padding: .75rem 2rem;
+    background: var(--brun);
+    color: var(--creme);
+    border: none;
+    border-radius: 8px;
+    font-family: Georgia, serif;
+    font-size: .95rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background .2s, transform .15s;
+  }
+  .btn-logout:hover { background: var(--brun-mid); transform: translateY(-1px); }
+
+  .craftlink-logo {
+    font-family: Georgia, serif;
+    font-size: 1rem;
+    color: var(--caramel);
+    margin-top: 2rem;
+    font-style: italic;
+  }
+
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(.92) translateY(20px); }
+    to   { opacity: 1; transform: scale(1)   translateY(0); }
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="success-icon">✅</div>
+  <div class="card-title" id="welcome-title">Bienvenue !</div>
+  <div class="card-sub">Vous êtes connecté à votre espace CraftLink Tunisie.<br>Votre session est active.</div>
+
+  <div class="info-row">
+    <span class="info-label">👤 Nom complet</span>
+    <span class="info-value" id="user-name">—</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">✉ Email</span>
+    <span class="info-value" id="user-email">—</span>
+  </div>
+  <div class="info-row">
+    <span class="info-label">🎭 Rôle</span>
+    <span class="info-value" id="user-role">—</span>
+  </div>
+
+  <button class="btn-logout" onclick="logout()">🚪 Se déconnecter</button>
+
+  <div class="craftlink-logo">CraftLink Tunisie · حرفة تونس</div>
+</div>
+
+<script>
+  // Récupérer les infos depuis sessionStorage (stockées lors du login)
+  const nom    = sessionStorage.getItem('cl_nom')    || '—';
+  const prenom = sessionStorage.getItem('cl_prenom') || '—';
+  const email  = sessionStorage.getItem('cl_email')  || '—';
+  const role   = sessionStorage.getItem('cl_role')   || '—';
+
+  // Si pas de session → retour login
+  if (nom === '—' && prenom === '—') {
+    window.location.href = 'index.html';
+  }
+
+  document.getElementById('welcome-title').textContent = 'Bienvenue, ' + prenom + ' !';
+  document.getElementById('user-name').textContent  = prenom + ' ' + nom;
+  document.getElementById('user-email').textContent = email;
+
+  const roleEl = document.getElementById('user-role');
+  const roleLabels = {
+    entrepreneur: '🎨 Entrepreneur',
+    artisan:      '🧑‍🎨 Artisan',
+    mentor:       '🎓 Mentor',
+    investisseur: '💼 Investisseur'
+  };
+  roleEl.innerHTML = '<span class="role-badge role-' + role + '">' + (roleLabels[role] || role) + '</span>';
+
+  function logout() {
+    sessionStorage.clear();
+    window.location.href = 'index.html';
+  }
+</script>
+</body>
+</html>
