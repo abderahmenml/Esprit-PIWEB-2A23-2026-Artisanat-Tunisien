@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backoffice — Gestion des Ateliers | CraftLink Tunisie</title>
+  <link href="https://fonts.googleapis.com/css2?family=Georgia&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Calibri:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="backoffice-workshops.css">
+  <meta http-equiv="refresh" content="0; url=backWorkshops.php">
+  <script>
+    window.location.replace('backWorkshops.php');
+  </script>
+</head>
+<body>
+
+<div class="backoffice-container">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">ح</div>
+      <div class="logo-text">CraftLink<br><span>Backoffice</span></div>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active">
+        <span class="nav-icon">📅</span>
+        <span>Ateliers</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="nav-icon">👥</span>
+        <span>Réservations</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="nav-icon">🎨</span>
+        <span>Artisans</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="nav-icon">📊</span>
+        <span>Statistiques</span>
+      </a>
+      <a href="#" class="nav-item">
+        <span class="nav-icon">⚙️</span>
+        <span>Paramètres</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="admin-info">
+        <div class="admin-avatar">A</div>
+        <div class="admin-details">
+          <strong>Admin CraftLink</strong>
+          <small>admin@craftlink.tn</small>
+        </div>
+      </div>
+      <button class="logout-btn" onclick="deconnexion()">Déconnexion</button>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-content">
+    <!-- HEADER -->
+    <header class="main-header">
+      <div class="header-title">
+        <h1>Gestion des ateliers</h1>
+        <p>Gérez vos ateliers artisanaux, consultez les réservations et statistiques</p>
+      </div>
+      <div class="header-actions">
+        <button class="btn-primary" onclick="ouvrirModalAjout()">
+          <span>+</span> Nouvel atelier
+        </button>
+      </div>
+    </header>
+
+    <!-- STATS CARDS -->
+    <div class="stats-cards">
+      <div class="stat-card">
+        <div class="stat-icon">🎯</div>
+        <div class="stat-info">
+          <h3>16</h3>
+          <p>Ateliers actifs</p>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📝</div>
+        <div class="stat-info">
+          <h3>124</h3>
+          <p>Réservations ce mois</p>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">👥</div>
+        <div class="stat-info">
+          <h3>12</h3>
+          <p>Artisans actifs</p>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">💰</div>
+        <div class="stat-info">
+          <h3>8 450 TND</h3>
+          <p>Revenus mensuels</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- FILTERS & SEARCH -->
+    <div class="filters-bar">
+      <div class="search-wrapper">
+        <input type="text" id="searchWorkshopBack" placeholder="Rechercher un atelier..." onkeyup="rechercherAtelierBack()">
+        <span class="search-icon">🔍</span>
+      </div>
+      <div class="filter-group">
+        <select id="filterDuree" onchange="filtrerAteliersBack()">
+          <option value="all">Toutes durées</option>
+          <option value="2h">Moins de 3h</option>
+          <option value="journee">Journée (4h+)</option>
+        </select>
+        <select id="filterType" onchange="filtrerAteliersBack()">
+          <option value="all">Tous types</option>
+          <option value="famille">En famille</option>
+          <option value="adulte">Adultes</option>
+        </select>
+        <select id="filterCertif" onchange="filtrerAteliersBack()">
+          <option value="all">Tous</option>
+          <option value="oui">Avec certificat</option>
+          <option value="non">Sans certificat</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- WORKSHOPS TABLE -->
+    <div class="table-container">
+      <table class="workshops-table">
+        <thead>
+          <tr>
+            <th>Atelier</th>
+            <th>Artisan</th>
+            <th>Durée</th>
+            <th>Prix (TND)</th>
+            <th>Places</th>
+            <th>Type</th>
+            <th>Certificat</th>
+            <th>Statut</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="workshopsTableBody">
+          <!-- Les ateliers seront chargés dynamiquement via JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- PAGINATION -->
+    <div class="pagination">
+      <button class="page-btn" onclick="changerPage(-1)" id="prevPage">◀ Précédent</button>
+      <span class="page-info" id="pageInfo">Page 1 / 1</span>
+      <button class="page-btn" onclick="changerPage(1)" id="nextPage">Suivant ▶</button>
+    </div>
+  </main>
+</div>
+
+<!-- MODAL AJOUT / MODIFICATION ATELIER -->
+<div class="modal-overlay" id="modalAtelier">
+  <div class="modal modal-large">
+    <div class="modal-header">
+      <h2 id="modalTitle">Ajouter un atelier</h2>
+      <button class="modal-close" onclick="fermerModalAtelier()">✕</button>
+    </div>
+    <div class="modal-body">
+      <form id="atelierForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Titre de l'atelier *</label>
+            <input type="text" id="titreAtelier" placeholder="Ex: Atelier poterie berbère" required>
+          </div>
+          <div class="form-group">
+            <label>Lieu *</label>
+            <input type="text" id="lieuAtelier" placeholder="Ex: Nabeul, Tunis Médina" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Description *</label>
+          <textarea id="descAtelier" rows="3" placeholder="Description détaillée de l'atelier..." required></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Artisan *</label>
+            <select id="artisanAtelier" required>
+              <option value="">Sélectionner un artisan</option>
+              <option value="Fatma Ayari">Fatma Ayari (Potière)</option>
+              <option value="Rim Gharbi">Rim Gharbi (Mosaïste)</option>
+              <option value="Nadia Amri">Nadia Amri (Calligraphe)</option>
+              <option value="Hedi Trabelsi">Hedi Trabelsi (Maroquinier)</option>
+              <option value="Mohamed Karoui">Mohamed Karoui (Tisserand)</option>
+              <option value="Sonia Ben Salah">Sonia Ben Salah (Broderie)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Avatar artisan (initiales)</label>
+            <input type="text" id="avatarAtelier" maxlength="2" placeholder="Ex: FA" value="FA">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Durée *</label>
+            <select id="dureeAtelier" required>
+              <option value="2h">Moins de 3h (2h-2h30)</option>
+              <option value="journee">Journée complète (4h+)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Prix (TND) *</label>
+            <input type="number" id="prixAtelier" placeholder="Ex: 65" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Places maximum *</label>
+            <input type="number" id="placesAtelier" placeholder="Ex: 8" required>
+          </div>
+          <div class="form-group">
+            <label>Type d'atelier *</label>
+            <select id="typeAtelier" required>
+              <option value="famille">En famille</option>
+              <option value="adulte">Adultes</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Certificat inclus</label>
+            <select id="certifAtelier">
+              <option value="non">Non</option>
+              <option value="oui">Oui</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Statut</label>
+            <select id="statutAtelier">
+              <option value="actif">Actif</option>
+              <option value="inactif">Inactif</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Infos supplémentaires (optionnel)</label>
+          <input type="text" id="infoSupAtelier" placeholder="Ex: Thé offert, matériel inclus...">
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn-cancel" onclick="fermerModalAtelier()">Annuler</button>
+          <button type="button" class="btn-submit" onclick="sauvegarderAtelier()">Enregistrer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL SUPPRESSION -->
+<div class="modal-overlay" id="modalDelete">
+  <div class="modal modal-small">
+    <div class="modal-header">
+      <h2>Confirmer la suppression</h2>
+      <button class="modal-close" onclick="fermerModalDelete()">✕</button>
+    </div>
+    <div class="modal-body">
+      <p>Êtes-vous sûr de vouloir supprimer l'atelier <strong id="deleteAtelierNom"></strong> ?</p>
+      <p class="warning-text">Cette action est irréversible et supprimera toutes les réservations associées.</p>
+      <div class="form-actions">
+        <button class="btn-cancel" onclick="fermerModalDelete()">Annuler</button>
+        <button class="btn-danger" onclick="confirmerSuppression()">Supprimer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST NOTIFICATION -->
+<div class="toast" id="toast"></div>
+
+<script src="backoffice-workshops.js"></script>
+</body>
+</html>

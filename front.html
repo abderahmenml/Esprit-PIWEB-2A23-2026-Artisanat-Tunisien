@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Formations & Workshops — حرفة CraftLink Tunisie</title>
+<link href="https://fonts.googleapis.com/css2?family=Georgia&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Calibri:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav>
+  <div class="logo">
+    ح <span>CraftLink Tunisie</span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="frontWorkshops.html" id="workshopsTabLink">Workshops</a></li>
+    <li><a href="front.php" class="active" id="formationsTabLink">Formations</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <h1>Développez votre <em>savoir-faire</em><br>artisanal tunisien</h1>
+  <p>Des formations structurées par des mentors certifiés, liées à de vrais projets artisanaux. Obtenez un certificat CraftLink reconnu.</p>
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="Rechercher une formation ou workshop (ex: poterie, broderie…)">
+    <button onclick="rechercherGlobal()">Rechercher</button>
+  </div>
+</section>
+
+<!-- STATS -->
+<div class="stats-bar">
+  <div class="stat"><strong id="statFormations">42</strong><span>Formations actives</span></div>
+  <div class="stat"><strong id="statMentors">18</strong><span>Mentors certifiés</span></div>
+  <div class="stat"><strong id="statCertifies">320+</strong><span>Certifiés CraftLink</span></div>
+  <div class="stat"><strong id="statDisciplines">6</strong><span>Disciplines artisanales</span></div>
+</div>
+
+<!-- FILTERS -->
+<div class="filter-section">
+  <span class="filter-label">Filtrer par :</span>
+  <button class="filter-btn active" onclick="filtrer(this, 'tous')">Toutes</button>
+  <button class="filter-btn" onclick="filtrer(this, 'debutant')">Débutant</button>
+  <button class="filter-btn" onclick="filtrer(this, 'intermediaire')">Intermédiaire</button>
+  <button class="filter-btn" onclick="filtrer(this, 'avance')">Avancé</button>
+  <button class="filter-btn" onclick="filtrer(this, 'certif')">Avec Certificat</button>
+  <div class="filter-actions-right">
+    <button type="button" class="btn-inscrit" id="btnAjouterFormationFrontHtml" onclick="ouvrirModalAjoutFormation()">＋ Ajouter une formation</button>
+  </div>
+</div>
+
+<!-- SECTION TITRE -->
+<div class="section-title container" id="sectionTitle">Formations disponibles</div>
+<div class="berber-divider container">◆ ◇ ◆ ◇ ◆</div>
+
+<!-- CARDS GRID CENTERED -->
+<div class="cards-wrapper">
+  <div class="cards-grid" id="cardsGrid"></div>
+</div>
+
+<!-- MODAL INSCRIPTION -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2>Inscription à la formation</h2>
+        <p id="modalFormationNom">Nom de la formation</p>
+      </div>
+      <button class="modal-close" onclick="fermerModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="success-banner" id="successBanner">
+        ✅ Inscription confirmée ! Vous recevrez une confirmation par email.
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Prénom *</label>
+          <input type="text" id="prenom" placeholder="Votre prénom">
+          <div class="error-msg" id="err-prenom">Le prénom est obligatoire (min. 2 caractères).</div>
+        </div>
+        <div class="form-group">
+          <label>Nom *</label>
+          <input type="text" id="nom" placeholder="Votre nom">
+          <div class="error-msg" id="err-nom">Le nom est obligatoire (min. 2 caractères).</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Adresse email *</label>
+        <input type="email" id="email" placeholder="exemple@email.com">
+        <div class="error-msg" id="err-email">Veuillez saisir un email valide.</div>
+      </div>
+
+      <div class="form-group">
+        <label>Téléphone *</label>
+        <input type="tel" id="tel" placeholder="Ex: 22 345 678">
+        <div class="error-msg" id="err-tel">Le numéro doit contenir 8 chiffres.</div>
+      </div>
+
+      <div class="form-group">
+        <label>Niveau actuel *</label>
+        <select id="niveau">
+          <option value="">— Sélectionnez votre niveau —</option>
+          <option value="debutant">Débutant — aucune expérience</option>
+          <option value="intermediaire">Intermédiaire — quelques bases</option>
+          <option value="avance">Avancé — pratique régulière</option>
+        </select>
+        <div class="error-msg" id="err-niveau">Veuillez sélectionner votre niveau.</div>
+      </div>
+
+      <div class="form-group">
+        <label>Motivation (optionnel)</label>
+        <textarea id="motivation" rows="3" placeholder="Pourquoi souhaitez-vous suivre cette formation ?"></textarea>
+      </div>
+
+      <button class="btn-submit" onclick="soumettreInscription()">Confirmer l'inscription</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AJOUT FORMATION (FRONT HTML) -->
+<div class="modal-overlay" id="modalAjoutFormationFront">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2>Ajouter une formation</h2>
+        <p>Ajout local sur cette page</p>
+      </div>
+      <button type="button" class="modal-close" onclick="fermerModalAjoutFormation()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Titre *</label>
+          <input type="text" id="aj_titre" placeholder="Ex: Initiation au tissage créatif">
+        </div>
+        <div class="form-group">
+          <label>Mentor *</label>
+          <input type="text" id="aj_mentor" placeholder="Ex: Fatma Ayari">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Niveau *</label>
+          <select id="aj_niveau">
+            <option value="debutant">Débutant</option>
+            <option value="intermediaire">Intermédiaire</option>
+            <option value="avance">Avancé</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Ville *</label>
+          <input type="text" id="aj_ville" placeholder="Ex: Tunis">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Durée *</label>
+          <input type="text" id="aj_duree" placeholder="Ex: 24h">
+        </div>
+        <div class="form-group">
+          <label>Prix (TND) *</label>
+          <input type="number" id="aj_prix" min="0" placeholder="Ex: 180">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Description *</label>
+        <textarea id="aj_description" rows="3" placeholder="Décrivez la formation..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Certification</label>
+        <select id="aj_certif">
+          <option value="oui">Oui</option>
+          <option value="non">Non</option>
+        </select>
+      </div>
+
+      <button type="button" class="btn-submit" onclick="ajouterFormationDepuisFront()">Ajouter la formation</button>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <strong>ح CraftLink Tunisie</strong> &nbsp;·&nbsp; L'artisanat tunisien, à l'ère du numérique &nbsp;·&nbsp; Projet 2025–2026
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
