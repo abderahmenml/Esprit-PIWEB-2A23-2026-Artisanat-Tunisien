@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backoffice - 7erfa Tunisie</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;900&family=Lato:wght@300;400;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="backoffice.css">
+</head>
+<body>
+  <div class="texture" aria-hidden="true"></div>
+
+  <header class="bo-topbar">
+    <div class="brand-wrap">
+      <div class="brand-logo">
+        <img src="image/logo.png" alt="Logo 7erfa Tunisie">
+      </div>
+      <div>
+        <p class="brand-title">Backoffice 7erfa Tunisie</p>
+        <p class="brand-sub">Gestion des idees depuis la base</p>
+      </div>
+    </div>
+
+    <nav class="bo-nav" aria-label="Navigation backoffice">
+      <a class="nav-link active" href="backoffice.html">Dashboard</a>
+      <a class="nav-link" href="index.html">Retour site</a>
+    </nav>
+  </header>
+
+  <main class="bo-layout">
+    <section class="hero-admin card">
+      <div>
+        <p class="eyebrow">Panneau d administration</p>
+        <h1>Suivi des idees de projet en temps reel.</h1>
+        <p class="hero-desc">
+          Retrouvez les idees directement depuis la base et mettez a jour les informations.
+        </p>
+      </div>
+      <div class="hero-actions">
+        <button id="refreshBtn" class="btn btn-outline" type="button">Rafraichir</button>
+      </div>
+    </section>
+
+    <section class="stats-grid">
+      <article class="stat card">
+        <p class="stat-label">Total idees</p>
+        <p id="statTotal" class="stat-value">0</p>
+      </article>
+      <article class="stat card">
+        <p class="stat-label">Ouvertes</p>
+        <p id="statOpen" class="stat-value">0</p>
+      </article>
+      <article class="stat card">
+        <p class="stat-label">En cours</p>
+        <p id="statProgress" class="stat-value">0</p>
+      </article>
+      <article class="stat card">
+        <p class="stat-label">Fermees</p>
+        <p id="statClosed" class="stat-value">0</p>
+      </article>
+    </section>
+
+    <section class="table-section card">
+      <div class="table-head">
+        <div>
+          <h2>Idees de projet</h2>
+          <p>Gestion directe depuis la base de donnees.</p>
+        </div>
+
+        <div class="filters">
+          <input id="searchInput" type="search" placeholder="Rechercher par titre, categorie...">
+          <select id="statusFilter">
+            <option value="">Tous les statuts</option>
+            <option value="Ouvert">Ouvert</option>
+            <option value="En cours">En cours</option>
+            <option value="Ferme">Ferme</option>
+          </select>
+          <select id="categoryFilter">
+            <option value="">Toutes les categories</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Titre</th>
+              <th>Categorie</th>
+              <th>Statut</th>
+              <th>Budget</th>
+              <th>Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ideasTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <p id="resultsInfo">0 resultat</p>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="editDialog" class="edit-dialog">
+    <form id="editForm" method="dialog">
+      <h3>Modifier l idee</h3>
+      <input type="hidden" id="editId">
+
+      <label>
+        Titre
+        <input id="editTitle" type="text" required>
+      </label>
+
+      <label>
+        Categorie
+        <input id="editCategory" type="text">
+      </label>
+
+      <label>
+        Statut
+        <select id="editStatus">
+          <option value="Ouvert">Ouvert</option>
+          <option value="En cours">En cours</option>
+          <option value="Ferme">Ferme</option>
+        </select>
+      </label>
+
+      <label>
+        Budget (DT)
+        <input id="editBudget" type="number" min="0" step="0.01">
+      </label>
+
+      <label>
+        Description
+        <textarea id="editDescription" rows="4"></textarea>
+      </label>
+
+      <menu>
+        <button type="button" id="cancelEditBtn" class="btn btn-outline">Annuler</button>
+        <button type="submit" class="btn btn-solid">Enregistrer</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <script src="backoffice.js"></script>
+</body>
+</html>

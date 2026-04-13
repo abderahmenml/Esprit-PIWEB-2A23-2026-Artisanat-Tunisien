@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>7erfa Tunisie - Idees de projets</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;0,900;1,400&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="grain"></div>
+  <header class="topbar">
+    <div class="brand-block">
+      <div class="brand-mark">
+        <img src="image/logo.png" alt="Logo 7erfa Tunisie">
+      </div>
+      <div>
+        <p class="brand-name">7erfa Tunisie</p>
+        <p class="brand-tagline">L'artisanat tunisien, a l'ere du numerique.</p>
+      </div>
+    </div>
+
+    <nav class="top-menu" aria-label="Menu principal">
+      <button class="menu-link active" type="button">Idee de projet</button>
+      <button class="menu-link" type="button">Mon profil</button>
+      <button class="menu-link" type="button">Formation</button>
+      <button class="menu-link" type="button">Offre d'emploi</button>
+    </nav>
+
+    <button class="cta-outline" id="publishIdeaBtn" type="button">+ Publier une idee</button>
+  </header>
+
+  <main class="layout">
+    <section class="hero card-surface">
+      <div class="hero-copy">
+        <p class="eyebrow">Plateforme idees artisanales</p>
+        <h1>Lancez une idee claire, trouvez les bonnes competences, avancez vite.</h1>
+        <p>
+          Creez votre fiche projet en quelques champs: categorie, statut, budget, competences et materiaux.
+          Publiez ensuite pour partager votre besoin avec la communaute.
+        </p>
+        <div class="hero-actions">
+          <button class="cta-solid" id="heroPublishBtn" type="button">Commencer maintenant</button>
+          <button class="cta-ghost" type="button">Explorer les idees</button>
+        </div>
+      </div>
+      <div class="hero-metrics">
+        <article>
+          <p class="metric-value">120+</p>
+          <p class="metric-label">Idees partagees</p>
+        </article>
+        <article>
+          <p class="metric-value">48</p>
+          <p class="metric-label">Artisans actifs</p>
+        </article>
+        <article>
+          <p class="metric-value">17</p>
+          <p class="metric-label">Categories en demande</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="quick-create card-surface" id="quickCreateSection">
+      <div class="quick-create-head">
+        <h2>Publier une idee</h2>
+        <button class="mini-btn" id="closeFormBtn" type="button">Fermer</button>
+      </div>
+      <h2>Competences et materiaux</h2>
+      <form class="idea-form">
+        <label class="wide">
+          Titre
+          <input type="text" id="titleInput" placeholder="Titre du projet">
+        </label>
+
+        <label class="wide">
+          Categorie
+          <select id="categorySelect">
+            <option value="">Choisir une categorie</option>
+            <option>Textile</option>
+            <option>Ceramique</option>
+            <option>Bijouterie</option>
+            <option>Menuiserie</option>
+            <option>Autres</option>
+          </select>
+        </label>
+
+        <label class="wide">
+          Statut
+          <select id="statusSelect">
+            <option value="">Choisir un statut</option>
+            <option>Ouvert</option>
+            <option>Ferme</option>
+            <option>En cours</option>
+          </select>
+        </label>
+
+        <label class="wide">
+          Budget minimum
+          <input type="number" id="budgetInput" placeholder="Budget en dinars" min="0" step="0.01">
+        </label>
+
+        <label class="wide">
+          Description
+          <textarea id="descriptionInput" placeholder="Decrivez votre projet..."></textarea>
+        </label>
+
+        <label class="wide">
+          Competences
+          <div class="list-builder" id="skillsBuilder">
+            <div class="builder-head">
+              <p>Ajoutez le nom et le niveau de chaque competence.</p>
+              <button type="button" class="mini-btn" id="addSkillBtn">+ Ajouter competence</button>
+            </div>
+            <div id="skillsRows" class="builder-rows"></div>
+          </div>
+        </label>
+
+        <label class="wide">
+          Materiaux
+          <div class="list-builder" id="materialsBuilder">
+            <div class="builder-head">
+              <p>Ajoutez le nom, la quantite et le prix unitaire de chaque materiau.</p>
+              <button type="button" class="mini-btn" id="addMaterialBtn">+ Ajouter materiau</button>
+            </div>
+            <div id="materialsRows" class="builder-rows"></div>
+          </div>
+        </label>
+
+        <button class="cta-solid wide" type="submit">Ajouter</button>
+      </form>
+    </section>
+
+    <section class="explore" id="ideesProjet">
+      <div class="explore-head">
+        <div>
+          <h2>Idees recentes</h2>
+          <p class="explore-subtitle">Vos publications apparaissent ici sous forme de cartes.</p>
+        </div>
+      </div>
+      <div class="content-grid">
+        <div class="cards" id="projectCards"></div>
+        <aside class="details card-surface">
+          <h3>Conseils de publication</h3>
+          <p class="details-text">
+            Soyez precis sur le besoin et le budget pour recevoir des reponses utiles plus rapidement.
+          </p>
+          <div class="details-list">
+            <p><strong>Titre:</strong> court et explicite</p>
+            <p><strong>Competences:</strong> 2 a 4 competences cles</p>
+            <p><strong>Materiaux:</strong> quantite + prix unitaire</p>
+            <p><strong>Description:</strong> objectif, delai, contraintes</p>
+          </div>
+          <div class="details-cta">
+            <button class="cta-solid" id="asidePublishBtn" type="button">Publier une idee</button>
+          </div>
+        </aside>
+      </div>
+      <div class="empty-state card-surface" id="emptyState">
+        <h3>Aucune idee pour le moment</h3>
+        <p>Utilisez le bouton "Publier une idee" pour ajouter votre premiere carte.</p>
+      </div>
+    </section>
+
+    <section class="info-section card-surface" id="monProfil">
+      <div class="info-head">
+        <h2>Mon profil</h2>
+      </div>
+      <p>
+        Ajoutez ici vos informations principales: metier, experience, competences, ville et disponibilite.
+      </p>
+    </section>
+
+    <section class="info-section card-surface" id="formations">
+      <div class="info-head">
+        <h2>Formation</h2>
+      </div>
+      <p>
+        Retrouvez des formations courtes pour textile, ceramique, business artisanal et marketing digital.
+      </p>
+    </section>
+
+    <section class="info-section card-surface" id="offresEmploi">
+      <div class="info-head">
+        <h2>Offre d'emploi</h2>
+      </div>
+      <p>
+        Consultez les offres locales et les besoins de recrutement publies par les entrepreneurs et ateliers.
+      </p>
+    </section>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
