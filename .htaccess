@@ -1,0 +1,17 @@
+RewriteEngine On
+
+# Common typo fallback: login,html -> login.html
+RewriteRule ^app/login,html$ /herfa/app/login.html [R=302,L,NC]
+RewriteRule ^login,html$ /herfa/app/login.html [R=302,L,NC]
+
+# Keep existing files/directories as-is.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Root -> app landing page.
+RewriteRule ^$ app/index.html [L]
+
+# Backward-compatibility: old URLs at /herfa/* now map to /herfa/app/*
+RewriteCond %{REQUEST_URI} !^/herfa/app/ [NC]
+RewriteRule ^(.+)$ app/$1 [L]
