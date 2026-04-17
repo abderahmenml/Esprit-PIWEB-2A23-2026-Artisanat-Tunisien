@@ -1,17 +1,57 @@
-RewriteEngine On
+# Apache configuration for herfa Tunisie
 
-# Common typo fallback: login,html -> login.html
-RewriteRule ^app/login,html$ /herfa/app/login.html [R=302,L,NC]
-RewriteRule ^login,html$ /herfa/app/login.html [R=302,L,NC]
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Legacy URL compatibility: old /app URLs redirect to /public
+    RewriteCond %{REQUEST_URI} ^/herfa/app/login,html$ [OR]
+    RewriteCond %{REQUEST_URI} ^/herfa/login,html$
+    RewriteRule ^.*$ /herfa/public/api/login [R=302,L]
+    
+    # Keep existing files/directories as-is
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+    
+    # Redirect /herfa/app/* to /herfa/public/*
+    RewriteCond %{REQUEST_URI} ^/herfa/app/
+    RewriteRule ^app/(.*)$ /herfa/public/$1 [R=301,L]
+    
+    # Allow direct access to public folder
+    RewriteCond %{REQUEST_URI} ^/herfa/public/
+    RewriteRule ^ - [L]
+    
+    # All other requests to public folder
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ /herfa/public/$1 [L]
+    
+</IfModule>
 
-# Keep existing files/directories as-is.
-RewriteCond %{REQUEST_FILENAME} -f [OR]
-RewriteCond %{REQUEST_FILENAME} -d
-RewriteRule ^ - [L]
+# Enable GZIP compression
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css application/javascript application/json
+</IfModule>
 
-# Root -> app landing page.
-RewriteRule ^$ app/index.html [L]
+# Cache static files
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+</IfModule>
 
-# Backward-compatibility: old URLs at /herfa/* now map to /herfa/app/*
-RewriteCond %{REQUEST_URI} !^/herfa/app/ [NC]
-RewriteRule ^(.+)$ app/$1 [L]
+# Security
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+</IfModule>
+
+# Deny sensitive files
+<FilesMatch "\.(env|sql|log|md)$">
+    Deny from all
+</FilesMatch>
+
+Options -Indexes

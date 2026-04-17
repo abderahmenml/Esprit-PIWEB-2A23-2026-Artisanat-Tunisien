@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <meta name="description" content="Herfa Tunisie core features and modules." />
+        <meta name="author" content="Herfa Tunisie" />
+        <title>Modules | حرفة Tunisie</title>
+        <link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
+        <link href="/assets/css/styles.css" rel="stylesheet" />
+    </head>
+    <body>
+        <header>
+            <h1 class="site-heading text-center text-faded d-none d-lg-block">
+                <span class="site-heading-upper text-primary mb-3">Core Features</span>
+                <span class="site-heading-lower">6 Platform Modules</span>
+            </h1>
+        </header>
+        <nav class="navbar navbar-expand-lg navbar-dark py-lg-4" id="mainNav">
+            <div class="container">
+                <a class="navbar-brand text-uppercase fw-bold d-lg-none" href="index.html">حرفة Tunisie</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+                <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                    <ul class="navbar-nav mx-auto">
+                        <li class="nav-item px-lg-4"><a class="nav-link text-uppercase" href="index.html">Home</a></li>
+                        <li class="nav-item px-lg-4"><a class="nav-link text-uppercase" href="about.html">Vision</a></li>
+                        <li class="nav-item px-lg-4"><a class="nav-link text-uppercase" href="products.html">Modules</a></li>
+                        <li class="nav-item px-lg-4"><a class="nav-link text-uppercase" href="store.html">Ecosystem</a></li>
+                        <li class="nav-item px-lg-4"><a class="nav-link text-uppercase" href="login.html" data-auth-link data-login-href="login.html" data-login-label="Connexion" data-home-href="home.php" data-home-label="Mon espace">Connexion</a></li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+        <section class="page-section">
+            <div class="container">
+                <div class="product-item">
+                    <div class="product-item-title d-flex">
+                        <div class="bg-faded p-5 d-flex ms-auto rounded">
+                            <h2 class="section-heading mb-0">
+                                <span class="section-heading-upper">Module 1 & 2</span>
+                                <span class="section-heading-lower">Project Ideas + Workshop Skills</span>
+                            </h2>
+                        </div>
+                    </div>
+                    <img class="product-item-img mx-auto d-flex rounded img-fluid mb-3 mb-lg-0" src="assets/img/item_pics/IMG_3096.jpg" alt="Handcrafted ceramic cups" />
+                    <div class="product-item-description d-flex me-auto">
+                        <div class="bg-faded p-5 rounded"><p class="mb-0">Publish project concepts with required skills and budgets, then match with certified mentors who provide practical video workshops tailored to real craft projects.</p></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <section class="page-section">
+            <div class="container">
+                <div class="product-item">
+                    <div class="product-item-title d-flex">
+                        <div class="bg-faded p-5 d-flex me-auto rounded">
+                            <h2 class="section-heading mb-0">
+                                <span class="section-heading-upper">Module 3 & 4</span>
+                                <span class="section-heading-lower">Investment + Training Certifications</span>
+                            </h2>
+                        </div>
+                    </div>
+                    <img class="product-item-img mx-auto d-flex rounded img-fluid mb-3 mb-lg-0" src="assets/img/item_pics/soap+dishes.png" alt="Handcrafted soap dishes" />
+                    <div class="product-item-description d-flex ms-auto">
+                        <div class="bg-faded p-5 rounded"><p class="mb-0">Access an auction-based, transparent funding system and structured learning tracks that provide certificates to improve artisan employability and project credibility.</p></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <section class="page-section">
+            <div class="container">
+                <div class="product-item">
+                    <div class="product-item-title d-flex">
+                        <div class="bg-faded p-5 d-flex ms-auto rounded">
+                            <h2 class="section-heading mb-0">
+                                <span class="section-heading-upper">Module 5 & 6</span>
+                                <span class="section-heading-lower">Job Offers + Professional Profiles</span>
+                            </h2>
+                        </div>
+                    </div>
+                    <img class="product-item-img mx-auto d-flex rounded img-fluid mb-3 mb-lg-0" src="assets/img/item_pics/palm+tree+handpainted+plate.png" alt="Hand-painted Tunisian plate" />
+                    <div class="product-item-description d-flex me-auto">
+                        <div class="bg-faded p-5 rounded"><p class="mb-0">Recruit artisans for active projects and build trusted portfolios with skills, achievements, and reputation scores that improve matchmaking between talent and opportunity.</p></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <footer class="footer text-faded text-center py-5">
+            <div class="container"><p class="m-0 small">Copyright &copy; حرفة Tunisie 2026</p></div>
+        </footer>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+        <script src="/assets/js/auth.js"></script>
+        <script src="/assets/js/scripts.js"></script>
+    </body>
+</html>

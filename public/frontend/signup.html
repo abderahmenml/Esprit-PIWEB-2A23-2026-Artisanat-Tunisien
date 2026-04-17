@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CraftLink Tunisie — Inscription</title>
+  <link href="/herfa/public/assets/css/style_login.css" rel="stylesheet">
+
+  <style>
+    .terms-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    .terms-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,.45);
+    }
+    .terms-box {
+      position: relative;
+      width: min(680px, 92vw);
+      max-height: 82vh;
+      background: #fffdf8;
+      border-radius: 16px;
+      padding: 1.4rem 1.4rem 1rem;
+      box-shadow: 0 20px 60px rgba(0,0,0,.25);
+      z-index: 1;
+      overflow: hidden;
+    }
+    .terms-box h2 {
+      margin-bottom: 1rem;
+      color: #3B2314;
+      font-family: Georgia, serif;
+      font-size: 1.5rem;
+    }
+    .terms-content {
+      max-height: 55vh;
+      overflow-y: auto;
+      padding-right: .4rem;
+      color: #5C3A1E;
+      line-height: 1.7;
+      font-size: .92rem;
+    }
+    .terms-content p { margin-bottom: .9rem; }
+    .terms-close {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      border: none;
+      background: transparent;
+      font-size: 1.8rem;
+      cursor: pointer;
+      color: #8B5A3A;
+    }
+    .terms-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 1rem;
+    }
+    .btn-terms-accept {
+      border: none;
+      background: #3B2314;
+      color: #F5ECD7;
+      padding: .8rem 1.2rem;
+      border-radius: 10px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-terms-accept:hover { background: #5C3A1E; }
+  </style>
+</head>
+<body>
+
+<div class="left-panel">
+  <div class="brand">
+    <div class="logo-ring">
+      <img src="../assets/img/logo_herfa.png" alt="CraftLink Logo" class="logo-img">
+    </div>
+    <div class="brand-title">CraftLink Tunisie</div>
+    <div class="brand-arabic">حرفة تونس</div>
+    <div class="brand-sub">L'artisanat tunisien, à l'ère du numérique.</div>
+  </div>
+
+  <div class="divider-ornament"><div class="divider-diamond"></div></div>
+
+  <div class="roles-title">Rejoignez notre écosystème</div>
+  <div class="roles">
+    <div class="role-card entrepreneur">🎨 Entrepreneur</div>
+    <div class="role-card mentor">🧑‍🎨 Mentor / Artisan</div>
+    <div class="role-card investisseur">💼 Investisseur</div>
+  </div>
+
+  <p class="left-quote">
+    « Connecter les créateurs, les artisans et les investisseurs pour faire vivre l'artisanat tunisien. »
+  </p>
+</div>
+
+<div class="right-panel register-panel">
+  <div class="form-header">
+    <div class="form-label-small">Nouveau compte</div>
+    <div class="form-title">Créez votre profil</div>
+    <div class="form-subtitle">Rejoignez la communauté CraftLink gratuitement</div>
+  </div>
+
+  <div class="role-tabs">
+    <button type="button" class="role-tab active" onclick="setRole(this,'entrepreneur')"><span class="tab-icon">🎨</span> Entrepreneur</button>
+    <button type="button" class="role-tab" onclick="setRole(this,'artisan')"><span class="tab-icon">🧑‍🎨</span> Artisan</button>
+    <button type="button" class="role-tab" onclick="setRole(this,'mentor')"><span class="tab-icon">🎓</span> Mentor</button>
+    <button type="button" class="role-tab" onclick="setRole(this,'investisseur')"><span class="tab-icon">💼</span> Investisseur</button>
+  </div>
+
+  <div class="alert-banner" id="alert-banner" style="display:none"></div>
+
+  <div class="fields-row">
+    <div class="field-group" style="flex:1">
+      <label class="field-label" for="nom">Nom</label>
+      <div class="field-wrap">
+        <span class="field-icon">👤</span>
+        <input type="text" id="nom" placeholder="Votre nom" autocomplete="family-name">
+      </div>
+      <div class="error-msg" id="nom-err">Le nom est requis.</div>
+    </div>
+
+    <div class="field-group" style="flex:1">
+      <label class="field-label" for="prenom">Prénom</label>
+      <div class="field-wrap">
+        <span class="field-icon">👤</span>
+        <input type="text" id="prenom" placeholder="Votre prénom" autocomplete="given-name">
+      </div>
+      <div class="error-msg" id="prenom-err">Le prénom est requis.</div>
+    </div>
+  </div>
+
+  <div class="field-group">
+    <label class="field-label" for="email">Adresse e-mail</label>
+    <div class="field-wrap">
+      <span class="field-icon">✉</span>
+      <input type="email" id="email" placeholder="votre@email.com" autocomplete="email">
+    </div>
+    <div class="error-msg" id="email-err">Veuillez entrer une adresse e-mail valide.</div>
+  </div>
+
+  <div class="fields-row">
+    <div class="field-group" style="flex:1">
+      <label class="field-label" for="password">Mot de passe</label>
+      <div class="field-wrap">
+        <span class="field-icon">🔒</span>
+        <input type="password" id="password" placeholder="••••••••" autocomplete="new-password">
+        <button type="button" class="toggle-pw" onclick="togglePw('password','pw-toggle')" id="pw-toggle" title="Afficher">👁</button>
+      </div>
+      <div class="error-msg" id="pw-err">Minimum 6 caractères.</div>
+    </div>
+
+    <div class="field-group" style="flex:1">
+      <label class="field-label" for="confirm">Confirmer</label>
+      <div class="field-wrap">
+        <span class="field-icon">🔒</span>
+        <input type="password" id="confirm" placeholder="••••••••" autocomplete="new-password">
+        <button type="button" class="toggle-pw" onclick="togglePw('confirm','conf-toggle')" id="conf-toggle" title="Afficher">👁</button>
+      </div>
+      <div class="error-msg" id="conf-err">Les mots de passe ne correspondent pas.</div>
+    </div>
+  </div>
+
+  <div class="pw-strength-wrap">
+    <div class="pw-strength-bar">
+      <div class="pw-strength-fill" id="pw-strength-fill"></div>
+    </div>
+    <span class="pw-strength-label" id="pw-strength-label">Force du mot de passe</span>
+  </div>
+
+  <div class="options-row" style="margin-bottom:1rem">
+    <label class="checkbox-label">
+      <input type="checkbox" id="terms">
+      J'accepte les <a href="#" class="forgot-link" onclick="openTermsModal(event)">conditions d'utilisation</a>
+    </label>
+  </div>
+  <div class="error-msg" id="terms-err" style="margin-top:-0.6rem;margin-bottom:0.8rem">Veuillez accepter les conditions.</div>
+
+  <button type="button" class="btn-login" id="btn-register" onclick="handleRegister()">Créer mon profil →</button>
+
+  <div class="or-divider"><span class="or-text">Déjà inscrit ?</span></div>
+  <div class="register-link">Vous avez déjà un compte ? <a href="login.html">Connectez-vous ici</a></div>
+
+  <div class="terms-modal" id="terms-modal" style="display:none;">
+    <div class="terms-backdrop" onclick="closeTermsModal()"></div>
+    <div class="terms-box">
+      <button type="button" class="terms-close" onclick="closeTermsModal()">×</button>
+      <h2>Conditions d'utilisation</h2>
+      <div class="terms-content">
+        <p><strong>1. Objet de la plateforme</strong><br>CraftLink Tunisie est une plateforme dédiée à la mise en relation entre entrepreneurs, artisans, mentors et investisseurs autour de l'artisanat tunisien.</p>
+        <p><strong>2. Création de compte</strong><br>L'utilisateur s'engage à fournir des informations exactes, complètes et à jour lors de son inscription.</p>
+        <p><strong>3. Sécurité du compte</strong><br>Chaque utilisateur est responsable de la confidentialité de son mot de passe et des activités effectuées depuis son compte.</p>
+        <p><strong>4. Utilisation acceptable</strong><br>Il est interdit de publier de fausses informations, des contenus offensants, frauduleux ou contraires aux lois en vigueur.</p>
+        <p><strong>5. Respect de la communauté</strong><br>Les échanges entre membres doivent rester professionnels, respectueux et conformes aux valeurs de la plateforme.</p>
+        <p><strong>6. Données personnelles</strong><br>Les données collectées sont utilisées uniquement dans le cadre du fonctionnement de la plateforme.</p>
+      </div>
+      <div class="terms-actions">
+        <button type="button" class="btn-terms-accept" onclick="acceptTermsFromModal()">J'accepte</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-footer">
+    <span class="footer-brand">Projet CraftLink · 2025–2026</span>
+    <div class="footer-lang">
+      <button type="button" class="lang-btn active">FR</button>
+      <button type="button" class="lang-btn">AR</button>
+      <button type="button" class="lang-btn">EN</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentRole = 'entrepreneur';
+
+  function setRole(el, role) {
+    document.querySelectorAll('.role-tab').forEach(tab => tab.classList.remove('active'));
+    el.classList.add('active');
+    currentRole = role;
+  }
+
+  function togglePw(fieldId, btnId) {
+    const pw = document.getElementById(fieldId);
+    const btn = document.getElementById(btnId);
+
+    if (pw.type === 'password') {
+      pw.type = 'text';
+      btn.textContent = '🙈';
+    } else {
+      pw.type = 'password';
+      btn.textContent = '👁';
+    }
+  }
+
+  function showAlert(msg, type) {
+    const banner = document.getElementById('alert-banner');
+    banner.textContent = msg;
+    banner.className = 'alert-banner alert-' + type;
+    banner.style.display = 'block';
+  }
+
+  function hideAlert() {
+    document.getElementById('alert-banner').style.display = 'none';
+  }
+
+  function openTermsModal(event) {
+    event.preventDefault();
+    document.getElementById('terms-modal').style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeTermsModal() {
+    document.getElementById('terms-modal').style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  function acceptTermsFromModal() {
+    document.getElementById('terms').checked = true;
+    document.getElementById('terms-err').style.display = 'none';
+    closeTermsModal();
+  }
+
+  document.getElementById('password').addEventListener('input', function () {
+    const val = this.value;
+    const fill = document.getElementById('pw-strength-fill');
+    const label = document.getElementById('pw-strength-label');
+
+    let strength = 0;
+    if (val.length >= 6) strength++;
+    if (val.length >= 10) strength++;
+    if (/[A-Z]/.test(val)) strength++;
+    if (/[0-9]/.test(val)) strength++;
+    if (/[^A-Za-z0-9]/.test(val)) strength++;
+
+    const levels = [
+      { pct: '0%', color: 'transparent', text: 'Force du mot de passe' },
+      { pct: '25%', color: '#c0392b', text: 'Très faible' },
+      { pct: '40%', color: '#e67e22', text: 'Faible' },
+      { pct: '65%', color: '#f1c40f', text: 'Moyen' },
+      { pct: '85%', color: '#2E6B3E', text: 'Fort' },
+      { pct: '100%', color: '#27ae60', text: 'Très fort ✓' }
+    ];
+
+    const level = levels[strength] || levels[0];
+    fill.style.width = level.pct;
+    fill.style.background = level.color;
+    label.textContent = level.text;
+    label.style.color = level.color === 'transparent' ? 'var(--text-muted)' : level.color;
+  });
+
+  async function handleRegister() {
+    const nom = document.getElementById('nom');
+    const prenom = document.getElementById('prenom');
+    const email = document.getElementById('email');
+    const pw = document.getElementById('password');
+    const conf = document.getElementById('confirm');
+    const terms = document.getElementById('terms');
+    const btn = document.getElementById('btn-register');
+
+    let valid = true;
+
+    [nom, prenom, email, pw, conf].forEach(field => field.classList.remove('error'));
+    ['nom-err', 'prenom-err', 'email-err', 'pw-err', 'conf-err', 'terms-err'].forEach(id => {
+      document.getElementById(id).style.display = 'none';
+    });
+    hideAlert();
+
+    if (!nom.value.trim()) {
+      nom.classList.add('error');
+      document.getElementById('nom-err').style.display = 'block';
+      valid = false;
+    }
+
+    if (!prenom.value.trim()) {
+      prenom.classList.add('error');
+      document.getElementById('prenom-err').style.display = 'block';
+      valid = false;
+    }
+
+    if (!email.value.trim() || !/\S+@\S+\.\S+/.test(email.value.trim())) {
+      email.classList.add('error');
+      document.getElementById('email-err').style.display = 'block';
+      valid = false;
+    }
+
+    if (!pw.value || pw.value.length < 6) {
+      pw.classList.add('error');
+      document.getElementById('pw-err').style.display = 'block';
+      valid = false;
+    }
+
+    if (!conf.value || conf.value !== pw.value) {
+      conf.classList.add('error');
+      document.getElementById('conf-err').style.display = 'block';
+      valid = false;
+    }
+
+    if (!terms.checked) {
+      document.getElementById('terms-err').style.display = 'block';
+      valid = false;
+    }
+
+    if (!valid) return;
+
+    btn.textContent = '⏳ Envoi du mail de vérification…';
+    btn.disabled = true;
+
+    try {
+      const formData = new FormData();
+      formData.append('nom', nom.value.trim());
+      formData.append('prenom', prenom.value.trim());
+      formData.append('email', email.value.trim());
+      formData.append('password', pw.value);
+      formData.append('role', currentRole);
+
+      const res = await fetch('../../controllers/user/signup_api.php', {
+        method: 'POST',
+        body: formData
+      });
+
+      const rawText = await res.text();
+
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (e) {
+        console.error('Réponse brute du serveur :', rawText);
+        throw new Error('Réponse PHP invalide');
+      }
+
+      if (data.success) {
+        btn.textContent = '✓ Mail envoyé';
+        btn.style.background = '#2E6B3E';
+        showAlert('✅ ' + data.message, 'success');
+      } else {
+        btn.textContent = 'Créer mon profil →';
+        btn.disabled = false;
+        showAlert('❌ ' + data.message, 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      btn.textContent = 'Créer mon profil →';
+      btn.disabled = false;
+      showAlert('❌ Erreur de connexion au serveur. Vérifiez signup_api.php, PHPMailer et XAMPP.', 'error');
+    }
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeTermsModal();
+
+    if (e.key === 'Enter' && document.getElementById('terms-modal').style.display !== 'flex') {
+      handleRegister();
+    }
+  });
+</script>
+
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/scripts.js"></script>
+
+</body>
+</html>
