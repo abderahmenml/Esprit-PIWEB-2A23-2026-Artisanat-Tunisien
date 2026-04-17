@@ -18,14 +18,14 @@ class AdminController
         }
 
         $flashAdmin = null;
-        $flashAdminClass = '#ffebee';
-        $flashAdminText = '#b71c1c';
+        $flashAdminClass = '#F5ECD7';
+        $flashAdminText = '#3B2314';
         if (isset($_SESSION['flash_admin'])) {
             $flashAdmin = $_SESSION['flash_admin'];
             unset($_SESSION['flash_admin']);
             if (isset($flashAdmin['type']) && $flashAdmin['type'] === 'success') {
-                $flashAdminClass = '#e8f5e9';
-                $flashAdminText = '#2e7d32';
+                $flashAdminClass = '#F0E4CC';
+                $flashAdminText = '#5C3320';
             }
         }
 

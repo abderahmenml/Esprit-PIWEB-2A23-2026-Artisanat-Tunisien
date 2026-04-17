@@ -30,6 +30,7 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
             <a href="#">💡 Projets</a>
             <a href="#">🎓 Formations</a>
             <a href="#">📈 Investissement</a>
+            <a href="<?= htmlspecialchars(app_url('/admin')) ?>">🛡️ Admin</a>
             <button class="btn-logout" onclick="handleLogout()">Déconnexion</button>
         </nav>
     </header>

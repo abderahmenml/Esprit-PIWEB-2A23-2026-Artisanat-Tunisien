@@ -13,7 +13,9 @@ $baseAdminUrl = app_url('/admin');
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
     <style>
          :root {
+            --blanc: #ffffff;
             --marron: #8B5A3A;
+            --gris: rgba(59, 35, 20, .55);
             --vert: #2E6B3E;
             --caramel: #C49A6C;
             --creme: #F5ECD7;
@@ -244,6 +246,13 @@ $baseAdminUrl = app_url('/admin');
         
         .btn-export:hover {
             background: rgba(196, 154, 108, .12);
+        }
+
+        .btn-front {
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
         /* CONTENT */
         
@@ -659,6 +668,82 @@ $baseAdminUrl = app_url('/admin');
             border-color: var(--marron);
             font-weight: 700;
         }
+
+        .inline-alert {
+            margin-bottom: 16px;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .inline-alert.error {
+            background: rgba(192, 57, 43, 0.12);
+            color: #7b1f15;
+            border: 1px solid rgba(192, 57, 43, 0.35);
+        }
+
+        .inline-alert.success {
+            background: rgba(46, 107, 62, 0.12);
+            color: #1f4d2b;
+            border: 1px solid rgba(46, 107, 62, 0.35);
+        }
+
+        .simple-panel {
+            background: var(--blanc);
+            border: 1px solid rgba(196, 154, 108, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 18px;
+            box-shadow: 0 1px 8px rgba(59, 35, 20, 0.05);
+        }
+
+        .simple-panel h3 {
+            font-family: 'Playfair Display', serif;
+            margin-bottom: 14px;
+        }
+
+        .simple-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .btn-link {
+            text-decoration: none;
+        }
+
+        .form-subtitle {
+            margin: 8px 0 8px;
+            color: var(--marron);
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .form-note {
+            margin-top: 6px;
+            font-size: 0.78rem;
+            color: var(--gris);
+        }
+
+        .action-cell {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .action-cell form {
+            margin: 0;
+        }
+
+        @media (max-width: 800px) {
+
+            .form-row-2,
+            .form-row-3 {
+                grid-template-columns: 1fr;
+            }
+        }
         
         @media (max-width: 900px) {
             .sidebar {
@@ -723,7 +808,8 @@ $baseAdminUrl = app_url('/admin');
                 <div class="breadcrumb">Back Office · <span>Profils Professionnels</span></div>
                 <h2>🪪 Gestion des Profils Professionnels</h2>
             </div>
-            <div class="topbar-actions">
+            <div class="topbar-actions simple-actions">
+                <a class="btn-export btn-front btn-link" href="<?= htmlspecialchars(app_url('/dashboard')) ?>">🌐 Front Office</a>
                 <button class="btn-export" onclick="showToast('📥 Export CSV en cours...')">📥 Exporter</button>
                 <button class="btn-add" type="button" onclick="showToast('Fonction non disponible')">+ Nouveau profil</button>
             </div>
@@ -731,12 +817,12 @@ $baseAdminUrl = app_url('/admin');
 
         <div class="content">
             <?php if ($flashAdmin && !empty($flashAdmin['msg'])): ?>
-                <div style="background:<?= $flashAdminClass ?>;color:<?= $flashAdminText ?>;padding:.8rem 1rem;border-radius:.6rem;margin-bottom:1rem;">
+                <div class="inline-alert <?= (($flashAdmin['type'] ?? '') === 'success') ? 'success' : 'error' ?>">
                     <?= htmlspecialchars($flashAdmin['msg']) ?>
                 </div>
             <?php endif; ?>
             <?php if ($errorMsg !== ''): ?>
-                <div style="background:#ffebee;color:#b71c1c;padding:.8rem 1rem;border-radius:.6rem;margin-bottom:1rem;">
+                <div class="inline-alert error">
                     <?= htmlspecialchars($errorMsg) ?>
                 </div>
             <?php endif; ?>
@@ -765,7 +851,7 @@ $baseAdminUrl = app_url('/admin');
             </div>
 
             <!-- FILTERS -->
-            <div class="filters">
+            <div class="filters simple-panel form-row-3">
                 <form class="search-box" method="get">
                     <span>🔍</span>
                     <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Rechercher par nom, spécialité...">
@@ -797,10 +883,10 @@ $baseAdminUrl = app_url('/admin');
             </div>
 
             <!-- TABLE -->
-            <div class="table-card">
+            <div class="table-card simple-panel">
                 <div class="table-header">
-                    <div class="th-title">Liste des profils professionnels</div>
-                    <div class="th-count" id="table-count"><?= count($filteredRows) ?> profils trouvés</div>
+                    <div class="th-title form-subtitle">Liste des profils professionnels</div>
+                    <div class="th-count form-note" id="table-count"><?= count($filteredRows) ?> profils trouvés</div>
                 </div>
                 <table>
                     <thead>
@@ -877,8 +963,8 @@ $baseAdminUrl = app_url('/admin');
                                     </td>
                                     <td style="font-size:.8rem;color:var(--muted)"><?= htmlspecialchars($displayDate) ?></td>
                                     <td>
-                                        <div class="actions-cell">
-                                            <a class="btn-icon" title="Voir" href="<?= htmlspecialchars(app_url('/profil')) ?>">👁</a>
+                                        <div class="actions-cell action-cell">
+                                            <a class="btn-icon btn-link" title="Voir" href="<?= htmlspecialchars(app_url('/profil')) ?>">👁</a>
                                             <button class="btn-icon" type="button" onclick="showToast('Edition non disponible')">✏️</button>
                                             <button class="btn-icon success" type="button" onclick="showToast('Profil valide')">✅</button>
                                             <form action="<?= htmlspecialchars(app_url('/admin/deleteUser')) ?>" method="post" style="display:inline;" onsubmit="return confirm('Supprimer cet utilisateur ?');">

@@ -9,21 +9,21 @@
 :root {
     /* Primary Colors */
     --marron: #8B5A3A;
-    --vert: #2E6B3E;
+    --vert: #5C3A1E;
     --caramel: #C49A6C;
     --creme: #F5ECD7;
     --creme-light: #FAF5EC;
     --brun: #3B2314;
     --brun-dark: #2A1A0E;
     --brun-mid: #5C3A1E;
-    --gold: #D4A843;
+    --gold: #C49A6C;
     --text-light: #F0E4CC;
     --text-muted: #A08060;
     --shadow: rgba(59, 35, 20, 0.18);
     /* Advanced Color Palette */
     --primary-gradient: linear-gradient(135deg, #8B5A3A 0%, #C49A6C 100%);
-    --success-gradient: linear-gradient(135deg, #2E6B3E 0%, #5aab6f 100%);
-    --accent-gradient: linear-gradient(135deg, #D4A843 0%, #E8B76F 100%);
+    --success-gradient: linear-gradient(135deg, #5C3A1E 0%, #8B5A3A 100%);
+    --accent-gradient: linear-gradient(135deg, #C49A6C 0%, #F0E4CC 100%);
     /* Spacing System */
     --spacing-xs: 0.25rem;
     --spacing-sm: 0.5rem;
@@ -154,8 +154,8 @@ nav {
 }
 
 .notification-badge {
-    background: #e74c3c;
-    color: white;
+    background: var(--marron);
+    color: var(--creme);
     border-radius: 50%;
     padding: 2px 8px;
     font-size: 12px;
@@ -248,7 +248,7 @@ nav a.active {
     width: 380px;
     height: 380px;
     border-radius: 50%;
-    background: radial-gradient(circle, rgba(46, 107, 62, .25) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(139, 90, 58, .25) 0%, transparent 70%);
 }
 
 .brand {
@@ -424,7 +424,7 @@ nav a.active {
     width: 240px;
     height: 240px;
     border-radius: 50%;
-    background: rgba(46, 107, 62, .07);
+    background: rgba(196, 154, 108, .12);
     pointer-events: none;
 }
 
@@ -565,8 +565,8 @@ input[type="text"] {
 }
 
 input:focus {
-    border-color: var(--vert);
-    box-shadow: 0 0 0 3px rgba(46, 107, 62, .12);
+    border-color: var(--marron);
+    box-shadow: 0 0 0 3px rgba(139, 90, 58, .12);
 }
 
 input::placeholder {
@@ -610,7 +610,7 @@ input::placeholder {
 .checkbox-label input[type="checkbox"] {
     width: 15px;
     height: 15px;
-    accent-color: var(--vert);
+    accent-color: var(--marron);
     padding: 0;
     border: none;
 }
@@ -624,7 +624,7 @@ input::placeholder {
 }
 
 .forgot-link:hover {
-    color: var(--vert);
+    color: var(--caramel);
 }
 
 .btn-login {
@@ -691,7 +691,7 @@ input::placeholder {
 }
 
 .register-link a {
-    color: var(--vert);
+    color: var(--marron);
     font-weight: 600;
     text-decoration: none;
     transition: color .2s;
@@ -742,12 +742,12 @@ input::placeholder {
 .error-msg {
     display: none;
     font-size: .75rem;
-    color: #c0392b;
+    color: var(--marron);
     margin-top: .3rem;
 }
 
 input.error {
-    border-color: #c0392b !important;
+    border-color: var(--marron) !important;
 }
 
 
@@ -801,7 +801,7 @@ body::before {
     content: '';
     position: fixed;
     inset: 0;
-    background-image: radial-gradient(circle at 20% 50%, rgba(139, 90, 58, .05) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(46, 107, 62, .05) 0%, transparent 40%);
+    background-image: radial-gradient(circle at 20% 50%, rgba(139, 90, 58, .05) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(92, 58, 30, .05) 0%, transparent 40%);
     pointer-events: none;
     z-index: 0;
 }
@@ -958,21 +958,21 @@ header {
 }
 
 .badge.green {
-    background: #e8f5ec;
-    color: var(--vert);
-    border-color: var(--vert);
+    background: var(--creme);
+    color: var(--brun-mid);
+    border-color: var(--marron);
 }
 
 .badge.orange {
-    background: #fff4e5;
-    color: #ef6c00;
-    border-color: #ffb74d;
+    background: var(--text-light);
+    color: var(--marron);
+    border-color: var(--caramel);
 }
 
 .badge.red {
-    background: #ffebee;
-    color: #c62828;
-    border-color: #ef9a9a;
+    background: var(--creme-light);
+    color: var(--brun);
+    border-color: var(--marron);
 }
 
 .edit-btn {
@@ -1071,7 +1071,7 @@ header {
 }
 
 .skill-fill.green {
-    background: linear-gradient(90deg, var(--vert), #5aab6f);
+    background: linear-gradient(90deg, var(--brun-mid), var(--marron));
 }
 
 .cert-item {
@@ -1114,53 +1114,53 @@ header {
     align-items: center;
     gap: .75rem;
     padding: .65rem 1rem;
-    background: #e8f5ec;
+    background: var(--creme);
     border-radius: 8px;
-    border: 1px solid rgba(46, 107, 62, .2);
+    border: 1px solid rgba(139, 90, 58, .2);
     margin-bottom: .6rem;
 }
 
 .availability-row.availability-occupe {
-    background: #fff4e5;
-    border-color: rgba(239, 108, 0, .25);
+    background: var(--text-light);
+    border-color: rgba(196, 154, 108, .4);
 }
 
 .availability-row.availability-indisponible {
-    background: #ffebee;
-    border-color: rgba(198, 40, 40, .25);
+    background: var(--creme-light);
+    border-color: rgba(92, 58, 30, .25);
 }
 
 .avail-dot {
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--vert);
+    background: var(--marron);
     flex-shrink: 0;
-    box-shadow: 0 0 0 3px rgba(46, 107, 62, .2);
+    box-shadow: 0 0 0 3px rgba(196, 154, 108, .2);
 }
 
 .avail-dot.avail-dot-occupe {
-    background: #ef6c00;
-    box-shadow: 0 0 0 3px rgba(239, 108, 0, .2);
+    background: var(--brun-mid);
+    box-shadow: 0 0 0 3px rgba(139, 90, 58, .2);
 }
 
 .avail-dot.avail-dot-indisponible {
-    background: #c62828;
-    box-shadow: 0 0 0 3px rgba(198, 40, 40, .2);
+    background: var(--brun);
+    box-shadow: 0 0 0 3px rgba(92, 58, 30, .2);
 }
 
 .avail-text {
     font-size: .83rem;
-    color: var(--vert);
+    color: var(--marron);
     font-weight: 700;
 }
 
 .avail-text.avail-text-occupe {
-    color: #ef6c00;
+    color: var(--brun-mid);
 }
 
 .avail-text.avail-text-indisponible {
-    color: #c62828;
+    color: var(--brun);
 }
 
 .avail-sub {
@@ -1236,7 +1236,7 @@ header {
 
 .tab.active {
     background: var(--marron);
-    color: #fff;
+    color: var(--creme);
     box-shadow: 0 2px 8px var(--shadow);
 }
 
@@ -1313,7 +1313,7 @@ header {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--creme);
     font-size: .85rem;
     font-weight: 600;
     letter-spacing: .5px;
@@ -1432,7 +1432,7 @@ header {
 }
 
 .modal {
-    background: #fff;
+    background: var(--creme-light);
     border-radius: 16px;
     padding: 2rem;
     width: 100%;
@@ -1449,7 +1449,7 @@ header {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 1.5rem;
-    border-bottom: 1px solid #f0e4cc;
+    border-bottom: 1px solid var(--text-light);
     padding-bottom: 1rem;
 }
 
@@ -1497,13 +1497,13 @@ header {
     color: var(--brun);
     outline: none;
     transition: border-color .2s, box-shadow .2s;
-    background: #fff;
+    background: var(--creme-light);
 }
 
 .form-group input:focus,
 .form-group textarea:focus {
-    border-color: var(--vert);
-    box-shadow: 0 0 0 3px rgba(46, 107, 62, .1);
+    border-color: var(--marron);
+    box-shadow: 0 0 0 3px rgba(139, 90, 58, .1);
 }
 
 .form-group textarea {
@@ -1523,7 +1523,7 @@ header {
     justify-content: flex-end;
     margin-top: 1.5rem;
     padding-top: 1rem;
-    border-top: 1px solid #f0e4cc;
+    border-top: 1px solid var(--text-light);
 }
 
 .btn-primary {
@@ -1611,40 +1611,40 @@ header {
 }
 
 .availability-preview-badge-disponible {
-    color: #1d6d3e;
-    background: #edf8f1;
-    border-color: #b8ddc6;
+    color: var(--brun-mid);
+    background: var(--creme);
+    border-color: var(--caramel);
 }
 
 .availability-preview-badge-occupe {
-    color: #a35400;
-    background: #fff5e8;
-    border-color: #f0cb9a;
+    color: var(--marron);
+    background: var(--text-light);
+    border-color: var(--caramel);
 }
 
 .availability-preview-badge-indisponible {
-    color: #a53131;
-    background: #ffefef;
-    border-color: #e6b8b8;
+    color: var(--brun);
+    background: var(--creme-light);
+    border-color: var(--marron);
 }
 
 .availability-preview-dot {
     width: 9px;
     height: 9px;
     border-radius: 50%;
-    background: #2e7d32;
+    background: var(--marron);
 }
 
 .availability-preview-dot-disponible {
-    background: #2e7d32;
+    background: var(--marron);
 }
 
 .availability-preview-dot-occupe {
-    background: #ef6c00;
+    background: var(--brun-mid);
 }
 
 .availability-preview-dot-indisponible {
-    background: #c62828;
+    background: var(--brun);
 }
 
 .availability-preview-hours {
@@ -1816,30 +1816,30 @@ header {
 }
 
 .availability-status-btn.is-green {
-    color: #276b45;
+    color: var(--brun-mid);
 }
 
 .availability-status-btn.is-orange {
-    color: #b25f0f;
+    color: var(--marron);
 }
 
 .availability-status-btn.is-red {
-    color: #b74444;
+    color: var(--brun);
 }
 
 .availability-status-btn.is-selected.is-green {
-    background: #eaf6ef;
-    border-color: #9ec8af;
+    background: var(--creme);
+    border-color: var(--caramel);
 }
 
 .availability-status-btn.is-selected.is-orange {
-    background: #fff3e6;
-    border-color: #efc28f;
+    background: var(--text-light);
+    border-color: var(--caramel);
 }
 
 .availability-status-btn.is-selected.is-red {
-    background: #fff0f0;
-    border-color: #e7b2b2;
+    background: var(--creme-light);
+    border-color: var(--marron);
 }
 
 .availability-message-group {
@@ -2109,7 +2109,7 @@ header {
 
 .quick-btn:hover {
     background: var(--caramel);
-    color: white;
+    color: var(--creme);
     transform: translateY(-2px);
 }
 
@@ -2147,11 +2147,11 @@ header {
 }
 
 .profile-card-annuaire {
-    background: white;
+    background: var(--creme-light);
     border-radius: 16px;
     padding: 1.5rem;
     text-align: center;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 10px rgba(59, 35, 20, 0.12);
     transition: transform 0.2s;
 }
 
@@ -2169,7 +2169,7 @@ header {
     align-items: center;
     justify-content: center;
     font-size: 2rem;
-    color: white;
+    color: var(--creme);
 }
 
 .specialite {
@@ -2188,21 +2188,21 @@ header {
     margin-top: 1rem;
     padding: 0.5rem 1rem;
     background: var(--vert);
-    color: white;
+    color: var(--creme);
     border-radius: 8px;
     text-decoration: none;
 }
 
 .badge-advanced {
-    background: #e6f7e6;
-    color: #2e7d32;
+    background: var(--creme);
+    color: var(--brun-mid);
     padding: .2rem .7rem;
     border-radius: 1rem;
     font-size: .85rem;
 }
 
 .badge-intermediate {
-    background: #ececff;
+    background: var(--text-light);
     color: var(--marron);
     padding: .2rem .7rem;
     border-radius: 1rem;
@@ -2210,7 +2210,7 @@ header {
 }
 
 .badge-beginner {
-    background: #f8f5f0;
+    background: var(--creme-light);
     color: var(--marron);
     padding: .2rem .7rem;
     border-radius: 1rem;
@@ -2218,7 +2218,7 @@ header {
 }
 
 .progress-bar {
-    background: #eee;
+    background: var(--creme);
     width: 100px;
     height: 8px;
     border-radius: 4px;
@@ -2470,9 +2470,9 @@ header {
 /* ─── GLASS MORPHISM ─────────────────────────────────── */
 
 .glass {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(245, 236, 215, 0.35);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(196, 154, 108, 0.3);
     border-radius: var(--radius-lg);
 }
 
@@ -2487,7 +2487,7 @@ header {
 
 .btn-gradient {
     background: var(--primary-gradient);
-    color: white;
+    color: var(--creme);
     border: none;
     padding: 0.75rem 1.5rem;
     border-radius: var(--radius-lg);
@@ -2548,7 +2548,7 @@ header {
 }
 
 .btn-outline-modern:hover {
-    color: white;
+    color: var(--creme);
     left: 0;
 }
 
@@ -2560,7 +2560,7 @@ header {
 /* ─── ADVANCED CARD STYLES ───────────────────────────── */
 
 .card-modern {
-    background: white;
+    background: var(--creme-light);
     border-radius: var(--radius-xl);
     padding: var(--spacing-lg);
     box-shadow: var(--shadow-md);
@@ -2587,7 +2587,7 @@ header {
 }
 
 .card-elevated {
-    background: white;
+    background: var(--creme-light);
     border-radius: var(--radius-xl);
     padding: var(--spacing-lg);
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), var(--shadow-lg);
@@ -2614,17 +2614,17 @@ header {
 
 .badge-primary {
     background: var(--primary-gradient);
-    color: white;
+    color: var(--creme);
 }
 
 .badge-success {
     background: var(--success-gradient);
-    color: white;
+    color: var(--creme);
 }
 
 .badge-accent {
     background: var(--accent-gradient);
-    color: white;
+    color: var(--creme);
 }
 
 .badge-outline {
@@ -2867,7 +2867,7 @@ html {
 /* ==== CARDS COMPETENCES / CERTIFICATIONS ==== */
 
 .section-card-custom {
-    background: #fff;
+    background: var(--creme-light);
     border-radius: 20px;
     padding: 2rem;
     margin-bottom: 2rem;
@@ -2908,7 +2908,7 @@ html {
 }
 
 .empty-text {
-    color: #999;
+    color: var(--text-muted);
     font-size: 1rem;
 }
 
@@ -2937,12 +2937,12 @@ html {
 
 .item-desc {
     font-size: 0.85rem;
-    color: #777;
+    color: var(--text-muted);
 }
 
 .item-actions button {
-    background: red;
-    color: white;
+    background: var(--marron);
+    color: var(--creme);
     border: none;
     padding: 5px 10px;
     border-radius: 6px;
