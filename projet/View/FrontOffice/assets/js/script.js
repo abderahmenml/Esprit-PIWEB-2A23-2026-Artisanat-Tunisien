@@ -10,6 +10,9 @@ const closeFormBtn = document.getElementById('closeFormBtn');
 const quickCreateSection = document.getElementById('quickCreateSection');
 const cards = document.getElementById('projectCards');
 const emptyState = document.getElementById('emptyState');
+const titleInput = document.getElementById('titleInput');
+const categorySelect = document.getElementById('categorySelect');
+const statusSelect = document.getElementById('statusSelect');
 
 function toggleEmptyState() {
   if (!cards || !emptyState) {
@@ -65,13 +68,6 @@ function addSkillRow() {
   removeBtn.className = 'row-remove';
   removeBtn.textContent = 'Retirer';
 
-  removeBtn.addEventListener('click', function () {
-    row.remove();
-    if (skillRows.children.length === 0) {
-      addSkillRow();
-    }
-  });
-
   row.appendChild(nameInput);
   row.appendChild(levelSelect);
   row.appendChild(removeBtn);
@@ -113,13 +109,6 @@ function addMaterialRow() {
   removeBtn.className = 'row-remove';
   removeBtn.textContent = 'Retirer';
 
-  removeBtn.addEventListener('click', function () {
-    row.remove();
-    if (materialRows.children.length === 0) {
-      addMaterialRow();
-    }
-  });
-
   row.appendChild(nameInput);
   row.appendChild(qtyInput);
   row.appendChild(unitPriceInput);
@@ -127,12 +116,58 @@ function addMaterialRow() {
   materialRows.appendChild(row);
 }
 
+function handleSkillRowRemove(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  if (!target.classList.contains('row-remove')) {
+    return;
+  }
+
+  const row = target.closest('.builder-row');
+  if (row) {
+    row.remove();
+  }
+
+  if (skillRows && skillRows.children.length === 0) {
+    addSkillRow();
+  }
+}
+
+function handleMaterialRowRemove(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+
+  if (!target.classList.contains('row-remove')) {
+    return;
+  }
+
+  const row = target.closest('.builder-row');
+  if (row) {
+    row.remove();
+  }
+
+  if (materialRows && materialRows.children.length === 0) {
+    addMaterialRow();
+  }
+}
+
 if (skillRows) {
-  addSkillRow();
+  skillRows.addEventListener('click', handleSkillRowRemove);
+  if (skillRows.children.length === 0) {
+    addSkillRow();
+  }
 }
 
 if (materialRows) {
-  addMaterialRow();
+  materialRows.addEventListener('click', handleMaterialRowRemove);
+  if (materialRows.children.length === 0) {
+    addMaterialRow();
+  }
 }
 
 if (addSkillBtn) {
@@ -168,6 +203,27 @@ if (asidePublishBtn) {
 if (closeFormBtn) {
   closeFormBtn.addEventListener('click', function () {
     closeFormSection();
+  });
+}
+
+if (form) {
+  form.addEventListener('submit', function (event) {
+    const titleValue = titleInput ? titleInput.value.trim() : '';
+    const categoryValue = categorySelect ? categorySelect.value.trim() : '';
+    const statusValue = statusSelect ? statusSelect.value.trim() : '';
+
+    if (titleValue === '' || categoryValue === '' || statusValue === '') {
+      event.preventDefault();
+      alert('Titre, categorie et statut sont obligatoires.');
+
+      if (titleInput && titleValue === '') {
+        titleInput.focus();
+      } else if (categorySelect && categoryValue === '') {
+        categorySelect.focus();
+      } else if (statusSelect && statusValue === '') {
+        statusSelect.focus();
+      }
+    }
   });
 }
 

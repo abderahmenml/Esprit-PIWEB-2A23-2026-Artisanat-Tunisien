@@ -1,14 +1,8 @@
 <?php
-require __DIR__ . '/db.php';
-
-$projects = [];
-try {
-    $projects = $pdo->query(
-        'SELECT id_projet, titre, budget_min, status, date_creation, categorie, description FROM projet ORDER BY id_projet DESC'
-    )->fetchAll();
-} catch (Throwable $e) {
-    $projects = [];
-}
+include '../../Controller/IdeaController.php';
+$ideaC = new IdeaController();
+$projects = $ideaC->listProjects();
+$currentUserId = getCurrentUserId();
 
 $editId = 0;
 if (isset($_GET['edit'])) {
@@ -16,9 +10,7 @@ if (isset($_GET['edit'])) {
 }
 $editProject = null;
 if ($editId > 0) {
-    $stmt = $pdo->prepare('SELECT id_projet, titre, budget_min, status, categorie, description FROM projet WHERE id_projet = ?');
-    $stmt->execute([$editId]);
-    $editProject = $stmt->fetch();
+  $editProject = $ideaC->showProjectAny($editId);
 }
 
 $selectedOuvert = '';
@@ -74,7 +66,7 @@ foreach ($projects as $project) {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;900&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="backoffice.css">
+  <link rel="stylesheet" href="assets/css/backoffice.css">
 </head>
 <body>
   <header class="bo-topbar">
@@ -82,7 +74,14 @@ foreach ($projects as $project) {
       <h1>Backoffice - Idees</h1>
       <p>Gestion simple depuis la base de donnees.</p>
     </div>
-    <a class="btn" href="index.php">Retour site</a>
+    <div>
+      <?php if ($currentUserId > 0): ?>
+        <a class="btn" href="../FrontOffice/logout.php">Deconnexion</a>
+      <?php else: ?>
+        <a class="btn" href="../FrontOffice/login.php">Connexion</a>
+      <?php endif; ?>
+      <a class="btn" href="../FrontOffice/index.php">Retour site</a>
+    </div>
   </header>
 
   <main class="bo-layout">
@@ -108,7 +107,7 @@ foreach ($projects as $project) {
     <?php if ($editProject): ?>
       <section class="card">
         <h2>Modifier une idee</h2>
-        <form method="post" action="update_idea.php" class="edit-form">
+        <form method="post" action="updateIdea.php" class="edit-form">
           <input type="hidden" name="id" value="<?php echo e($editProject['id_projet']); ?>">
 
           <label>
@@ -142,7 +141,7 @@ foreach ($projects as $project) {
           </label>
 
           <div class="form-actions">
-            <a class="btn" href="backoffice.php">Annuler</a>
+            <a class="btn" href="index.php">Annuler</a>
             <button class="btn primary" type="submit">Enregistrer</button>
           </div>
         </form>
@@ -157,6 +156,7 @@ foreach ($projects as $project) {
             <tr>
               <th>ID</th>
               <th>Titre</th>
+              <th>Utilisateur</th>
               <th>Categorie</th>
               <th>Statut</th>
               <th>Budget</th>
@@ -167,29 +167,42 @@ foreach ($projects as $project) {
           <tbody>
             <?php if (count($projects) === 0): ?>
               <tr>
-                <td colspan="7">Aucune idee pour le moment.</td>
+                <td colspan="8">Aucune idee pour le moment.</td>
               </tr>
             <?php else: ?>
               <?php foreach ($projects as $project): ?>
                 <?php
                   $categoryDisplay = '-';
-                  if (isset($project['categorie']) && $project['categorie'] !== '') {
-                      $categoryDisplay = $project['categorie'];
-                  }
+                      if (isset($project['categorie']) && $project['categorie'] !== '') {
+                        $categoryDisplay = $project['categorie'];
+                      }
 
                   $statusDisplay = '-';
-                  if (isset($project['status']) && $project['status'] !== '') {
-                      $statusDisplay = $project['status'];
-                  }
+                      if (isset($project['status']) && $project['status'] !== '') {
+                        $statusDisplay = $project['status'];
+                      }
 
                   $dateDisplay = '-';
-                  if (isset($project['date_creation']) && $project['date_creation'] !== '') {
-                      $dateDisplay = $project['date_creation'];
+                      if (isset($project['date_creation']) && $project['date_creation'] !== '') {
+                        $dateDisplay = $project['date_creation'];
+                      }
+
+                  $ownerDisplay = '-';
+                  if (isset($project['nom']) && $project['nom'] !== '') {
+                    $ownerDisplay = $project['nom'];
+                  }
+                  if (isset($project['prenom']) && $project['prenom'] !== '') {
+                    if ($ownerDisplay === '-') {
+                      $ownerDisplay = $project['prenom'];
+                    } else {
+                      $ownerDisplay = $ownerDisplay . ' ' . $project['prenom'];
+                    }
                   }
                 ?>
                 <tr>
                   <td><?php echo e($project['id_projet']); ?></td>
                   <td><?php echo e($project['titre']); ?></td>
+                  <td><?php echo e($ownerDisplay); ?></td>
                   <td><?php echo e($categoryDisplay); ?></td>
                   <td><?php echo e($statusDisplay); ?></td>
                   <td>
@@ -203,8 +216,8 @@ foreach ($projects as $project) {
                   </td>
                   <td><?php echo e($dateDisplay); ?></td>
                   <td class="actions">
-                    <a class="btn small" href="backoffice.php?edit=<?php echo e($project['id_projet']); ?>">Editer</a>
-                    <form method="post" action="delete_idea.php" class="inline-form">
+                    <a class="btn small" href="index.php?edit=<?php echo e($project['id_projet']); ?>" onclick="return confirm('Voulez-vous modifier cette idee ?');">Editer</a>
+                    <form method="post" action="deleteIdea.php" class="inline-form" onsubmit="return confirm('Voulez-vous supprimer cette idee ?');">
                       <input type="hidden" name="id" value="<?php echo e($project['id_projet']); ?>">
                       <button class="btn small danger" type="submit">Supprimer</button>
                     </form>
