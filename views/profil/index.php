@@ -3,6 +3,8 @@
 // Variables attendues du controller :
 // $user, $stats, $competences, $certifications, $experiences, $portfolioFiles, $avis, $flash
 $baseUrl = app_url();
+$profileCssVersion = (string)(@filemtime(__DIR__ . '/../../public/css/style.css') ?: time());
+$profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?: time());
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -11,8 +13,8 @@ $baseUrl = app_url();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profil Professionnel — حرفة Tunisie</title>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="<?= htmlspecialchars(app_url('/public/css/style.css')) ?>">
-    <script src="<?= htmlspecialchars(app_url('/public/js/index.js')) ?>" defer></script>
+    <link rel="stylesheet" href="<?= htmlspecialchars(app_url('/public/css/style.css?v=' . $profileCssVersion)) ?>">
+    <script src="<?= htmlspecialchars(app_url('/public/js/index.js?v=' . $profileJsVersion)) ?>" defer></script>
 </head>
 <body>
     <!-- HEADER -->
@@ -328,7 +330,7 @@ $baseUrl = app_url();
                 </div>
             </div>
             <!-- Section Compétences améliorée -->
-            <div class="card" style="margin-bottom:2rem;">
+            <div class="card portfolio-gestion" style="margin-bottom:2rem;display:none;">
               <h2 style="font-size:2rem;margin-bottom:.5rem;">Gestion des compétences</h2>
               <div style="color:#888;margin-bottom:1.5rem;">Ajoutez, modifiez ou réorganisez les compétences affichées sur votre profil.</div>
               <!-- Formulaire d'ajout -->
@@ -403,7 +405,7 @@ $baseUrl = app_url();
             </div>
 
             <!-- Section Certifications améliorée -->
-            <div class="card" style="margin-bottom:2rem;">
+            <div class="card portfolio-gestion" style="margin-bottom:2rem;display:none;">
               <h2 style="font-size:2rem;margin-bottom:.5rem;">Gestion des certifications</h2>
               <div style="color:#888;margin-bottom:1.5rem;">Ajoutez, modifiez ou supprimez vos certifications.</div>
               <!-- Formulaire d'ajout -->
@@ -471,7 +473,7 @@ $baseUrl = app_url();
               </table>
             </div>
                         <!-- Section Expériences améliorée -->
-                        <div class="card" style="margin-bottom:2rem;">
+                        <div class="card portfolio-gestion" style="margin-bottom:2rem;display:none;">
                             <h2 style="font-size:2rem;margin-bottom:.5rem;">Gestion des expériences</h2>
                             <div style="color:#888;margin-bottom:1.5rem;">Ajoutez, modifiez ou supprimez vos expériences.</div>
                             <form action="<?= htmlspecialchars(app_url('/profil/addExperience')) ?>" method="post" data-ajax-add="true" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;background:#f8f5f0;padding:1.5rem 1rem;border-radius:1rem;margin-bottom:1.5rem;">
@@ -655,23 +657,11 @@ $baseUrl = app_url();
                 </div>
                 <div class="form-group">
                     <label>Téléphone</label>
-                    <input type="tel" name="telephone" maxlength="30" pattern="^\+?[0-9][0-9\s().-]{7,19}$" value="<?= htmlspecialchars($telephone ?? '') ?>">
+                    <input type="tel" name="telephone" maxlength="30" pattern="^\+?[0-9][0-9\s().-]{7,19}$" value="<?= htmlspecialchars(($telephone ?? '') === 'Non renseigne' ? '' : ($telephone ?? '')) ?>" placeholder="ex : +216 20 000 000">
                 </div>
                 <div class="form-group">
                     <label>Ville</label>
                     <input type="text" name="ville" maxlength="120" value="<?= htmlspecialchars($ville ?? '') ?>">
-                </div>
-                <div class="form-group">
-                    <label>Bio</label>
-                    <textarea name="bio" maxlength="2000"><?= htmlspecialchars($bio ?? '') ?></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Expérience</label>
-                    <textarea name="experience" maxlength="2000" placeholder="Décrivez votre expérience professionnelle..."><?= htmlspecialchars($user['experience'] ?? '') ?></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Portfolio (URL)</label>
-                    <input type="url" name="portfolio" maxlength="255" value="<?= htmlspecialchars($portfolio_url ?? '') ?>">
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" onclick="closeModal('edit')">Annuler</button>

@@ -59,6 +59,14 @@ function switchTab(name) {
     const activePanel = document.getElementById('panel-' + name);
     if (activeTab) activeTab.classList.add('active');
     if (activePanel) activePanel.classList.add('active');
+    togglePortfolioManagementSections(name);
+}
+
+function togglePortfolioManagementSections(activeTabName) {
+    const shouldShow = activeTabName === 'portfolio';
+    document.querySelectorAll('.portfolio-gestion').forEach((section) => {
+        section.style.display = shouldShow ? '' : 'none';
+    });
 }
 
 function handleLogout() {
@@ -199,9 +207,6 @@ function validateProfilWriteForm(form) {
         const telephone = getFormValue(form, 'telephone');
         const specialite = getFormValue(form, 'specialite');
         const ville = getFormValue(form, 'ville');
-        const bio = getFormValue(form, 'bio');
-        const experience = getFormValue(form, 'experience');
-        const portfolio = getFormValue(form, 'portfolio');
         const disponibilite = getFormValue(form, 'disponibilite').toLowerCase();
         const disponibiliteHoraire = getFormValue(form, 'disponibilite_horaire');
         const disponibiliteMessage = getFormValue(form, 'disponibilite_message');
@@ -221,9 +226,6 @@ function validateProfilWriteForm(form) {
         if (textLength(specialite) > 120 || textLength(ville) > 120) {
             return 'Specialite ou ville trop longue.';
         }
-        if (textLength(bio) > 2000 || textLength(experience) > 2000) {
-            return 'Bio ou experience trop longue.';
-        }
         if (disponibilite && !['disponible', 'occupe', 'indisponible'].includes(disponibilite)) {
             return 'Choisissez une disponibilite valide.';
         }
@@ -232,9 +234,6 @@ function validateProfilWriteForm(form) {
         }
         if (textLength(disponibiliteMessage) > 120) {
             return 'Le message de disponibilite ne doit pas depasser 120 caracteres.';
-        }
-        if (portfolio && !/^https?:\/\//i.test(portfolio)) {
-            return 'URL du portfolio invalide (http/https).';
         }
         return '';
     }
@@ -1713,4 +1712,15 @@ document.addEventListener('DOMContentLoaded', () => {
     initAvailabilityDesigner();
     bindAjaxExperienceDeleteForms();
     syncExperienceEmptyState();
+
+    const activeTab = document.querySelector('.tab.active');
+    let activeTabName = 'bio';
+    if (activeTab) {
+        const onclickValue = activeTab.getAttribute('onclick') || '';
+        const match = onclickValue.match(/switchTab\('([^']+)'\)/);
+        if (match && match[1]) {
+            activeTabName = match[1];
+        }
+    }
+    togglePortfolioManagementSections(activeTabName);
 });

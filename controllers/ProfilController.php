@@ -158,9 +158,14 @@ class ProfilController
 
         $specialite = $user['specialite'] ?? 'Specialite non renseignee';
         $bio = $this->model->getBioByUserId($user_id);
-        $disponibilite = strtolower(trim((string)($user['disponibilite'] ?? 'disponible')));
-        $allowedDisponibilites = ['disponible', 'occupe', 'indisponible'];
-        if (!in_array($disponibilite, $allowedDisponibilites, true)) {
+        $disponibiliteRaw = strtolower(trim((string)($user['disponibilite'] ?? 'disponible')));
+        if ($disponibiliteRaw === 'absent momentanement' || $disponibiliteRaw === 'absent_momentanement') {
+            $disponibilite = 'occupe';
+        } elseif ($disponibiliteRaw === 'indisponible') {
+            $disponibilite = 'indisponible';
+        } elseif ($disponibiliteRaw === 'occupe') {
+            $disponibilite = 'occupe';
+        } else {
             $disponibilite = 'disponible';
         }
         $disponibiliteLabels = [
@@ -184,7 +189,13 @@ class ProfilController
         }
         $ville = $user['ville'] ?? 'Tunisie';
         $email = $user['email'] ?? 'Non renseigne';
-        $telephone = $user['telephone'] ?? ($user['num_tel'] ?? 'Non renseigne');
+        $telephone = trim((string)($user['telephone'] ?? ''));
+        if ($telephone === '') {
+            $telephone = trim((string)($user['profil_telephone'] ?? ($user['num_tel'] ?? '')));
+        }
+        if ($telephone === '') {
+            $telephone = 'Non renseigne';
+        }
         $portfolio_url = $user['portfolio'] ?? '';
         $total_projets = $stats['projets'] ?? 0;
         $note_moyenne = $stats['note'] ?? '0.0';
@@ -628,11 +639,11 @@ class ProfilController
         $nom = $this->normalizeText($_POST['nom'] ?? '', 60);
         $prenom = $this->normalizeText($_POST['prenom'] ?? '', 60);
         $specialite = $this->normalizeText($_POST['specialite'] ?? '', 120);
-        $bio = $this->normalizeText($_POST['bio'] ?? '', 2000);
-        $portfolio = trim((string)($_POST['portfolio'] ?? ''));
-        $experience = $this->normalizeText($_POST['experience'] ?? '', 2000);
         $ville = $this->normalizeText($_POST['ville'] ?? '', 120);
         $telephone = $this->normalizeText($_POST['telephone'] ?? '', 30);
+        if (in_array(strtolower($telephone), ['non renseigne', 'non renseigné'], true)) {
+            $telephone = '';
+        }
         $email = strtolower(trim((string)($_POST['email'] ?? '')));
         $disponibilite = strtolower(trim((string)($_POST['disponibilite'] ?? 'disponible')));
         $disponibilite_horaire = $this->normalizeText($_POST['disponibilite_horaire'] ?? '', 120);
@@ -659,8 +670,6 @@ class ProfilController
         if (
             $this->hasControlChars($specialite) ||
             $this->hasControlChars($ville) ||
-            $this->hasControlChars($bio) ||
-            $this->hasControlChars($experience) ||
             $this->hasControlChars($disponibilite_horaire) ||
             $this->hasControlChars($disponibilite_message)
         ) {
@@ -686,11 +695,6 @@ class ProfilController
             $this->redirect('/profil');
         }
 
-        if ($portfolio !== '' && filter_var($portfolio, FILTER_VALIDATE_URL) === false) {
-            $this->flash('error', 'URL de portfolio invalide.');
-            $this->redirect('/profil');
-        }
-
         try {
             $data = [
                 'nom' => $nom,
@@ -698,9 +702,6 @@ class ProfilController
                 'email' => $email,
                 'telephone' => $telephone,
                 'specialite' => $specialite,
-                'bio' => $bio,
-                'portfolio' => $portfolio,
-                'experience' => $experience,
                 'ville' => $ville,
                 'disponibilite' => $disponibilite,
                 'disponibilite_horaire' => $disponibilite_horaire,

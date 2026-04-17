@@ -50,6 +50,17 @@ class ProfilModel
         return in_array($column, $this->getColumns($table), true);
     }
 
+    private function getFirstExistingColumn(string $table, array $candidates): ?string
+    {
+        foreach ($candidates as $column) {
+            if ($this->hasColumn($table, $column)) {
+                return $column;
+            }
+        }
+
+        return null;
+    }
+
     private function getBioTableName(): ?string
     {
         foreach (['competances', 'competences'] as $table) {
@@ -70,29 +81,32 @@ class ProfilModel
 
     public function getUserById(int $id): array|false
     {
-        $profileColumns = [
-            'specialite',
-            'bio',
-            'experience',
-            'portfolio',
-            'ville',
-            'disponibilite',
-            'disponibilite_horaire',
-            'disponibilite_message',
-            'disponibilite_slots',
-            'disponibilite_exceptions',
-            'disponibilite_conges'
+        $profileColumnMap = [
+            'specialite' => ['specialite'],
+            'bio' => ['bio'],
+            'experience' => ['experience'],
+            'portfolio' => ['portfolio'],
+            'ville' => ['ville'],
+            'profil_telephone' => ['telephone'],
+            'disponibilite' => ['disponibilite', 'statut'],
+            'disponibilite_horaire' => ['disponibilite_horaire', 'horaires'],
+            'disponibilite_message' => ['disponibilite_message'],
+            'disponibilite_slots' => ['disponibilite_slots'],
+            'disponibilite_exceptions' => ['disponibilite_exceptions'],
+            'disponibilite_conges' => ['disponibilite_conges']
         ];
         $selectParts = ['u.*'];
 
         $canJoinProfile = $this->tableExists('profil_professionnel') && $this->hasColumn('profil_professionnel', 'id_user');
 
-        foreach ($profileColumns as $col) {
-            if ($canJoinProfile && $this->hasColumn('profil_professionnel', $col)) {
-                $selectParts[] = "p.$col";
-            } else {
-                $selectParts[] = "NULL AS $col";
+        foreach ($profileColumnMap as $alias => $candidates) {
+            $column = $canJoinProfile ? $this->getFirstExistingColumn('profil_professionnel', $candidates) : null;
+            if ($column !== null) {
+                $selectParts[] = "p.$column AS $alias";
+                continue;
             }
+
+            $selectParts[] = "NULL AS $alias";
         }
 
         $sql = "SELECT " . implode(', ', $selectParts) . " FROM user u";
@@ -361,15 +375,27 @@ class ProfilModel
 
     public function updateProfil(int $userId, array $data): void
     {
-        $userFields = ['nom', 'prenom', 'email', 'telephone'];
+        $userFieldMap = [
+            'nom' => ['nom'],
+            'prenom' => ['prenom'],
+            'email' => ['email'],
+            'telephone' => ['telephone', 'num_tel']
+        ];
         $userSets = [];
         $userParams = [];
 
-        foreach ($userFields as $field) {
-            if ($this->hasColumn('user', $field)) {
-                $userSets[] = "$field = ?";
-                $userParams[] = $data[$field] ?? '';
+        foreach ($userFieldMap as $dataKey => $candidates) {
+            if (!array_key_exists($dataKey, $data)) {
+                continue;
             }
+
+            $column = $this->getFirstExistingColumn('user', $candidates);
+            if ($column === null) {
+                continue;
+            }
+
+            $userSets[] = "$column = ?";
+            $userParams[] = $data[$dataKey];
         }
 
         if (!empty($userSets)) {
@@ -382,24 +408,48 @@ class ProfilModel
             return;
         }
 
-        $profileFields = [
-            'specialite',
-            'bio',
-            'portfolio',
-            'experience',
-            'ville',
-            'disponibilite',
-            'disponibilite_horaire',
-            'disponibilite_message',
-            'disponibilite_slots',
-            'disponibilite_exceptions',
-            'disponibilite_conges'
+        $profileFieldMap = [
+            'specialite' => ['specialite'],
+            'ville' => ['ville'],
+            'telephone' => ['telephone'],
+            'disponibilite' => ['disponibilite', 'statut'],
+            'disponibilite_horaire' => ['disponibilite_horaire', 'horaires'],
+            'disponibilite_message' => ['disponibilite_message'],
+            'disponibilite_slots' => ['disponibilite_slots'],
+            'disponibilite_exceptions' => ['disponibilite_exceptions'],
+            'disponibilite_conges' => ['disponibilite_conges'],
+            'bio' => ['bio'],
+            'portfolio' => ['portfolio'],
+            'experience' => ['experience']
         ];
-        $existingProfileFields = array_values(array_filter($profileFields, function (string $field): bool {
-            return $this->hasColumn('profil_professionnel', $field);
-        }));
 
-        if (empty($existingProfileFields)) {
+        $statusLabels = [
+            'disponible' => 'Disponible',
+            'occupe' => 'Absent momentanement',
+            'indisponible' => 'Indisponible'
+        ];
+
+        $profilePairs = [];
+        foreach ($profileFieldMap as $dataKey => $candidates) {
+            if (!array_key_exists($dataKey, $data)) {
+                continue;
+            }
+
+            $column = $this->getFirstExistingColumn('profil_professionnel', $candidates);
+            if ($column === null) {
+                continue;
+            }
+
+            $value = $data[$dataKey];
+            if ($dataKey === 'disponibilite' && $column === 'statut') {
+                $normalized = strtolower(trim((string)$value));
+                $value = $statusLabels[$normalized] ?? $value;
+            }
+
+            $profilePairs[$column] = $value;
+        }
+
+        if (empty($profilePairs)) {
             return;
         }
 
@@ -411,9 +461,9 @@ class ProfilModel
             $profileSets = [];
             $profileParams = [];
 
-            foreach ($existingProfileFields as $field) {
-                $profileSets[] = "$field = ?";
-                $profileParams[] = $data[$field] ?? '';
+            foreach ($profilePairs as $column => $value) {
+                $profileSets[] = "$column = ?";
+                $profileParams[] = $value;
             }
 
             $profileParams[] = $userId;
@@ -426,10 +476,10 @@ class ProfilModel
         $insertExpressions = ['?'];
         $insertParams = [$userId];
 
-        foreach ($existingProfileFields as $field) {
-            $insertColumns[] = $field;
+        foreach ($profilePairs as $column => $value) {
+            $insertColumns[] = $column;
             $insertExpressions[] = '?';
-            $insertParams[] = $data[$field] ?? '';
+            $insertParams[] = $value;
         }
 
         if ($this->hasColumn('profil_professionnel', 'date_creation')) {
