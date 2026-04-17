@@ -1,38 +1,8 @@
 <?php
-session_start();
-require_once 'config.php';
-require_once 'functions.php';
-
-// Vérifier si l'utilisateur est connecté
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit();
-}
-
-$pdo = getPDO();
-$user_id = $_SESSION['user_id'];
-
-$user = getUserById($user_id);
-$stats = getStats($user_id);
-$competences = getUserCompetences($user_id);
-
-// Calcul du pourcentage de complétion
-$completion = 0;
-$fields = [
-    'nom' => $user['nom'] ?? '',
-    'prenom' => $user['prenom'] ?? '',
-    'email' => $user['email'] ?? '',
-    'specialite' => $user['specialite'] ?? '',
-    'bio' => $user['bio'] ?? '',
-    'competences' => count($competences) > 0
-];
-$filled = 0;
-foreach($fields as $field => $value) {
-    if(!empty($value)) $filled++;
-}
-$completion = round(($filled / count($fields)) * 100);
+// views/dashboard/index.php
+// Variables: $user, $stats, $competences, $completion
+$baseUrl = app_url();
 ?>
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -40,8 +10,8 @@ $completion = round(($filled / count($fields)) * 100);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tableau de bord — حرفة Tunisie</title>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
-    <script src="index.js" defer></script>
+    <link rel="stylesheet" href="<?= htmlspecialchars(app_url('/public/css/style.css')) ?>">
+    <script src="<?= htmlspecialchars(app_url('/public/js/index.js')) ?>" defer></script>
 </head>
 <body>
 
@@ -51,9 +21,9 @@ $completion = round(($filled / count($fields)) * 100);
         <span style="color:#aaa;font-size:.8rem;font-weight:400;margin-left:2px">Tunisie</span>
     </div>
    <nav>
-    <a href="dashboard.php">🏠 Accueil</a>
-    <a href="profil_professionnel.php">🪪 Mon Profil</a>
-    <a href="annuaire.php">👥 Annuaire</a>   <!-- NOUVEAU LIEN -->
+    <a href="<?= htmlspecialchars(app_url('/dashboard')) ?>">🏠 Accueil</a>
+    <a href="<?= htmlspecialchars(app_url('/profil')) ?>">Mon Profil</a>
+    <a href="<?= htmlspecialchars(app_url('/dashboard/annuaire')) ?>">👥 Annuaire</a>
     <a href="#">💡 Projets</a>
     <a href="#">🎓 Formations</a>
     <a href="#">📈 Investissement</a>
@@ -102,7 +72,7 @@ $completion = round(($filled / count($fields)) * 100);
             <div style="display: flex; justify-content: space-between;">
                 <span>Profil complété à <?= $completion ?>%</span>
                 <?php if($completion < 80): ?>
-                    <a href="profil_complet.php" style="color: var(--caramel);">⟳ Compléter</a>
+                    <a href="<?= htmlspecialchars(app_url('/profil')) ?>" style="color: var(--caramel);">⟳ Compléter</a>
                 <?php endif; ?>
             </div>
             <div class="progress-bar-dash">
@@ -114,7 +84,7 @@ $completion = round(($filled / count($fields)) * 100);
     <div class="section-card">
         <div class="section-title-dashboard">⚡ Actions rapides</div>
         <div class="quick-actions">
-            <a href="profil_complet.php" class="quick-btn">✏️ Modifier mon profil</a>
+            <a href="<?= htmlspecialchars(app_url('/profil')) ?>" class="quick-btn">✏️ Modifier mon profil</a>
             <a href="#" class="quick-btn">💡 Créer un projet</a>
             <a href="#" class="quick-btn">🎓 Explorer formations</a>
         </div>

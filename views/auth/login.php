@@ -1,64 +1,7 @@
 <?php
-session_start();
-require_once 'config.php';
-
-$pdo = getPDO(); 
-
-$erreur = '';
-
-// Connexion
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && !isset($_POST['register'])) {
-    $email = $_POST['email'];
-    $password = $_POST['password'];
-    
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE email = :email AND etat_compte = 'actif'");
-    $stmt->execute([':email' => $email]);
-    $user = $stmt->fetch();
-
-    if ($user && password_verify($password, $user['mot_de_passe'])) {
-        $_SESSION['user_id'] = $user['id_user'];
-        $_SESSION['user_nom'] = $user['nom'];
-        $_SESSION['user_prenom'] = $user['prenom'];
-        $_SESSION['user_role'] = $user['role'];
-
-        header('Location: profil_professionnel.php'); // Redirige vers le profil professionnel
-        exit();
-    } else {
-        $erreur = "Email ou mot de passe incorrect";
-    }
-}
-
-// Gestion inscription
-if (isset($_POST['register'])) {
-    $nom = trim($_POST['reg_nom']);
-    $prenom = trim($_POST['reg_prenom']);
-    $email = trim($_POST['reg_email']);
-    $password = $_POST['reg_password'];
-    $erreur_insc = '';
-    // Vérifier unicité email
-    $stmt = $pdo->prepare("SELECT * FROM user WHERE email = :email");
-    $stmt->execute([':email' => $email]);
-    if ($stmt->fetch()) {
-        $erreur_insc = "Cet email est déjà utilisé.";
-    } else {
-        $hash = password_hash($password, PASSWORD_DEFAULT);
-        $stmt = $pdo->prepare("INSERT INTO user (nom, prenom, email, mot_de_passe, etat_compte) VALUES (:nom, :prenom, :email, :mdp, 'actif')");
-        $stmt->execute([
-            ':nom' => $nom,
-            ':prenom' => $prenom,
-            ':email' => $email,
-            ':mdp' => $hash
-        ]);
-        // Connexion automatique
-        $user_id = $pdo->lastInsertId();
-        $_SESSION['user_id'] = $user_id;
-        $_SESSION['user_nom'] = $nom;
-        $_SESSION['user_prenom'] = $prenom;
-        $_SESSION['user_role'] = 'utilisateur';
-        header('Location: profil_professionnel.php');
-        exit();
-    }
-}
+// views/auth/login.php
+// Variables: $erreur, $erreur_insc
+$baseUrl = app_url();
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -66,14 +9,14 @@ if (isset($_POST['register'])) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CraftLink Tunisie — Connexion</title>
-<link href="style.css" rel="stylesheet">
+<link rel="stylesheet" href="<?= htmlspecialchars(app_url('/public/css/style.css')) ?>">
 </head>
-<body>
+<body class="login-page">
 <!-- ── LEFT ── -->
 <div class="left-panel">
   <div class="brand">
     <div class="logo-ring">
-      <img src="logo.png" alt="CraftLink Logo" class="logo-img">
+      <span style="color:#f5ecd7;font-size:1.6rem;">ح</span>
     </div>
     <div class="brand-title">CraftLink Tunisie</div>
     <div class="brand-arabic">حرفة تونس</div>
@@ -118,7 +61,7 @@ if (isset($_POST['register'])) {
       <label class="field-label" for="email">Adresse e-mail</label>
       <div class="field-wrap">
         <span class="field-icon">✉</span>
-        <input type="email" id="email" name="email" placeholder="votre@email.com" autocomplete="email" value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>" required>
+        <input type="email" id="email" name="email" placeholder="votre@email.com" autocomplete="email" maxlength="120" value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>" required>
       </div>
       <div class="error-msg" id="email-err" style="display:none;">Veuillez entrer une adresse e-mail valide.</div>
     </div>
@@ -127,7 +70,7 @@ if (isset($_POST['register'])) {
       <label class="field-label" for="password">Mot de passe</label>
       <div class="field-wrap">
         <span class="field-icon">🔒</span>
-        <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
+        <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" minlength="8" maxlength="72" required>
         <button class="toggle-pw" type="button" onclick="togglePw()" id="pw-toggle" title="Afficher / masquer">👁</button>
       </div>
       <div class="error-msg" id="pw-err" style="display:none;">Le mot de passe est requis.</div>
@@ -171,19 +114,19 @@ if (isset($_POST['register'])) {
     <form method="POST" action="" class="register-form">
       <div class="form-group">
         <label>Nom</label>
-        <input type="text" name="reg_nom" required>
+        <input type="text" name="reg_nom" minlength="2" maxlength="60" pattern="[A-Za-zÀ-ÖØ-öø-ÿ' -]+" required>
       </div>
       <div class="form-group">
         <label>Prénom</label>
-        <input type="text" name="reg_prenom" required>
+        <input type="text" name="reg_prenom" minlength="2" maxlength="60" pattern="[A-Za-zÀ-ÖØ-öø-ÿ' -]+" required>
       </div>
       <div class="form-group">
         <label>Email</label>
-        <input type="email" name="reg_email" required>
+        <input type="email" name="reg_email" maxlength="120" required>
       </div>
       <div class="form-group">
         <label>Mot de passe</label>
-        <input type="password" name="reg_password" required>
+        <input type="password" name="reg_password" minlength="8" maxlength="72" required>
       </div>
       <?php if (!empty($erreur_insc ?? '')): ?>
         <div class="error-msg" style="color:#b00; margin-bottom:10px; text-align:center;">
@@ -224,6 +167,42 @@ if (isset($_POST['register'])) {
   function closeRegisterModal() {
     regModal.style.display = 'none';
   }
+
+  function bindAuthValidation() {
+    const nameRegex = /^[A-Za-zÀ-ÖØ-öø-ÿ' -]{2,60}$/;
+
+    document.querySelectorAll('.login-form, .register-form').forEach((form) => {
+      form.addEventListener('submit', (event) => {
+        const fields = form.querySelectorAll('input[type="text"], input[type="email"], input[type="password"]');
+        fields.forEach((field) => {
+          field.value = field.value.trim();
+          field.setCustomValidity('');
+        });
+
+        const nom = form.querySelector('input[name="reg_nom"]');
+        if (nom && nom.value && !nameRegex.test(nom.value)) {
+          nom.setCustomValidity('Nom invalide (lettres uniquement).');
+        }
+
+        const prenom = form.querySelector('input[name="reg_prenom"]');
+        if (prenom && prenom.value && !nameRegex.test(prenom.value)) {
+          prenom.setCustomValidity('Prénom invalide (lettres uniquement).');
+        }
+
+        const pwd = form.querySelector('input[name="password"], input[name="reg_password"]');
+        if (pwd && pwd.value.length > 0 && pwd.value.length < 8) {
+          pwd.setCustomValidity('Le mot de passe doit contenir au moins 8 caractères.');
+        }
+
+        if (!form.checkValidity()) {
+          event.preventDefault();
+          form.reportValidity();
+        }
+      });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', bindAuthValidation);
 </script>
 </body>
 </html>

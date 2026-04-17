@@ -1,75 +1,18 @@
 <?php
-ini_set('display_errors', 0);
-ini_set('log_errors', 1);
-error_reporting(E_ALL);
-
-session_start();
-require_once 'config.php';
-require_once 'functions.php';
-
-if (!isset($_SESSION['user_id'])) {
-    die('Erreur : utilisateur non connecté.');
-}
-
-$pdo = getPDO();
-$user_id = $_SESSION['user_id'];
-
-if (!function_exists('getUserById')) {
-    die('Erreur : fonction getUserById non trouvée.');
-}
-
-$user = getUserById($user_id);
-if (!$user) {
-    die('Erreur : utilisateur introuvable dans la base de données.');
-}
-
-$stats = getStats($user_id);
-$competences = getUserCompetences($user_id);
-$certifications = getUserCertifications($user_id);
-$portfolioFiles = getUserPortfolioFiles($user_id);
-$experiences = getUserExperiences($user_id);
-$avis = getUserAvis($user_id);
-
-$initials = strtoupper(substr($user['prenom'] ?? 'U', 0, 1) . substr($user['nom'] ?? 'U', 0, 1));
-
-$specialite = $user['specialite'] ?? 'Spécialité non renseignée';
-$bio = $user['bio'] ?? 'Aucune biographie disponible.';
-$ville = $user['ville'] ?? 'Tunisie';
-$email = $user['email'] ?? 'Non renseigné';
-$telephone = $user['telephone'] ?? 'Non renseigné';
-$portfolio_url = $user['portfolio'] ?? '';
-$total_projets = $stats['projets'] ?? 0;
-$note_moyenne = $stats['note'] ?? '0.0';
-$total_mentores = $stats['mentores'] ?? 0;
-
-$flash = null;
-$flashClass = 'flash-error';
-if (isset($_SESSION['flash'])) {
-    $flash = $_SESSION['flash'];
-    unset($_SESSION['flash']);
-    if (isset($flash['type']) && $flash['type'] === 'success') {
-        $flashClass = 'flash-success';
-    }
-}
-
-$portfolio_items = [
-    ['titre' => 'Vase Amazigh', 'description' => 'Décoration', 'icon' => '🏺'],
-    ['titre' => 'Service à Tajine', 'description' => 'Arts de la table', 'icon' => '🍽️'],
-    ['titre' => 'Carreaux Zellige', 'description' => 'Architecture', 'icon' => '🎨'],
-    ['titre' => 'Fontaine en céramique', 'description' => 'Jardin & Ext.', 'icon' => '💧'],
-    ['titre' => 'Collection Printemps', 'description' => 'Décoration', 'icon' => '🌸'],
-    ['titre' => 'Motifs Islamiques', 'description' => 'Art sacré', 'icon' => '🕌']
-];
+// views/profil/index.php
+// Variables attendues du controller :
+// $user, $stats, $competences, $certifications, $experiences, $portfolioFiles, $avis, $flash
+$baseUrl = app_url();
 ?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profil Professionnel — <?= htmlspecialchars(trim(($user['prenom'] ?? '') . ' ' . ($user['nom'] ?? '')), ENT_QUOTES, 'UTF-8') ?> | حرفة Tunisie</title>
+    <title>Profil Professionnel — حرفة Tunisie</title>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
-    <script src="index.js" defer></script>
+    <link rel="stylesheet" href="<?= htmlspecialchars(app_url('/public/css/style.css')) ?>">
+    <script src="<?= htmlspecialchars(app_url('/public/js/index.js')) ?>" defer></script>
 </head>
 <body>
     <!-- HEADER -->
@@ -79,9 +22,9 @@ $portfolio_items = [
             <span style="color:#aaa;font-size:.8rem;font-weight:400;margin-left:2px">Tunisie</span>
         </div>
         <nav>
-            <a href="dashboard.php">🏠 Accueil</a>
-            <a href="profil_professionnel.php">🪪 Mon Profil</a>
-            <a href="annuaire.php">👥 Annuaire</a>
+            <a href="<?= htmlspecialchars(app_url('/dashboard')) ?>">🏠 Accueil</a>
+            <a href="<?= htmlspecialchars(app_url('/profil')) ?>">🪪 Mon Profil</a>
+            <a href="<?= htmlspecialchars(app_url('/dashboard/annuaire')) ?>">👥 Annuaire</a>
             <a href="#">💡 Projets</a>
             <a href="#">🎓 Formations</a>
             <a href="#">📈 Investissement</a>
@@ -94,11 +37,11 @@ $portfolio_items = [
         <div class="page-header">
             <h1>Mon <span>Profil Professionnel</span></h1>
             <nav class="breadcrumb">
-                <a href="dashboard.php">Accueil</a> › Profil Professionnel
+                <a href="<?= htmlspecialchars(app_url('/dashboard')) ?>">Accueil</a> › Profil Professionnel
             </nav>
         </div>
         <?php if ($flash && !empty($flash['msg'])): ?>
-            <div class="card flash <?= $flashClass ?>">
+            <div class="card flash flash-<?= $flash['type'] ?>">
                 <?= htmlspecialchars($flash['msg']) ?>
             </div>
         <?php endif; ?>
@@ -114,9 +57,17 @@ $portfolio_items = [
                     <div class="profile-name"><?= htmlspecialchars($user['prenom'] . ' ' . $user['nom']) ?></div>
                     <div class="profile-title"><?= htmlspecialchars($specialite) ?></div>
                     <div class="profile-location">📍 <?= htmlspecialchars($ville) ?></div>
+                    <?php
+                        $disponibiliteBadgeClass = 'green';
+                        if (($disponibilite ?? 'disponible') === 'occupe') {
+                            $disponibiliteBadgeClass = 'orange';
+                        } elseif (($disponibilite ?? 'disponible') === 'indisponible') {
+                            $disponibiliteBadgeClass = 'red';
+                        }
+                    ?>
                     <div class="badge-row">
                         <span class="badge">Entrepreneur</span>
-                        <span class="badge green">Disponible</span>
+                        <span class="badge <?= htmlspecialchars($disponibiliteBadgeClass) ?>"><?= htmlspecialchars($disponibiliteLabel ?? 'Disponible') ?></span>
                         <span class="badge">Mentor</span>
                     </div>
                     <button class="edit-btn" onclick="openModal('edit')">✏️ Modifier mon profil</button>
@@ -143,10 +94,7 @@ $portfolio_items = [
             </div>
             <!-- Compétences -->
             <div class="card">
-                <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
-                    <span>Compétences</span>
-                    <a href="gestion_competences.php" class="btn-mini" style="margin-left:10px;">Gérer</a>
-                </div>
+                <div class="section-title">Compétences</div>
                 <?php if (count($competences) > 0): ?>
                     <?php foreach ($competences as $skill): ?>
                     <div class="skill-item">
@@ -165,10 +113,7 @@ $portfolio_items = [
             </div>
             <!-- Certifications -->
             <div class="card">
-                <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
-                    <span>Certifications</span>
-                    <a href="gestion_certifications.php" class="btn-mini" style="margin-left:10px;">Gérer</a>
-                </div>
+                <div class="section-title">Certifications</div>
                 <?php if (count($certifications) > 0): ?>
                     <?php foreach ($certifications as $cert): ?>
                     <div class="cert-item">
@@ -186,10 +131,13 @@ $portfolio_items = [
             <!-- Disponibilité -->
             <div class="card">
                 <div class="section-title">Disponibilité</div>
-                <div class="availability-row">
-                    <div class="avail-dot"></div>
-                    <div class="avail-text">Disponible</div>
-                    <div class="avail-sub">Lun – Sam · 8h–17h</div>
+                <div class="availability-row availability-<?= htmlspecialchars($disponibilite ?? 'disponible') ?>" data-availability-visitor="true">
+                    <div class="avail-dot avail-dot-<?= htmlspecialchars($disponibilite ?? 'disponible') ?>" data-visitor-dot="true"></div>
+                    <div class="avail-text avail-text-<?= htmlspecialchars($disponibilite ?? 'disponible') ?>" data-visitor-label="true"><?= htmlspecialchars($disponibiliteLabel ?? 'Disponible') ?></div>
+                    <div class="avail-sub" data-visitor-hours="true"><?= htmlspecialchars($disponibilite_horaire ?? 'Lun - Sam · 8h-17h') ?></div>
+                </div>
+                <div class="avail-note" data-visitor-message="true" <?= trim((string)($disponibilite_message ?? '')) === '' ? 'style="display:none;"' : '' ?>>
+                    <?= htmlspecialchars($disponibilite_message ?? '') ?>
                 </div>
             </div>
             <!-- Contact -->
@@ -230,7 +178,26 @@ $portfolio_items = [
             <div class="tab-panel active" id="panel-bio">
                 <div class="card">
                     <div class="section-title">À propos</div>
-                    <p class="bio-text"><?= nl2br(htmlspecialchars($bio)) ?></p>
+                    <?php $hasBio = trim((string)$bio) !== ''; ?>
+                    <form id="bio-inline-form" action="<?= htmlspecialchars(app_url($hasBio ? '/profil/updateBio' : '/profil/addBio')) ?>" method="post" data-ajax-add="true" data-ajax-bio="true" style="background:#f8f5f0;padding:1rem;border-radius:1rem;">
+                        <label for="bio-inline" style="display:block;font-weight:600;color:var(--marron);margin-bottom:.5rem;">Votre bio professionnelle</label>
+                        <textarea id="bio-inline" name="bio" maxlength="2000" rows="6" placeholder="Saisissez votre bio ici..." style="width:100%;padding:.75rem;border-radius:.75rem;border:1px solid #e0d6c3;background:#fff7ee;resize:vertical;"><?= htmlspecialchars($hasBio ? $bio : '') ?></textarea>
+                        <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:.75rem;">
+                            <?php if ($hasBio): ?>
+                                <button type="submit" class="btn-primary" data-bio-submit="true">Modifier une bio existante</button>
+                            <?php else: ?>
+                                <button type="submit" class="btn-primary" data-bio-submit="true">Ajouter une bio</button>
+                            <?php endif; ?>
+                        </div>
+                    </form>
+                    <?php if ($hasBio): ?>
+                        <form action="<?= htmlspecialchars(app_url('/profil/deleteBio')) ?>" method="post" style="margin-top:.75rem;display:flex;justify-content:flex-end;" onsubmit="return confirm('Supprimer votre bio ?');">
+                            <button type="submit" class="btn-secondary">Supprimer une bio</button>
+                        </form>
+                        <p class="bio-text" data-bio-display="true" style="margin-top:1rem;"><?= nl2br(htmlspecialchars($bio)) ?></p>
+                    <?php else: ?>
+                        <p class="bio-text" data-bio-display="true" style="margin-top:1rem;color:#777;">Aucune biographie disponible.</p>
+                    <?php endif; ?>
                 </div>
                 <div class="card">
                     <div class="section-title">Informations professionnelles</div>
@@ -271,10 +238,21 @@ $portfolio_items = [
                 </div>
                 <div class="card" style="margin-top:1.5rem;">
                     <div class="section-title">Documents (PDF)</div>
-                    <form action="add_portfolio_file.php" method="post" enctype="multipart/form-data" style="display:flex;align-items:center;gap:1rem;background:#f8f5f0;padding:1.2rem 1rem;border-radius:1rem;margin-bottom:1rem;">
+                    <form action="<?= htmlspecialchars(app_url('/profil/addPortfolioFile')) ?>" method="post" enctype="multipart/form-data" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;background:#f8f5f0;padding:1.2rem 1rem;border-radius:1rem;margin-bottom:1rem;">
                         <div style="flex:2;">
                             <label style="font-weight:600;color:var(--marron);">Titre (optionnel)</label>
-                            <input type="text" name="titre" placeholder="ex : Catalogue 2026" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                            <input type="text" name="titre" maxlength="120" placeholder="ex : Catalogue 2026" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                        </div>
+                        <div style="flex:2;min-width:240px;">
+                            <label style="font-weight:600;color:var(--marron);">Realisation</label>
+                            <select name="realisation_default" data-realisation-select required style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                                <option value="">Choisir une realisation</option>
+                                <?php foreach (($defaultRealisations ?? []) as $realisationOption): ?>
+                                    <option value="<?= htmlspecialchars((string)$realisationOption) ?>"><?= htmlspecialchars((string)$realisationOption) ?></option>
+                                <?php endforeach; ?>
+                                <option value="__custom__">Autre (nouvelle realisation)</option>
+                            </select>
+                            <input type="text" name="realisation_custom" maxlength="120" data-realisation-custom placeholder="Saisissez une nouvelle realisation" style="display:none;width:100%;padding:.5rem;margin-top:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
                         </div>
                         <div style="flex:2;">
                             <label style="font-weight:600;color:var(--marron);">Fichier PDF</label>
@@ -285,7 +263,7 @@ $portfolio_items = [
                     <table style="width:100%;border-collapse:separate;border-spacing:0 .75rem;">
                         <thead>
                             <tr style="color:var(--marron);font-size:.95rem;background:#f8f5f0;">
-                                <th>TITRE</th><th>FICHIER</th><th>DATE</th>
+                                <th>TITRE</th><th>REALISATION</th><th>FICHIER</th><th>DATE</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -293,6 +271,7 @@ $portfolio_items = [
                                 <?php foreach ($portfolioFiles as $file): ?>
                                     <tr>
                                         <td><?= htmlspecialchars($file['titre'] ?: $file['file_name']) ?></td>
+                                        <td><?= htmlspecialchars((string)($file['realisation'] ?? '-')) ?></td>
                                         <td>
                                             <a href="<?= htmlspecialchars($file['file_path']) ?>" target="_blank" style="color:var(--marron);text-decoration:none;">Voir</a>
                                         </td>
@@ -300,7 +279,7 @@ $portfolio_items = [
                                     </tr>
                                 <?php endforeach; ?>
                             <?php else: ?>
-                                <tr><td colspan="3" style="text-align:center; padding:1rem;">Aucun fichier ajoute</td></tr>
+                                <tr><td colspan="4" style="text-align:center; padding:1rem;">Aucun fichier ajouté</td></tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
@@ -337,10 +316,8 @@ $portfolio_items = [
                     <?php if (count($avis) > 0): ?>
                         <?php foreach ($avis as $a): ?>
                         <div class="review-card">
-                            <div class="review-header">
-                                <div class="reviewer-name"><?= htmlspecialchars($a['auteur'] ?? 'Anonyme') ?></div>
-                                <div class="stars"><?= str_repeat('★', floor($a['note'] ?? 0)) . str_repeat('☆', 5 - floor($a['note'] ?? 0)) ?></div>
-                            </div>
+                            <div class="reviewer-name"><?= htmlspecialchars($a['prenom'] ?? 'Anonyme') ?> <?= htmlspecialchars($a['nom'] ?? '') ?></div>
+                            <div class="stars"><?= str_repeat('★', floor($a['note'] ?? 0)) . str_repeat('☆', 5 - floor($a['note'] ?? 0)) ?></div>
                             <div class="review-text">« <?= htmlspecialchars($a['commentaire'] ?? '') ?> »</div>
                             <div class="review-date"><?= date('F Y', strtotime($a['date_creation'] ?? 'now')) ?></div>
                         </div>
@@ -355,14 +332,14 @@ $portfolio_items = [
               <h2 style="font-size:2rem;margin-bottom:.5rem;">Gestion des compétences</h2>
               <div style="color:#888;margin-bottom:1.5rem;">Ajoutez, modifiez ou réorganisez les compétences affichées sur votre profil.</div>
               <!-- Formulaire d'ajout -->
-                            <form action="add_competence.php" method="post" style="display:flex;align-items:center;gap:1rem;background:#f8f5f0;padding:1.5rem 1rem;border-radius:1rem;margin-bottom:1.5rem;">
+                                                        <form action="<?= htmlspecialchars(app_url('/profil/addCompetence')) ?>" method="post" data-ajax-add="true" style="display:flex;align-items:center;gap:1rem;background:#f8f5f0;padding:1.5rem 1rem;border-radius:1rem;margin-bottom:1.5rem;">
                                 <div style="flex:2;">
                   <label style="font-weight:600;color:var(--marron);">Nom</label>
-                                    <input type="text" id="competence-nom" name="nom" required placeholder="ex : Tournage, Raku, Émaillage…" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                                    <input type="text" id="competence-nom" name="nom" minlength="2" maxlength="80" required placeholder="ex : Tournage, Raku, Émaillage…" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
                 </div>
                                 <div style="flex:3;">
                                     <label style="font-weight:600;color:var(--marron);">Description</label>
-                                    <input type="text" name="description" placeholder="ex : Techniques et materiaux" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                                    <input type="text" name="description" maxlength="500" placeholder="ex : Techniques et matériaux" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
                                 </div>
                 <div style="flex:1;">
                                     <label style="font-weight:600;color:var(--marron);">Niveau (0-100)</label>
@@ -404,7 +381,14 @@ $portfolio_items = [
                         <?php endif; ?>
                       </td>
                       <td>
-                                                <form action="delete_competance.php" method="post" style="display:inline;" onsubmit="return confirm('Supprimer cette competence ?');">
+                                                <button class="modif-btn" type="button" title="Modifier" onclick="editCompetence(<?= (int)$c['id_competence'] ?>)">✏️</button>
+                                                <form id="edit-comp-<?= (int)$c['id_competence'] ?>" action="<?= htmlspecialchars(app_url('/profil/updateCompetence')) ?>" method="post" style="display:none;">
+                                                    <input type="hidden" name="id" value="<?= (int)$c['id_competence'] ?>">
+                                                    <input type="hidden" name="nom" value="<?= htmlspecialchars((string)($c['nom_competence'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                    <input type="hidden" name="description" value="<?= htmlspecialchars((string)($c['description'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                    <input type="hidden" name="niveau" value="<?= (int)($c['niveau'] ?? 0) ?>">
+                                                </form>
+                                                <form action="<?= htmlspecialchars(app_url('/profil/deleteCompetence')) ?>" method="post" style="display:inline;" onsubmit="return confirm('Supprimer cette compétence ?');">
                                                     <input type="hidden" name="id" value="<?= (int)$c['id_competence'] ?>">
                                                     <button class="suppr-btn" type="submit">🗑️</button>
                                                 </form>
@@ -423,10 +407,10 @@ $portfolio_items = [
               <h2 style="font-size:2rem;margin-bottom:.5rem;">Gestion des certifications</h2>
               <div style="color:#888;margin-bottom:1.5rem;">Ajoutez, modifiez ou supprimez vos certifications.</div>
               <!-- Formulaire d'ajout -->
-                            <form action="add_certification.php" method="post" style="display:flex;align-items:center;gap:1rem;background:#f8f5f0;padding:1.5rem 1rem;border-radius:1rem;margin-bottom:1.5rem;">
+                                                        <form action="<?= htmlspecialchars(app_url('/profil/addCertification')) ?>" method="post" data-ajax-add="true" style="display:flex;align-items:center;gap:1rem;background:#f8f5f0;padding:1.5rem 1rem;border-radius:1rem;margin-bottom:1.5rem;">
                 <div style="flex:2;">
                   <label style="font-weight:600;color:var(--marron);">Nom de la certification</label>
-                                    <input type="text" id="certification-nom" name="nom" required placeholder="ex : Certification en poterie" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                                    <input type="text" id="certification-nom" name="nom" minlength="2" maxlength="100" required placeholder="ex : Certification en poterie" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
                 </div>
                 <div style="flex:1;">
                                     <label style="font-weight:600;color:var(--marron);">Niveau (0-100)</label>
@@ -467,7 +451,13 @@ $portfolio_items = [
                         <?php endif; ?>
                       </td>
                       <td>
-                                                <form action="delete_certification.php" method="post" style="display:inline;" onsubmit="return confirm('Supprimer cette certification ?');">
+                                                <button class="modif-btn" type="button" title="Modifier" onclick="editCertification(<?= (int)$cert['id_certification'] ?>)">✏️</button>
+                                                <form id="edit-cert-<?= (int)$cert['id_certification'] ?>" action="<?= htmlspecialchars(app_url('/profil/updateCertification')) ?>" method="post" style="display:none;">
+                                                    <input type="hidden" name="id" value="<?= (int)$cert['id_certification'] ?>">
+                                                    <input type="hidden" name="nom" value="<?= htmlspecialchars((string)($cert['nom_certification'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                    <input type="hidden" name="niveau" value="<?= (int)($cert['niveau'] ?? 0) ?>">
+                                                </form>
+                                                <form action="<?= htmlspecialchars(app_url('/profil/deleteCertification')) ?>" method="post" style="display:inline;" onsubmit="return confirm('Supprimer cette certification ?');">
                                                     <input type="hidden" name="id" value="<?= (int)$cert['id_certification'] ?>">
                                                     <button class="suppr-btn" type="submit">🗑️</button>
                                                 </form>
@@ -483,15 +473,15 @@ $portfolio_items = [
                         <!-- Section Expériences améliorée -->
                         <div class="card" style="margin-bottom:2rem;">
                             <h2 style="font-size:2rem;margin-bottom:.5rem;">Gestion des expériences</h2>
-                            <div style="color:#888;margin-bottom:1.5rem;">Ajoutez ou supprimez vos expériences.</div>
-                            <form action="add_experience.php" method="post" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;background:#f8f5f0;padding:1.5rem 1rem;border-radius:1rem;margin-bottom:1.5rem;">
+                            <div style="color:#888;margin-bottom:1.5rem;">Ajoutez, modifiez ou supprimez vos expériences.</div>
+                            <form action="<?= htmlspecialchars(app_url('/profil/addExperience')) ?>" method="post" data-ajax-add="true" style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;background:#f8f5f0;padding:1.5rem 1rem;border-radius:1rem;margin-bottom:1.5rem;">
                                 <div style="flex:2;min-width:180px;">
                                     <label style="font-weight:600;color:var(--marron);">Poste</label>
-                                    <input type="text" name="poste" required placeholder="ex : Artisan potier" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                                    <input type="text" name="poste" minlength="2" maxlength="100" required placeholder="ex : Artisan potier" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
                                 </div>
                                 <div style="flex:2;min-width:180px;">
                                     <label style="font-weight:600;color:var(--marron);">Entreprise</label>
-                                    <input type="text" name="entreprise" placeholder="ex : Atelier Zellige" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                                    <input type="text" name="entreprise" maxlength="120" placeholder="ex : Atelier Zellige" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
                                 </div>
                                 <div style="flex:1;min-width:140px;">
                                     <label style="font-weight:600;color:var(--marron);">Début</label>
@@ -503,7 +493,7 @@ $portfolio_items = [
                                 </div>
                                 <div style="flex:3;min-width:220px;">
                                     <label style="font-weight:600;color:var(--marron);">Description</label>
-                                    <input type="text" name="description" placeholder="ex : Responsabilités et missions" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                                    <input type="text" name="description" maxlength="1000" placeholder="ex : Responsabilités et missions" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
                                 </div>
                                 <button type="submit" style="background:var(--marron);color:#fff;padding:.7rem 1.5rem;border:none;border-radius:.5rem;font-weight:600;font-size:1rem;box-shadow:0 2px 8px #8b5a3a22;transition:.2s;">+ Ajouter</button>
                             </form>
@@ -513,17 +503,26 @@ $portfolio_items = [
                                         <th>POSTE</th><th>ENTREPRISE</th><th>PÉRIODE</th><th>DESCRIPTION</th><th>ACTIONS</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="experiences-list">
                                     <?php if (!empty($experiences)): ?>
                                         <?php foreach ($experiences as $exp): ?>
-                                        <tr>
-                                            <td><?= htmlspecialchars($exp['poste'] ?? '') ?></td>
-                                            <td><?= htmlspecialchars($exp['entreprise'] ?? '') ?></td>
+                                        <tr data-id="<?= (int)($exp['id_experience'] ?? 0) ?>">
+                                            <td class="exp-poste"><?= htmlspecialchars($exp['poste'] ?? '') ?></td>
+                                            <td class="exp-entreprise"><?= htmlspecialchars($exp['entreprise'] ?? '') ?></td>
                                             <?php $dateFin = $exp['date_fin'] ?? ''; ?>
-                                            <td><?= htmlspecialchars($exp['date_debut'] ?? '') ?> - <?= $dateFin ? htmlspecialchars($dateFin) : 'Présent' ?></td>
-                                            <td><?= htmlspecialchars($exp['description'] ?? '') ?></td>
-                                            <td>
-                                                <form action="delete_experience.php" method="post" style="display:inline;" onsubmit="return confirm('Supprimer cette expérience ?');">
+                                            <td class="exp-periode"><?= htmlspecialchars($exp['date_debut'] ?? '') ?> - <?= $dateFin ? htmlspecialchars($dateFin) : 'Présent' ?></td>
+                                            <td class="exp-description"><?= htmlspecialchars($exp['description'] ?? '') ?></td>
+                                            <td class="exp-actions">
+                                                <button class="modif-btn" type="button" title="Modifier" onclick="editExperience(<?= (int)($exp['id_experience'] ?? 0) ?>)">✏️</button>
+                                                <form id="edit-exp-<?= (int)($exp['id_experience'] ?? 0) ?>" action="<?= htmlspecialchars(app_url('/profil/updateExperience')) ?>" method="post" style="display:none;">
+                                                    <input type="hidden" name="id" value="<?= (int)($exp['id_experience'] ?? 0) ?>">
+                                                    <input type="hidden" name="poste" value="<?= htmlspecialchars((string)($exp['poste'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                    <input type="hidden" name="entreprise" value="<?= htmlspecialchars((string)($exp['entreprise'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                    <input type="hidden" name="date_debut" value="<?= htmlspecialchars((string)($exp['date_debut'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                    <input type="hidden" name="date_fin" value="<?= htmlspecialchars((string)($exp['date_fin'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                    <input type="hidden" name="description" value="<?= htmlspecialchars((string)($exp['description'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                                </form>
+                                                <form action="<?= htmlspecialchars(app_url('/profil/deleteExperience')) ?>" method="post" style="display:inline;" onsubmit="return confirm('Supprimer cette expérience ?');">
                                                     <input type="hidden" name="id" value="<?= (int)($exp['id_experience'] ?? 0) ?>">
                                                     <button class="suppr-btn" type="submit">🗑️</button>
                                                 </form>
@@ -531,7 +530,7 @@ $portfolio_items = [
                                         </tr>
                                         <?php endforeach; ?>
                                     <?php else: ?>
-                                        <tr><td colspan="5" style="text-align:center; padding:1rem;">Aucune expérience ajoutée</td></tr>
+                                        <tr class="empty-experience-row"><td colspan="5" style="text-align:center; padding:1rem;">Aucune expérience ajoutée</td></tr>
                                     <?php endif; ?>
                                 </tbody>
                             </table>
@@ -545,44 +544,134 @@ $portfolio_items = [
                 <h2>✏️ Modifier mon profil</h2>
                 <button type="button" class="modal-close" onclick="closeModal('edit')">✕</button>
             </div>
-            <form action="profilcontroller.php" method="POST" enctype="multipart/form-data">
+            <?php
+                $availabilitySlotsJson = trim((string)($disponibilite_slots ?? '')) !== '' ? (string)$disponibilite_slots : '[]';
+                $availabilityExceptionsJson = trim((string)($disponibilite_exceptions ?? '')) !== '' ? (string)$disponibilite_exceptions : '[]';
+                $availabilityCongesJson = trim((string)($disponibilite_conges ?? '')) !== '' ? (string)$disponibilite_conges : '[]';
+            ?>
+            <form action="<?= htmlspecialchars(app_url('/profil/update')) ?>" method="POST" enctype="multipart/form-data">
                 <div class="form-group">
                     <label>Spécialité</label>
-                    <input type="text" name="specialite" value="<?= htmlspecialchars($specialite ?? '') ?>">
+                    <input type="text" name="specialite" maxlength="120" value="<?= htmlspecialchars($specialite ?? '') ?>">
                 </div>
+                <div
+                    class="availability-designer"
+                    data-availability-designer="true"
+                    data-initial-status="<?= htmlspecialchars($disponibilite ?? 'disponible') ?>"
+                    data-initial-summary="<?= htmlspecialchars($disponibilite_horaire ?? '') ?>"
+                    data-initial-message="<?= htmlspecialchars($disponibilite_message ?? '') ?>"
+                    data-initial-slots="<?= htmlspecialchars($availabilitySlotsJson, ENT_QUOTES, 'UTF-8') ?>"
+                    data-initial-exceptions="<?= htmlspecialchars($availabilityExceptionsJson, ENT_QUOTES, 'UTF-8') ?>"
+                    data-initial-conges="<?= htmlspecialchars($availabilityCongesJson, ENT_QUOTES, 'UTF-8') ?>"
+                >
+                    <div class="availability-designer-tabs" role="tablist" aria-label="Configuration de disponibilite">
+                        <button type="button" class="availability-tab-btn is-active" data-availability-tab-btn="horaires">Horaires</button>
+                        <button type="button" class="availability-tab-btn" data-availability-tab-btn="statut">Statut</button>
+                        <button type="button" class="availability-tab-btn" data-availability-tab-btn="exceptions">Exceptions</button>
+                    </div>
+
+                    <div class="availability-preview-box">
+                        <div class="availability-preview-badge availability-preview-badge-disponible" data-availability-preview-badge="true">
+                            <span class="availability-preview-dot" data-availability-preview-dot="true"></span>
+                            <span data-availability-preview-label="true">Disponible</span>
+                        </div>
+                        <div class="availability-preview-hours" data-availability-preview-hours="true">Lun - Sam · 8h-17h</div>
+                        <div class="availability-preview-message" data-availability-preview-message="true"></div>
+                    </div>
+
+                    <div class="availability-tab-panel is-active" data-availability-tab-panel="horaires">
+                        <p class="availability-helper-text">Ajoutez des creneaux recurrents avec jours et horaires.</p>
+                        <div class="availability-days">
+                            <label class="availability-day-chip"><input type="checkbox" value="Lun" data-slot-day="true">Lun</label>
+                            <label class="availability-day-chip"><input type="checkbox" value="Mar" data-slot-day="true">Mar</label>
+                            <label class="availability-day-chip"><input type="checkbox" value="Mer" data-slot-day="true">Mer</label>
+                            <label class="availability-day-chip"><input type="checkbox" value="Jeu" data-slot-day="true">Jeu</label>
+                            <label class="availability-day-chip"><input type="checkbox" value="Ven" data-slot-day="true">Ven</label>
+                            <label class="availability-day-chip"><input type="checkbox" value="Sam" data-slot-day="true">Sam</label>
+                            <label class="availability-day-chip"><input type="checkbox" value="Dim" data-slot-day="true">Dim</label>
+                        </div>
+                        <div class="availability-time-row">
+                            <input type="time" data-slot-start="true" value="08:00">
+                            <span class="availability-time-sep">a</span>
+                            <input type="time" data-slot-end="true" value="17:00">
+                            <button type="button" class="availability-btn-add" data-slot-add="true">Ajouter creneau</button>
+                        </div>
+                        <div class="availability-tags" data-slot-tags="true"></div>
+                    </div>
+
+                    <div class="availability-tab-panel" data-availability-tab-panel="statut">
+                        <p class="availability-helper-text">Choisissez un statut et un message personnalise.</p>
+                        <div class="availability-status-grid">
+                            <button type="button" class="availability-status-btn is-green" data-status-value="disponible">Disponible</button>
+                            <button type="button" class="availability-status-btn is-orange" data-status-value="occupe">Absent momentanement</button>
+                            <button type="button" class="availability-status-btn is-red" data-status-value="indisponible">Indisponible</button>
+                        </div>
+                        <div class="form-group availability-message-group">
+                            <label>Message personnalise</label>
+                            <input type="text" maxlength="120" placeholder="ex : En reunion jusqu'a 14h" data-status-message="true">
+                        </div>
+                    </div>
+
+                    <div class="availability-tab-panel" data-availability-tab-panel="exceptions">
+                        <p class="availability-helper-text">Ajoutez des jours ponctuels fermes ou a horaires speciaux.</p>
+                        <div class="availability-exception-row">
+                            <input type="date" data-exception-date="true">
+                            <select data-exception-type="true">
+                                <option value="ferme">Ferme</option>
+                                <option value="reduits">Horaires reduits</option>
+                                <option value="speciaux">Horaires speciaux</option>
+                            </select>
+                            <button type="button" class="availability-btn-add" data-exception-add="true">Ajouter</button>
+                        </div>
+                        <div class="availability-conges-row">
+                            <input type="date" data-conges-start="true">
+                            <span class="availability-time-sep">a</span>
+                            <input type="date" data-conges-end="true">
+                            <button type="button" class="availability-btn-add" data-conges-add="true">Ajouter conges</button>
+                        </div>
+                        <div class="availability-tags" data-exception-tags="true"></div>
+                    </div>
+                </div>
+
+                <input type="hidden" name="disponibilite" value="<?= htmlspecialchars($disponibilite ?? 'disponible') ?>">
+                <input type="hidden" name="disponibilite_horaire" value="<?= htmlspecialchars($disponibilite_horaire ?? '') ?>">
+                <input type="hidden" name="disponibilite_message" value="<?= htmlspecialchars($disponibilite_message ?? '') ?>">
+                <input type="hidden" name="disponibilite_slots" value="<?= htmlspecialchars($availabilitySlotsJson, ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="disponibilite_exceptions" value="<?= htmlspecialchars($availabilityExceptionsJson, ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="disponibilite_conges" value="<?= htmlspecialchars($availabilityCongesJson, ENT_QUOTES, 'UTF-8') ?>">
                 <div class="form-row">
                     <div class="form-group">
                         <label>Nom</label>
-                        <input type="text" name="nom" value="<?= htmlspecialchars($user['nom'] ?? '') ?>">
+                        <input type="text" name="nom" minlength="2" maxlength="60" pattern="[A-Za-zÀ-ÖØ-öø-ÿ' -]+" value="<?= htmlspecialchars($user['nom'] ?? '') ?>" required>
                     </div>
                     <div class="form-group">
                         <label>Prénom</label>
-                        <input type="text" name="prenom" value="<?= htmlspecialchars($user['prenom'] ?? '') ?>">
+                        <input type="text" name="prenom" minlength="2" maxlength="60" pattern="[A-Za-zÀ-ÖØ-öø-ÿ' -]+" value="<?= htmlspecialchars($user['prenom'] ?? '') ?>" required>
                     </div>
                 </div>
                 <div class="form-group">
                     <label>Email</label>
-                    <input type="email" name="email" value="<?= htmlspecialchars($email ?? '') ?>">
+                    <input type="email" name="email" maxlength="120" value="<?= htmlspecialchars($email ?? '') ?>" required>
                 </div>
                 <div class="form-group">
                     <label>Téléphone</label>
-                    <input type="tel" name="telephone" value="<?= htmlspecialchars($telephone ?? '') ?>">
+                    <input type="tel" name="telephone" maxlength="30" pattern="^\+?[0-9][0-9\s().-]{7,19}$" value="<?= htmlspecialchars($telephone ?? '') ?>">
                 </div>
                 <div class="form-group">
                     <label>Ville</label>
-                    <input type="text" name="ville" value="<?= htmlspecialchars($ville ?? '') ?>">
+                    <input type="text" name="ville" maxlength="120" value="<?= htmlspecialchars($ville ?? '') ?>">
                 </div>
                 <div class="form-group">
                     <label>Bio</label>
-                    <textarea name="bio"><?= htmlspecialchars($bio ?? '') ?></textarea>
+                    <textarea name="bio" maxlength="2000"><?= htmlspecialchars($bio ?? '') ?></textarea>
                 </div>
                 <div class="form-group">
                     <label>Expérience</label>
-                    <textarea name="experience" placeholder="Décrivez votre expérience professionnelle..."><?= htmlspecialchars($user['experience'] ?? '') ?></textarea>
+                    <textarea name="experience" maxlength="2000" placeholder="Décrivez votre expérience professionnelle..."><?= htmlspecialchars($user['experience'] ?? '') ?></textarea>
                 </div>
                 <div class="form-group">
                     <label>Portfolio (URL)</label>
-                    <input type="url" name="portfolio" value="<?= htmlspecialchars($portfolio_url ?? '') ?>">
+                    <input type="url" name="portfolio" maxlength="255" value="<?= htmlspecialchars($portfolio_url ?? '') ?>">
                 </div>
                 <div class="modal-actions">
                     <button type="button" class="btn-secondary" onclick="closeModal('edit')">Annuler</button>
