@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 17, 2026 at 02:10 PM
+-- Generation Time: Apr 23, 2026 at 04:41 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -34,7 +34,15 @@ CREATE TABLE `application` (
   `lettre_de_motivation` text NOT NULL,
   `cv` text NOT NULL,
   `status` enum('pending','submitted','reviewed','shortlisted','interview','accepted','rejected') NOT NULL DEFAULT 'pending',
-  `date_creation` datetime NOT NULL DEFAULT current_timestamp()
+  `date_creation` datetime NOT NULL DEFAULT current_timestamp(),
+  `parsed_cv_data` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`parsed_cv_data`)),
+  `cv_parsing_status` enum('pending','parsing','success','failed','manual_entry') DEFAULT 'pending',
+  `cv_parsed_at` datetime DEFAULT NULL,
+  `cv_file_name` varchar(255) DEFAULT NULL,
+  `cv_file_size` int(11) DEFAULT NULL,
+  `cv_file_type` varchar(50) DEFAULT NULL,
+  `cv_file_hash` varchar(64) DEFAULT NULL,
+  `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -61,6 +69,80 @@ CREATE TABLE `application_offre` (
   `id_application` int(11) NOT NULL,
   `id_offre` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `candidate_education`
+--
+
+CREATE TABLE `candidate_education` (
+  `id` int(11) NOT NULL,
+  `id_candidate_profile` int(11) NOT NULL,
+  `school_name` varchar(255) DEFAULT NULL,
+  `degree` varchar(100) DEFAULT NULL,
+  `field_of_study` varchar(255) DEFAULT NULL,
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
+  `description` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `candidate_experience`
+--
+
+CREATE TABLE `candidate_experience` (
+  `id` int(11) NOT NULL,
+  `id_candidate_profile` int(11) NOT NULL,
+  `company_name` varchar(255) DEFAULT NULL,
+  `job_title` varchar(255) DEFAULT NULL,
+  `description` text DEFAULT NULL,
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
+  `is_current` tinyint(1) DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `candidate_profile`
+--
+
+CREATE TABLE `candidate_profile` (
+  `id` int(11) NOT NULL,
+  `id_application` int(11) NOT NULL,
+  `id_user` int(11) DEFAULT NULL,
+  `full_name` varchar(255) DEFAULT NULL,
+  `email` varchar(255) DEFAULT NULL,
+  `phone` varchar(20) DEFAULT NULL,
+  `location` varchar(255) DEFAULT NULL,
+  `professional_title` varchar(255) DEFAULT NULL,
+  `professional_summary` text DEFAULT NULL,
+  `skills` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`skills`)),
+  `education` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`education`)),
+  `work_experience` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`work_experience`)),
+  `certifications` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`certifications`)),
+  `languages` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`languages`)),
+  `profile_completeness` int(11) DEFAULT 0,
+  `created_at` datetime DEFAULT current_timestamp(),
+  `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `candidate_skills`
+--
+
+CREATE TABLE `candidate_skills` (
+  `id` int(11) NOT NULL,
+  `id_candidate_profile` int(11) NOT NULL,
+  `skill_name` varchar(100) DEFAULT NULL,
+  `proficiency_level` enum('beginner','intermediate','advanced','expert') DEFAULT 'intermediate',
+  `years_of_experience` decimal(3,1) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -193,13 +275,6 @@ CREATE TABLE `offre_emploi` (
   `applications_count` int(11) DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `offre_emploi`
---
-
-INSERT INTO `offre_emploi` (`id_offer`, `titre`, `description`, `skills_needed`, `budget`, `duree`, `image_path`, `id_projet`, `id_recruteur`, `status`, `verification_status`, `verified_at`, `verified_by`, `moderation_note`, `created_at`, `location`, `contact_email`, `salary_min`, `salary_max`, `employment_type`, `experience_level`, `expires_at`, `views_count`, `applications_count`) VALUES
-(7, 'carnava', 'dadadadada', 'Bois sculpté', 50.00, '50', 'uploads/offers/offer_69e214684ffa5.png', 2, 3, 'active', 'not_verified', NULL, NULL, NULL, '2026-04-17 12:07:20', 'ariana', 'emir.naasri@gmail.com', NULL, NULL, NULL, NULL, NULL, 0, 0);
-
 -- --------------------------------------------------------
 
 --
@@ -288,14 +363,6 @@ CREATE TABLE `projet` (
   `id_createur` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
---
--- Dumping data for table `projet`
---
-
-INSERT INTO `projet` (`id`, `titre`, `description`, `skills_needed`, `budget_min`, `status`, `image_path`, `date_creation`, `id_categorie`, `budget_max`, `id_createur`) VALUES
-(1, 'Collection céramique 2026', '', NULL, 2000.00, 'open', NULL, '2026-04-11 16:03:26', 1, NULL, NULL),
-(2, 'Atelier broderie premium', '', NULL, 1500.00, 'open', NULL, '2026-04-11 16:03:26', 2, NULL, NULL);
-
 -- --------------------------------------------------------
 
 --
@@ -353,6 +420,38 @@ ALTER TABLE `application_offre`
   ADD PRIMARY KEY (`id_application`,`id_offre`),
   ADD KEY `fk_ao_offer` (`id_offre`),
   ADD KEY `fk_ao_application` (`id_application`);
+
+--
+-- Indexes for table `candidate_education`
+--
+ALTER TABLE `candidate_education`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_profile` (`id_candidate_profile`);
+
+--
+-- Indexes for table `candidate_experience`
+--
+ALTER TABLE `candidate_experience`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_profile` (`id_candidate_profile`);
+
+--
+-- Indexes for table `candidate_profile`
+--
+ALTER TABLE `candidate_profile`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `id_application` (`id_application`),
+  ADD KEY `idx_application` (`id_application`),
+  ADD KEY `idx_user` (`id_user`),
+  ADD KEY `idx_created` (`created_at`);
+
+--
+-- Indexes for table `candidate_skills`
+--
+ALTER TABLE `candidate_skills`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_profile` (`id_candidate_profile`),
+  ADD KEY `idx_skill` (`skill_name`);
 
 --
 -- Indexes for table `competences`
@@ -458,12 +557,36 @@ ALTER TABLE `user`
 -- AUTO_INCREMENT for table `application`
 --
 ALTER TABLE `application`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `application_messages`
 --
 ALTER TABLE `application_messages`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `candidate_education`
+--
+ALTER TABLE `candidate_education`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `candidate_experience`
+--
+ALTER TABLE `candidate_experience`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `candidate_profile`
+--
+ALTER TABLE `candidate_profile`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `candidate_skills`
+--
+ALTER TABLE `candidate_skills`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
@@ -506,7 +629,7 @@ ALTER TABLE `offer_views`
 -- AUTO_INCREMENT for table `offre_emploi`
 --
 ALTER TABLE `offre_emploi`
-  MODIFY `id_offer` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id_offer` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
 -- AUTO_INCREMENT for table `password_resets`
@@ -562,6 +685,31 @@ ALTER TABLE `application_messages`
 ALTER TABLE `application_offre`
   ADD CONSTRAINT `fk_ao_application` FOREIGN KEY (`id_application`) REFERENCES `application` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_ao_offer` FOREIGN KEY (`id_offre`) REFERENCES `offre_emploi` (`id_offer`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `candidate_education`
+--
+ALTER TABLE `candidate_education`
+  ADD CONSTRAINT `fk_candidate_education_profile` FOREIGN KEY (`id_candidate_profile`) REFERENCES `candidate_profile` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `candidate_experience`
+--
+ALTER TABLE `candidate_experience`
+  ADD CONSTRAINT `fk_candidate_experience_profile` FOREIGN KEY (`id_candidate_profile`) REFERENCES `candidate_profile` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `candidate_profile`
+--
+ALTER TABLE `candidate_profile`
+  ADD CONSTRAINT `fk_candidate_profile_app` FOREIGN KEY (`id_application`) REFERENCES `application` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_candidate_profile_user` FOREIGN KEY (`id_user`) REFERENCES `user` (`id_user`) ON DELETE SET NULL;
+
+--
+-- Constraints for table `candidate_skills`
+--
+ALTER TABLE `candidate_skills`
+  ADD CONSTRAINT `fk_candidate_skills_profile` FOREIGN KEY (`id_candidate_profile`) REFERENCES `candidate_profile` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `notifications`

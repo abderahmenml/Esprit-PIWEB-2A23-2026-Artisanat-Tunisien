@@ -13,6 +13,7 @@ $canManageProjects = in_array($userRole, ['entrepreneur', 'recruteur', 'admin'],
 
 $hasImageColumn = (bool)$pdo->query("SHOW COLUMNS FROM projet LIKE 'image_path'")->fetch();
 $hasSkillsColumn = (bool)$pdo->query("SHOW COLUMNS FROM projet LIKE 'skills_needed'")->fetch();
+$hasCreatorColumn = (bool)$pdo->query("SHOW COLUMNS FROM projet LIKE 'id_createur'")->fetch();
 $allSkills = $pdo->query('SELECT competence FROM competences ORDER BY competence ASC')->fetchAll();
 
 $formOpen = in_array((string)($_GET['notice'] ?? ''), ['invalid', 'denied'], true);
@@ -53,6 +54,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string)($_POST['action'] ?? '') ==
         $columns = ['titre', 'description', 'budget_min', 'status'];
         $values = [$titre, $description, $budgetMin, $status];
         $placeholders = ['?', '?', '?', '?'];
+
+        if ($hasCreatorColumn) {
+            $columns[] = 'id_createur';
+            $values[] = $userId;
+            $placeholders[] = '?';
+        }
 
         if ($hasSkillsColumn) {
             $columns[] = 'skills_needed';

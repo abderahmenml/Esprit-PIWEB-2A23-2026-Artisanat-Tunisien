@@ -26,7 +26,9 @@ $page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 12;
 
 // Fetch data for dropdowns
-$projects = $pdo->query('SELECT id, titre, budget_min, status FROM projet ORDER BY titre ASC')->fetchAll();
+$projectsStmt = $pdo->prepare('SELECT id, titre, budget_min, status, id_createur FROM projet ORDER BY (id_createur = ?) DESC, titre ASC');
+$projectsStmt->execute([$userId]);
+$projects = $projectsStmt->fetchAll();
 $competences = $pdo->query('SELECT competence FROM competences ORDER BY competence ASC')->fetchAll();
 $hasImageColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'image_path'")->fetch();
 $hasSkillsColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'skills_needed'")->fetch();
@@ -518,17 +520,17 @@ function normalize_offer_image_url(?string $imagePath): string
                         <?php if ($hasStatusColumn): ?>
                             <?php
                                 $mineStatus = (string)$mine['status'];
-                                $mineStatusClass = in_array($mineStatus, ['active', 'actif', 'open'], true) ? 'success' : (in_array($mineStatus, ['paused'], true) ? 'warning text-dark' : (in_array($mineStatus, ['draft'], true) ? 'secondary' : 'dark'));
+                                $mineStatusClass = in_array($mineStatus, ['active', 'actif', 'open'], true) ? 'bg-success' : (in_array($mineStatus, ['paused'], true) ? 'bg-warning text-dark' : (in_array($mineStatus, ['draft'], true) ? 'bg-secondary' : 'bg-dark'));
                             ?>
-                            <td><span class="badge bg-<?php echo $mineStatusClass; ?>"><?php echo h($mineStatus); ?></span></td>
+                            <td><span class="badge <?php echo $mineStatusClass; ?>"><?php echo h($mineStatus); ?></span></td>
                         <?php endif; ?>
                         <?php if ($hasVerificationColumn): ?>
                             <?php
                                 $mineVerificationStatus = isset($mine['verification_status']) ? (string)$mine['verification_status'] : 'not_verified';
                                 $mineVerificationLabel = $mineVerificationStatus === 'verified' ? 'Vérifiée' : 'Non vérifiée';
-                                $mineVerificationClass = $mineVerificationStatus === 'verified' ? 'success' : 'warning text-dark';
+                                $mineVerificationClass = $mineVerificationStatus === 'verified' ? 'bg-success' : 'bg-warning text-dark';
                             ?>
-                            <td><span class="badge bg-<?php echo $mineVerificationClass; ?>"><?php echo h($mineVerificationLabel); ?></span></td>
+                            <td><span class="badge <?php echo $mineVerificationClass; ?>"><?php echo h($mineVerificationLabel); ?></span></td>
                         <?php endif; ?>
                         <td class="text-end">
                             <a class="btn btn-sm btn-outline-primary" href="offres.php?edit=<?php echo (int)$mine['id_offer']; ?>#offerFormCollapse"><i class="fas fa-edit"></i></a>
@@ -612,14 +614,22 @@ function normalize_offer_image_url(?string $imagePath): string
                     <?php endif; ?>
                     <div class="col-md-6">
                         <label class="form-label fw-bold"><i class="fas fa-project-diagram me-1 text-success"></i>Projet associé *</label>
-                        <select class="form-select form-select-lg" name="id_projet" required>
-                            <option value="">-- Sélectionner un projet --</option>
-                            <?php foreach ($projects as $p): ?>
-                                <option value="<?php echo (int)$p['id']; ?>" <?php echo isset($editOffer['id_projet']) && (int)$editOffer['id_projet'] === (int)$p['id'] ? 'selected' : ''; ?>>
-                                    <?php echo h($p['titre']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <?php if (empty($projects)): ?>
+                            <select class="form-select form-select-lg" disabled>
+                                <option value="">Aucun projet disponible</option>
+                            </select>
+                            <small class="text-muted d-block mt-2">Créez d'abord un projet dans la section Projets pour pouvoir publier une offre.</small>
+                            <a class="btn btn-outline-success btn-sm mt-2" href="<?php echo h(app_url('controllers/projects/projets.php')); ?>">Créer un projet</a>
+                        <?php else: ?>
+                            <select class="form-select form-select-lg" name="id_projet" required>
+                                <option value="">-- Sélectionner un projet --</option>
+                                <?php foreach ($projects as $p): ?>
+                                    <option value="<?php echo (int)$p['id']; ?>" <?php echo isset($editOffer['id_projet']) && (int)$editOffer['id_projet'] === (int)$p['id'] ? 'selected' : ''; ?>>
+                                        <?php echo h($p['titre']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        <?php endif; ?>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-bold"><i class="fas fa-image me-1 text-success"></i>Image de l'offre</label>

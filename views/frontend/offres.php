@@ -20,7 +20,9 @@ $page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 12;
 
 // Fetch data for dropdowns
-$projects = $pdo->query('SELECT id, titre, budget_min, status FROM projet ORDER BY titre ASC')->fetchAll();
+$projectsStmt = $pdo->prepare('SELECT id, titre, budget_min, status, id_createur FROM projet ORDER BY (id_createur = ?) DESC, titre ASC');
+$projectsStmt->execute([$userId]);
+$projects = $projectsStmt->fetchAll();
 $competences = $pdo->query('SELECT competence FROM competences ORDER BY competence ASC')->fetchAll();
 $hasImageColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'image_path'")->fetch();
 $hasSkillsColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'skills_needed'")->fetch();
@@ -474,14 +476,22 @@ function h(?string $value): string
                     <?php endif; ?>
                     <div class="col-md-6">
                         <label class="form-label fw-bold"><i class="fas fa-project-diagram me-1 text-success"></i>Projet associé *</label>
-                        <select class="form-select form-select-lg" name="id_projet" required>
-                            <option value="">-- Sélectionner un projet --</option>
-                            <?php foreach ($projects as $p): ?>
-                                <option value="<?php echo (int)$p['id']; ?>" <?php echo isset($editOffer['id_projet']) && (int)$editOffer['id_projet'] === (int)$p['id'] ? 'selected' : ''; ?>>
-                                    <?php echo h($p['titre']); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
+                        <?php if (empty($projects)): ?>
+                            <select class="form-select form-select-lg" disabled>
+                                <option value="">Aucun projet disponible</option>
+                            </select>
+                            <small class="text-muted d-block mt-2">Créez d'abord un projet dans la section Projets pour pouvoir publier une offre.</small>
+                            <a class="btn btn-outline-success btn-sm mt-2" href="<?php echo htmlspecialchars(app_url('controllers/projects/projets.php')); ?>">Créer un projet</a>
+                        <?php else: ?>
+                            <select class="form-select form-select-lg" name="id_projet" required>
+                                <option value="">-- Sélectionner un projet --</option>
+                                <?php foreach ($projects as $p): ?>
+                                    <option value="<?php echo (int)$p['id']; ?>" <?php echo isset($editOffer['id_projet']) && (int)$editOffer['id_projet'] === (int)$p['id'] ? 'selected' : ''; ?>>
+                                        <?php echo h($p['titre']); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        <?php endif; ?>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-bold"><i class="fas fa-image me-1 text-success"></i>Image de l'offre</label>

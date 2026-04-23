@@ -26,7 +26,7 @@ $idApplication = (int)($_POST['id_application'] ?? 0);
 $idOffer = (int)($_POST['id_offer'] ?? 0);
 $status = trim((string)($_POST['status'] ?? ''));
 
-if ($idApplication <= 0 || $idOffer <= 0 || !in_array($status, ['pending', 'accepted', 'rejected'], true)) {
+if ($idApplication <= 0 || $idOffer <= 0 || !in_array($status, ['pending', 'submitted', 'reviewed', 'shortlisted', 'interview', 'accepted', 'rejected'], true)) {
     header('Location: ' . $baseUrl . 'controllers/offer_emploi/applications.php?id_offer=' . $idOffer);
     exit();
 }

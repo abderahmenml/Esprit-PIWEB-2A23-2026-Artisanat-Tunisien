@@ -8,6 +8,21 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+spl_autoload_register(static function (string $class): void {
+    $baseDir = dirname(__DIR__);
+    $candidates = [
+        $baseDir . '/models/' . $class . '.php',
+        $baseDir . '/services/' . $class . '.php',
+    ];
+
+    foreach ($candidates as $file) {
+        if (is_file($file)) {
+            require_once $file;
+            return;
+        }
+    }
+});
+
 $host = '127.0.0.1';
 $db   = 'herfa_tunisie';
 $user = 'root';

@@ -4,6 +4,7 @@
 
 declare(strict_types=1);
 require_once dirname(__DIR__, 2) . '/config/Config.php';
+require_once dirname(__DIR__) . '/partials/job_ui.php';
 require_role('recruteur');
 
 $userNom = (string)($_SESSION['nom'] ?? 'Utilisateur');
@@ -24,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['application_id'], $_POST['status'])) {
             $applicationId = (int)$_POST['application_id'];
             $status = trim((string)$_POST['status']);
-            if (in_array($status, ['pending', 'accepted', 'rejected'], true)) {
+            if (in_array($status, ['pending', 'submitted', 'reviewed', 'shortlisted', 'interview', 'accepted', 'rejected'], true)) {
                 $update = $pdo->prepare('UPDATE application SET status = ? WHERE id = ?');
                 $update->execute([$status, $applicationId]);
             }
@@ -66,23 +67,23 @@ $applications = $appStmt->fetchAll();
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <title>Dashboard Recruteur | حرفة Tunisie</title>
-    <link rel="icon" type="image/x-icon" href="assets/favicon.ico" />
+    <link rel="icon" type="image/x-icon" href="<?php echo htmlspecialchars(job_asset('assets/favicon.ico'), ENT_QUOTES, 'UTF-8'); ?>" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-    <link href="<?php echo htmlspecialchars($baseUrl . 'public/assets/css/styles.css', ENT_QUOTES, 'UTF-8'); ?>" rel="stylesheet" />
+    <link href="<?php echo htmlspecialchars(job_asset('assets/css/styles.css'), ENT_QUOTES, 'UTF-8'); ?>" rel="stylesheet" />
     <style>
         .dashboard-navbar { background-color: rgba(59, 35, 20, 0.95) !important; padding: 1rem 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .dashboard-navbar .nav-link { color: #F5ECD7 !important; font-weight: 600; margin: 0 0.35rem; }
         .dashboard-navbar .nav-link:hover { color: #C49A6C !important; }
         .user-greeting { color: #C49A6C; font-weight: bold; margin-right: 1rem; }
         .btn-logout { background: #2E6B3E !important; color: white !important; padding: 0.45rem 0.9rem; border-radius: 4px; text-decoration: none; font-weight: 600; }
-        .hero-banner { background: linear-gradient(135deg, rgba(139, 90, 58, 0.75), rgba(46, 107, 62, 0.75)), url('<?php echo htmlspecialchars($baseUrl . 'public/assets/img/item_pics/IMG_3043.JPG', ENT_QUOTES, 'UTF-8'); ?>'); background-size: cover; background-position: center; color: #F5ECD7; padding: 3.2rem 0; text-align: center; border-bottom: 5px solid #8B5A3A; margin-bottom: 2rem; }
+        .hero-banner { background: linear-gradient(135deg, rgba(139, 90, 58, 0.75), rgba(46, 107, 62, 0.75)), url('<?php echo htmlspecialchars(job_asset('assets/img/item_pics/IMG_3043.JPG'), ENT_QUOTES, 'UTF-8'); ?>'); background-size: cover; background-position: center; color: #F5ECD7; padding: 3.2rem 0; text-align: center; border-bottom: 5px solid #8B5A3A; margin-bottom: 2rem; }
     </style>
 </head>
 <body>
 <nav class="navbar navbar-expand-lg dashboard-navbar sticky-top">
     <div class="container-fluid">
         <a class="navbar-brand" href="<?php echo htmlspecialchars($baseUrl . 'controllers/home.php', ENT_QUOTES, 'UTF-8'); ?>">
-            <img src="<?php echo htmlspecialchars($baseUrl . 'public/assets/img/logo_herfa.png', ENT_QUOTES, 'UTF-8'); ?>" alt="Logo" height="40" style="margin-right: 0.5rem;">
+            <img src="<?php echo htmlspecialchars(job_asset('assets/img/logo_herfa.png'), ENT_QUOTES, 'UTF-8'); ?>" alt="Logo" height="40" style="margin-right: 0.5rem;">
             <span style="color: #F5ECD7; font-weight: bold;">حرفة Tunisie</span>
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"><span class="navbar-toggler-icon"></span></button>
@@ -119,7 +120,7 @@ $applications = $appStmt->fetchAll();
                             <strong><?php echo htmlspecialchars($o['titre']); ?></strong>
                             — Budget: <?php echo htmlspecialchars((string)$o['budget']); ?>
                             — Durée: <?php echo htmlspecialchars((string)$o['duree']); ?>
-                            — Statut: <span class="badge bg-secondary"><?php echo htmlspecialchars((string)($o['status'] ?? 'draft')); ?></span>
+                            — Statut: <span class="badge <?php echo job_offer_status_badge_class((string)($o['status'] ?? 'draft')); ?>"><?php echo htmlspecialchars(job_offer_status_label((string)($o['status'] ?? 'draft')), ENT_QUOTES, 'UTF-8'); ?></span>
                             — Vérification:
                             <?php if ((string)($o['verification_status'] ?? 'not_verified') === 'verified'): ?>
                                 <span class="badge bg-success">Vérifiée</span>
@@ -168,6 +169,9 @@ $applications = $appStmt->fetchAll();
                             <div class="col-md-5">
                                 <select class="form-control" name="status">
                                     <option value="pending" <?php echo $app['status'] === 'pending' ? 'selected' : ''; ?>>pending</option>
+                                    <option value="reviewed" <?php echo $app['status'] === 'reviewed' ? 'selected' : ''; ?>>reviewed</option>
+                                    <option value="shortlisted" <?php echo $app['status'] === 'shortlisted' ? 'selected' : ''; ?>>shortlisted</option>
+                                    <option value="interview" <?php echo $app['status'] === 'interview' ? 'selected' : ''; ?>>interview</option>
                                     <option value="accepted" <?php echo $app['status'] === 'accepted' ? 'selected' : ''; ?>>accepted</option>
                                     <option value="rejected" <?php echo $app['status'] === 'rejected' ? 'selected' : ''; ?>>rejected</option>
                                 </select>
@@ -190,6 +194,6 @@ $applications = $appStmt->fetchAll();
     <div class="container"><p class="m-0 small">Copyright &copy; حرفة Tunisie 2026</p></div>
 </footer>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="<?php echo htmlspecialchars($baseUrl . 'public/assets/js/scripts.js', ENT_QUOTES, 'UTF-8'); ?>"></script>
+<script src="<?php echo htmlspecialchars(job_asset('assets/js/scripts.js'), ENT_QUOTES, 'UTF-8'); ?>"></script>
 </body>
 </html>

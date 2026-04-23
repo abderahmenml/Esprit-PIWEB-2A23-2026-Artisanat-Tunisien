@@ -1,76 +1,120 @@
 <?php
 // home.php
 // Enhanced Main Dashboard for حرفة Tunisie
-// Version 2.0 - Modern UI, better performance, dynamic content
+// Version 3.0 - Enhanced Security, Bug Fixes, Modern UI, Performance Optimizations
 
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/config/Config.php';
 require_auth();
 
 $userId = (int)$_SESSION['user_id'];
-$userNom = $_SESSION['nom'] ?? 'Utilisateur';
-$userPrenom = $_SESSION['prenom'] ?? '';
+$userNom = trim($_SESSION['nom'] ?? 'Utilisateur');
+$userPrenom = trim($_SESSION['prenom'] ?? '');
 $userRole = $_SESSION['role'] ?? 'artisan';
 $userEmail = $_SESSION['email'] ?? '';
-$baseUrl = app_base_url();
+$baseUrl = rtrim(app_base_url(), '/');
 
+// Enhanced helper functions with better type safety
 function has_table(PDO $pdo, string $table): bool
 {
-    $stmt = $pdo->prepare(
-        'SELECT COUNT(*)
-         FROM information_schema.TABLES
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?'
-    );
-    $stmt->execute([$table]);
-    return ((int)$stmt->fetchColumn()) > 0;
+    try {
+        $stmt = $pdo->prepare("SHOW TABLES LIKE ?");
+        $stmt->execute([$table]);
+        return $stmt->rowCount() > 0;
+    } catch (PDOException $e) {
+        error_log("Table check failed for {$table}: " . $e->getMessage());
+        return false;
+    }
 }
 
 function has_column(PDO $pdo, string $table, string $column): bool
 {
-    $stmt = $pdo->prepare(
-        'SELECT COUNT(*)
-         FROM information_schema.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
-    );
-    $stmt->execute([$table, $column]);
-    return ((int)$stmt->fetchColumn()) > 0;
+    try {
+        if (!has_table($pdo, $table)) return false;
+        $stmt = $pdo->prepare("SHOW COLUMNS FROM `{$table}` LIKE ?");
+        $stmt->execute([$column]);
+        return $stmt->rowCount() > 0;
+    } catch (PDOException $e) {
+        error_log("Column check failed for {$table}.{$column}: " . $e->getMessage());
+        return false;
+    }
 }
 
-$projHasDescription = has_column($pdo, 'projet', 'description');
-$projHasBudgetMax = has_column($pdo, 'projet', 'budget_max');
-$projHasStatus = has_column($pdo, 'projet', 'status');
-$projHasDateCreation = has_column($pdo, 'projet', 'date_creation');
-$projHasImagePath = has_column($pdo, 'projet', 'image_path');
-$projHasCreator = has_column($pdo, 'projet', 'id_createur');
+// Cache database schema checks to avoid repeated queries
+$schemaCache = [];
 
-$offerHasStatus = has_column($pdo, 'offre_emploi', 'status');
-$offerHasVerification = has_column($pdo, 'offre_emploi', 'verification_status');
-$offerHasLocation = has_column($pdo, 'offre_emploi', 'location');
-$offerHasCreatedAt = has_column($pdo, 'offre_emploi', 'created_at');
-$offerHasImagePath = has_column($pdo, 'offre_emploi', 'image_path');
+function cached_has_table(PDO $pdo, string $table): bool
+{
+    global $schemaCache;
+    $key = "table_{$table}";
+    if (!isset($schemaCache[$key])) {
+        $schemaCache[$key] = has_table($pdo, $table);
+    }
+    return $schemaCache[$key];
+}
 
-$userHasEntreprise = has_column($pdo, 'user', 'entreprise_name');
-$userHasAvatar = has_column($pdo, 'user', 'avatar');
-$userHasVille = has_column($pdo, 'user', 'ville');
-$userHasStatus = has_column($pdo, 'user', 'status');
-$userHasEtatCompte = has_column($pdo, 'user', 'etat_compte');
-$userHasDateCreation = has_column($pdo, 'user', 'date_creation');
+function cached_has_column(PDO $pdo, string $table, string $column): bool
+{
+    global $schemaCache;
+    $key = "column_{$table}_{$column}";
+    if (!isset($schemaCache[$key])) {
+        $schemaCache[$key] = has_column($pdo, $table, $column);
+    }
+    return $schemaCache[$key];
+}
 
-$hasProfileTable = has_table($pdo, 'profil_profetionnel');
-$profileHasSpecialite = $hasProfileTable && has_column($pdo, 'profil_profetionnel', 'specialite');
-$profileHasBio = $hasProfileTable && has_column($pdo, 'profil_profetionnel', 'bio');
-$profileHasExperience = $hasProfileTable && has_column($pdo, 'profil_profetionnel', 'experience');
+// Schema checks with caching
+$projHasDescription = cached_has_column($pdo, 'projet', 'description');
+$projHasBudgetMax = cached_has_column($pdo, 'projet', 'budget_max');
+$projHasStatus = cached_has_column($pdo, 'projet', 'status');
+$projHasDateCreation = cached_has_column($pdo, 'projet', 'date_creation');
+$projHasImagePath = cached_has_column($pdo, 'projet', 'image_path');
+$projHasCreator = cached_has_column($pdo, 'projet', 'id_createur');
 
-$appHasMessage = has_column($pdo, 'application', 'message');
-$hasNotificationsTable = has_table($pdo, 'notifications');
-$hasFormationsTable = has_table($pdo, 'Formations') || has_table($pdo, 'formations');
+$offerHasStatus = cached_has_column($pdo, 'offre_emploi', 'status');
+$offerHasVerification = cached_has_column($pdo, 'offre_emploi', 'verification_status');
+$offerHasLocation = cached_has_column($pdo, 'offre_emploi', 'location');
+$offerHasCreatedAt = cached_has_column($pdo, 'offre_emploi', 'created_at');
+$offerHasImagePath = cached_has_column($pdo, 'offre_emploi', 'image_path');
 
-$formationsTable = has_table($pdo, 'Formations') ? 'Formations' : (has_table($pdo, 'formations') ? 'formations' : null);
+$userHasEntreprise = cached_has_column($pdo, 'user', 'entreprise_name');
+$userHasAvatar = cached_has_column($pdo, 'user', 'avatar');
+$userHasVille = cached_has_column($pdo, 'user', 'ville');
+$userHasStatus = cached_has_column($pdo, 'user', 'status');
+$userHasEtatCompte = cached_has_column($pdo, 'user', 'etat_compte');
+$userHasDateCreation = cached_has_column($pdo, 'user', 'date_creation');
 
-// Fetch dashboard statistics
-$stats = [];
+$hasProfileTable = cached_has_table($pdo, 'profil_profetionnel');
+$profileHasSpecialite = $hasProfileTable && cached_has_column($pdo, 'profil_profetionnel', 'specialité');
+$profileHasBio = $hasProfileTable && cached_has_column($pdo, 'profil_profetionnel', 'bio');
+$profileHasExperience = $hasProfileTable && cached_has_column($pdo, 'profil_profetionnel', 'experience');
+
+$appHasMessage = cached_has_column($pdo, 'application', 'message');
+$hasNotificationsTable = cached_has_table($pdo, 'notifications');
+$hasFormationsTable = cached_has_table($pdo, 'Formations') || cached_has_table($pdo, 'formations');
+
+$formationsTable = null;
+if (cached_has_table($pdo, 'Formations')) {
+    $formationsTable = 'Formations';
+} elseif (cached_has_table($pdo, 'formations')) {
+    $formationsTable = 'formations';
+}
+
+// Fetch dashboard statistics with better error handling
+$stats = [
+    'total_projects' => 0,
+    'total_offers' => 0,
+    'total_artisans' => 0,
+    'total_formations' => 0
+];
+
 try {
-    $projectWhere = $projHasStatus ? " WHERE status IN ('actif', 'active', 'open')" : '';
+    // Total projects count with status filtering
+    $projectWhere = $projHasStatus ? "WHERE status IN ('actif', 'active', 'open', 'published')" : '';
+    $projectCountStmt = $pdo->query("SELECT COUNT(*) FROM projet {$projectWhere}");
+    $stats['total_projects'] = (int)$projectCountStmt->fetchColumn();
+    
+    // Total active job offers with verification
     $offerWhereParts = [];
     if ($offerHasStatus) {
         $offerWhereParts[] = "status IN ('published', 'active', 'actif', 'open')";
@@ -78,199 +122,282 @@ try {
     if ($offerHasVerification) {
         $offerWhereParts[] = "verification_status = 'verified'";
     }
-    $offerWhere = count($offerWhereParts) > 0 ? (' WHERE ' . implode(' AND ', $offerWhereParts)) : '';
-
-    // Total projects count
-    $stats['total_projects'] = (int)$pdo->query("SELECT COUNT(*) FROM projet{$projectWhere}")->fetchColumn();
-    // Total active job offers
-    $stats['total_offers'] = (int)$pdo->query("SELECT COUNT(*) FROM offre_emploi{$offerWhere}")->fetchColumn();
-    // Total artisans
-    $stats['total_artisans'] = (int)$pdo->query("SELECT COUNT(*) FROM `user` WHERE role = 'artisan'")->fetchColumn();
+    $offerWhere = !empty($offerWhereParts) ? 'WHERE ' . implode(' AND ', $offerWhereParts) : '';
+    $offerCountStmt = $pdo->query("SELECT COUNT(*) FROM offre_emploi {$offerWhere}");
+    $stats['total_offers'] = (int)$offerCountStmt->fetchColumn();
+    
+    // Total artisans with status check
+    $artisanWhere = "role = 'artisan'";
+    if ($userHasStatus) {
+        $artisanWhere .= " AND status = 'active'";
+    } elseif ($userHasEtatCompte) {
+        $artisanWhere .= " AND etat_compte = 'actif'";
+    }
+    $artisanCountStmt = $pdo->query("SELECT COUNT(*) FROM `user` WHERE {$artisanWhere}");
+    $stats['total_artisans'] = (int)$artisanCountStmt->fetchColumn();
+    
     // Total formations
     if ($hasFormationsTable && $formationsTable !== null) {
-        $stats['total_formations'] = (int)$pdo->query("SELECT COUNT(*) FROM {$formationsTable}")->fetchColumn();
-    } else {
-        $stats['total_formations'] = 0;
+        $formationCountStmt = $pdo->query("SELECT COUNT(*) FROM {$formationsTable}");
+        $stats['total_formations'] = (int)$formationCountStmt->fetchColumn();
     }
 } catch (PDOException $e) {
-    // Some tables might not exist yet
-    $stats = ['total_projects' => 0, 'total_offers' => 0, 'total_artisans' => 0, 'total_formations' => 0];
+    error_log("Dashboard stats error: " . $e->getMessage());
+    // Keep default zeros
 }
 
-// Fetch featured projects with additional details
-$projectDescriptionSql = $projHasDescription ? 'description' : "'' AS description";
-$projectBudgetMaxSql = $projHasBudgetMax ? 'budget_max' : 'NULL AS budget_max';
-$projectStatusSql = $projHasStatus ? 'status' : "'open' AS status";
-$projectDateSql = $projHasDateCreation ? 'date_creation' : 'NOW() AS date_creation';
-$projectImageSql = $projHasImagePath ? 'image_path' : "'' AS image_path";
-$projectWhereSql = $projHasStatus ? "WHERE status IN ('actif', 'active', 'open')" : '';
-$projectOrderSql = $projHasDateCreation ? 'date_creation DESC' : 'id DESC';
+// Fetch featured projects with proper escaping
+$projects = [];
+try {
+    $projectDescriptionSql = $projHasDescription ? 'description' : "'' AS description";
+    $projectBudgetMaxSql = $projHasBudgetMax ? 'budget_max' : 'NULL AS budget_max';
+    $projectStatusSql = $projHasStatus ? 'status' : "'open' AS status";
+    $projectDateSql = $projHasDateCreation ? 'date_creation' : 'NOW() AS date_creation';
+    $projectImageSql = $projHasImagePath ? 'image_path' : "'' AS image_path";
+    $projectWhereSql = $projHasStatus ? "WHERE status IN ('actif', 'active', 'open', 'published')" : '';
+    $projectOrderSql = $projHasDateCreation ? 'date_creation DESC' : 'id DESC';
+    
+    $projectsStmt = $pdo->query(
+        "SELECT id, titre, {$projectDescriptionSql}, budget_min, {$projectBudgetMaxSql}, 
+                {$projectStatusSql}, {$projectDateSql}, {$projectImageSql}
+         FROM projet
+         {$projectWhereSql}
+         ORDER BY {$projectOrderSql}
+         LIMIT 6"
+    );
+    $projects = $projectsStmt->fetchAll() ?: [];
+} catch (PDOException $e) {
+    error_log("Projects fetch error: " . $e->getMessage());
+}
 
-$projectsStmt = $pdo->query(
-    "SELECT id, titre, {$projectDescriptionSql}, budget_min, {$projectBudgetMaxSql}, {$projectStatusSql}, {$projectDateSql}, {$projectImageSql}
-     FROM projet
-     {$projectWhereSql}
-     ORDER BY {$projectOrderSql}
-     LIMIT 6"
-);
-$projects = $projectsStmt->fetchAll() ?: [];
-
-// Fetch formations with rating info
+// Fetch formations with error handling
 $formations = [];
 try {
     if ($hasFormationsTable && $formationsTable !== null) {
         $formStmt = $pdo->query(
             "SELECT id, titre, description, niveau, prix, duree, image_url, formateur
              FROM {$formationsTable}
+             WHERE status = 'published' OR status IS NULL
              ORDER BY id DESC
              LIMIT 4"
         );
         $formations = $formStmt->fetchAll() ?: [];
     }
 } catch (PDOException $e) {
-    // Table may not exist
+    error_log("Formations fetch error: " . $e->getMessage());
 }
 
-// Fetch job offers with company info
-$offerLocationSql = $offerHasLocation ? 'o.location' : "'' AS location";
-$offerCreatedAtSql = $offerHasCreatedAt ? 'o.created_at' : 'NOW() AS created_at';
-$offerImageSql = $offerHasImagePath ? 'o.image_path' : "'' AS image_path";
-$offerEntrepriseSql = $userHasEntreprise ? 'u.entreprise_name' : "'' AS entreprise_name";
-$offerWhereParts = [];
-if ($offerHasStatus) {
-    $offerWhereParts[] = "o.status IN ('published', 'active', 'actif', 'open')";
+// Fetch job offers with proper joins and error handling
+$offers = [];
+try {
+    $offerLocationSql = $offerHasLocation ? 'o.location' : "'' AS location";
+    $offerCreatedAtSql = $offerHasCreatedAt ? 'o.created_at' : 'NOW() AS created_at';
+    $offerImageSql = $offerHasImagePath ? 'o.image_path' : "'' AS image_path";
+    $offerEntrepriseSql = $userHasEntreprise ? 'u.entreprise_name' : "'' AS entreprise_name";
+    
+    $offerWhereParts = [];
+    if ($offerHasStatus) {
+        $offerWhereParts[] = "o.status IN ('published', 'active', 'actif', 'open')";
+    }
+    if ($offerHasVerification) {
+        $offerWhereParts[] = "o.verification_status = 'verified'";
+    }
+    $offerWhereSql = !empty($offerWhereParts) ? 'WHERE ' . implode(' AND ', $offerWhereParts) : '';
+    $offerOrderSql = $offerHasCreatedAt ? 'o.created_at DESC' : 'o.id_offer DESC';
+    
+    $offersStmt = $pdo->query(
+        "SELECT o.id_offer, o.titre, o.description, o.budget, o.duree, {$offerLocationSql}, 
+                {$offerCreatedAtSql}, {$offerImageSql},
+                u.nom, u.prenom, {$offerEntrepriseSql}
+         FROM offre_emploi o
+         INNER JOIN `user` u ON o.id_recruteur = u.id_user
+         {$offerWhereSql}
+         ORDER BY {$offerOrderSql}
+         LIMIT 6"
+    );
+    $offers = $offersStmt->fetchAll() ?: [];
+} catch (PDOException $e) {
+    error_log("Offers fetch error: " . $e->getMessage());
 }
-if ($offerHasVerification) {
-    $offerWhereParts[] = "o.verification_status = 'verified'";
+
+// Fetch artisans with profile info
+$artisans = [];
+try {
+    $artisanAvatarSql = $userHasAvatar ? 'u.avatar' : "'' AS avatar";
+    $artisanVilleSql = $userHasVille ? 'u.ville' : "'' AS ville";
+    $artisanSpecialiteSql = $hasProfileTable && $profileHasSpecialite ? 'p.specialité' : "'' AS specialite";
+    
+    $artisanWhere = "u.role = 'artisan'";
+    if ($userHasStatus) {
+        $artisanWhere .= " AND u.status = 'active'";
+    } elseif ($userHasEtatCompte) {
+        $artisanWhere .= " AND u.etat_compte = 'actif'";
+    }
+    $artisanOrderSql = $userHasDateCreation ? 'u.date_creation DESC' : 'u.id_user DESC';
+    
+    $artisansStmt = $pdo->query(
+        "SELECT u.id_user, u.nom, u.prenom, {$artisanAvatarSql}, {$artisanVilleSql}, {$artisanSpecialiteSql}
+         FROM `user` u
+         LEFT JOIN profil_profetionnel p ON u.id_user = p.id_user
+         WHERE {$artisanWhere}
+         ORDER BY {$artisanOrderSql}
+         LIMIT 4"
+    );
+    $artisans = $artisansStmt->fetchAll() ?: [];
+} catch (PDOException $e) {
+    error_log("Artisans fetch error: " . $e->getMessage());
 }
-$offerWhereSql = count($offerWhereParts) > 0 ? ('WHERE ' . implode(' AND ', $offerWhereParts)) : '';
-$offerOrderSql = $offerHasCreatedAt ? 'o.created_at DESC' : 'o.id_offer DESC';
 
-$offersStmt = $pdo->query(
-    "SELECT o.id_offer, o.titre, o.description, o.budget, o.duree, {$offerLocationSql}, {$offerCreatedAtSql}, {$offerImageSql},
-            u.nom, u.prenom, {$offerEntrepriseSql}
-     FROM offre_emploi o
-     JOIN `user` u ON o.id_recruteur = u.id_user
-     {$offerWhereSql}
-     ORDER BY {$offerOrderSql}
-     LIMIT 6"
-);
-$offers = $offersStmt->fetchAll() ?: [];
-
-// Fetch artisans with profile info and ratings
-$artisanAvatarSql = $userHasAvatar ? 'u.avatar' : "'' AS avatar";
-$artisanVilleSql = $userHasVille ? 'u.ville' : "'' AS ville";
-$artisanProfileSelect = $hasProfileTable ? ', p.*' : '';
-$artisanProfileJoin = $hasProfileTable ? 'LEFT JOIN profil_profetionnel p ON u.id_user = p.id_user' : '';
-$artisanStatusWhere = '';
-if ($userHasStatus) {
-    $artisanStatusWhere = " AND u.status IN ('active', 'actif')";
-} elseif ($userHasEtatCompte) {
-    $artisanStatusWhere = " AND u.etat_compte = 'actif'";
-}
-$artisanOrderSql = $userHasDateCreation ? 'u.date_creation DESC' : 'u.id_user DESC';
-
-$artisansStmt = $pdo->query(
-    "SELECT u.id_user, u.nom, u.prenom, {$artisanAvatarSql}, {$artisanVilleSql}{$artisanProfileSelect}
-     FROM `user` u
-    {$artisanProfileJoin}
-     WHERE u.role = 'artisan'{$artisanStatusWhere}
-     ORDER BY {$artisanOrderSql}
-     LIMIT 4"
-);
-$artisans = $artisansStmt->fetchAll() ?: [];
-
-// Fetch user-specific data
+// Fetch user-specific data with prepared statements
 $userApplications = [];
 $userOffers = [];
 $userProjects = [];
 $notifications = [];
+$unreadNotificationCount = 0;
 
 if ($userRole === 'artisan') {
-    // Fetch artisan's applications with status
-    $appMessageSql = $appHasMessage ? 'a.message' : "'' AS message";
-    $appEntrepriseSql = $userHasEntreprise ? 'u.entreprise_name' : "'' AS entreprise_name";
-
-    $appStmt = $pdo->prepare(
-        "SELECT a.id, a.status, a.date_creation, {$appMessageSql},
-                o.titre AS offre_titre, o.budget, u.nom, u.prenom, {$appEntrepriseSql}
-         FROM application a
-         JOIN application_offre ao ON a.id = ao.id_application
-         JOIN offre_emploi o ON ao.id_offre = o.id_offer
-         JOIN `user` u ON o.id_recruteur = u.id_user
-         WHERE a.id_user = ?
-         ORDER BY a.date_creation DESC
-         LIMIT 5"
-    );
-    $appStmt->execute([$userId]);
-    $userApplications = $appStmt->fetchAll() ?: [];
+    // Fetch artisan's applications
+    try {
+        $appMessageSql = $appHasMessage ? 'a.message' : "'' AS message";
+        $appEntrepriseSql = $userHasEntreprise ? 'u.entreprise_name' : "'' AS entreprise_name";
+        
+        $appStmt = $pdo->prepare(
+            "SELECT a.id, a.status, a.date_creation, {$appMessageSql},
+                    o.titre AS offre_titre, o.budget, u.nom, u.prenom, {$appEntrepriseSql}
+             FROM application a
+             INNER JOIN application_offre ao ON a.id = ao.id_application
+             INNER JOIN offre_emploi o ON ao.id_offre = o.id_offer
+             INNER JOIN `user` u ON o.id_recruteur = u.id_user
+             WHERE a.id_user = ?
+             ORDER BY a.date_creation DESC
+             LIMIT 5"
+        );
+        $appStmt->execute([$userId]);
+        $userApplications = $appStmt->fetchAll() ?: [];
+    } catch (PDOException $e) {
+        error_log("User applications fetch error: " . $e->getMessage());
+    }
     
     // Fetch notifications for artisan
     if ($hasNotificationsTable) {
         try {
+            // Get unread count
+            $notifCountStmt = $pdo->prepare(
+                "SELECT COUNT(*) FROM notifications 
+                 WHERE user_id = ? AND is_read = 0"
+            );
+            $notifCountStmt->execute([$userId]);
+            $unreadNotificationCount = (int)$notifCountStmt->fetchColumn();
+            
+            // Get notifications
             $notifStmt = $pdo->prepare(
-                "SELECT * FROM notifications 
-                 WHERE user_id = ? AND is_read = 0
+                "SELECT id, title, message, type, is_read, created_at 
+                 FROM notifications 
+                 WHERE user_id = ?
                  ORDER BY created_at DESC
                  LIMIT 5"
             );
             $notifStmt->execute([$userId]);
             $notifications = $notifStmt->fetchAll() ?: [];
         } catch (Throwable $e) {
-            $notifications = [];
+            error_log("Notifications fetch error: " . $e->getMessage());
         }
     }
     
 } elseif ($userRole === 'recruteur' || $userRole === 'entrepreneur') {
-    // Fetch recruiter's job offers with application counts
-    $recruiterOfferStatusSql = $offerHasStatus ? 'o.status' : "'active' AS status";
-    $recruiterOfferCreatedSql = $offerHasCreatedAt ? 'o.created_at' : 'NOW() AS created_at';
-    $recruiterOfferOrderSql = $offerHasCreatedAt ? 'o.created_at DESC' : 'o.id_offer DESC';
-
-    $offStmt = $pdo->prepare(
-        "SELECT o.id_offer, o.titre, o.budget, o.duree, {$recruiterOfferStatusSql}, {$recruiterOfferCreatedSql},
-                COUNT(DISTINCT ao.id_application) AS app_count,
-                COUNT(DISTINCT CASE WHEN a.status = 'pending' THEN a.id END) AS pending_count
-         FROM offre_emploi o
-         LEFT JOIN application_offre ao ON o.id_offer = ao.id_offre
-         LEFT JOIN application a ON ao.id_application = a.id
-         WHERE o.id_recruteur = ?
-         GROUP BY o.id_offer
-         ORDER BY {$recruiterOfferOrderSql}
-         LIMIT 5"
-    );
-    $offStmt->execute([$userId]);
-    $userOffers = $offStmt->fetchAll() ?: [];
+    // Fetch recruiter's job offers
+    try {
+        $recruiterOfferStatusSql = $offerHasStatus ? 'o.status' : "'active' AS status";
+        $recruiterOfferCreatedSql = $offerHasCreatedAt ? 'o.created_at' : 'NOW() AS created_at';
+        $recruiterOfferOrderSql = $offerHasCreatedAt ? 'o.created_at DESC' : 'o.id_offer DESC';
+        
+        $offStmt = $pdo->prepare(
+            "SELECT o.id_offer, o.titre, o.budget, o.duree, {$recruiterOfferStatusSql}, 
+                    {$recruiterOfferCreatedSql},
+                    COUNT(DISTINCT ao.id_application) AS app_count,
+                    COUNT(DISTINCT CASE WHEN a.status = 'pending' THEN a.id END) AS pending_count
+             FROM offre_emploi o
+             LEFT JOIN application_offre ao ON o.id_offer = ao.id_offre
+             LEFT JOIN application a ON ao.id_application = a.id
+             WHERE o.id_recruteur = ?
+             GROUP BY o.id_offer
+             ORDER BY {$recruiterOfferOrderSql}
+             LIMIT 5"
+        );
+        $offStmt->execute([$userId]);
+        $userOffers = $offStmt->fetchAll() ?: [];
+    } catch (PDOException $e) {
+        error_log("User offers fetch error: " . $e->getMessage());
+    }
     
     // Fetch recruiter's projects
     if ($projHasCreator) {
-        $userProjBudgetMaxSql = $projHasBudgetMax ? 'budget_max' : 'NULL AS budget_max';
-        $userProjStatusSql = $projHasStatus ? 'status' : "'open' AS status";
-        $userProjDateSql = $projHasDateCreation ? 'date_creation' : 'NOW() AS date_creation';
-        $userProjOrderSql = $projHasDateCreation ? 'date_creation DESC' : 'id DESC';
-
-        $projStmt = $pdo->prepare(
-            "SELECT id, titre, budget_min, {$userProjBudgetMaxSql}, {$userProjStatusSql}, {$userProjDateSql}
-             FROM projet
-             WHERE id_createur = ?
-             ORDER BY {$userProjOrderSql}
-             LIMIT 5"
-        );
-        $projStmt->execute([$userId]);
-        $userProjects = $projStmt->fetchAll() ?: [];
+        try {
+            $userProjBudgetMaxSql = $projHasBudgetMax ? 'budget_max' : 'NULL AS budget_max';
+            $userProjStatusSql = $projHasStatus ? 'status' : "'open' AS status";
+            $userProjDateSql = $projHasDateCreation ? 'date_creation' : 'NOW() AS date_creation';
+            $userProjOrderSql = $projHasDateCreation ? 'date_creation DESC' : 'id DESC';
+            
+            $projStmt = $pdo->prepare(
+                "SELECT id, titre, budget_min, {$userProjBudgetMaxSql}, {$userProjStatusSql}, 
+                        {$userProjDateSql}
+                 FROM projet
+                 WHERE id_createur = ?
+                 ORDER BY {$userProjOrderSql}
+                 LIMIT 5"
+            );
+            $projStmt->execute([$userId]);
+            $userProjects = $projStmt->fetchAll() ?: [];
+        } catch (PDOException $e) {
+            error_log("User projects fetch error: " . $e->getMessage());
+        }
     }
 }
 
-// Helper function
+// Helper functions
 function h(?string $value): string
 {
-    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars((string)$value, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 }
 
-// Format currency
 function formatCurrency($amount): string
 {
-    return number_format((float)$amount, 0, '.', ' ') . ' TND';
+    $floatAmount = is_numeric($amount) ? (float)$amount : 0;
+    return number_format($floatAmount, 0, '.', ' ') . ' TND';
+}
+
+function truncateText(string $text, int $length = 100, string $ellipsis = '...'): string
+{
+    $text = trim($text);
+    if (mb_strlen($text) <= $length) {
+        return $text;
+    }
+    return mb_substr($text, 0, $length) . $ellipsis;
+}
+
+function getStatusBadgeClass(string $status): string
+{
+    return match (strtolower($status)) {
+        'accepted', 'approved', 'verified' => 'success',
+        'pending', 'submitted', 'reviewed' => 'warning',
+        'rejected', 'cancelled' => 'danger',
+        'active', 'published', 'open' => 'success',
+        'draft' => 'secondary',
+        default => 'info'
+    };
+}
+
+function getRelativeTime(string $datetime): string
+{
+    $timestamp = strtotime($datetime);
+    $diff = time() - $timestamp;
+    
+    if ($diff < 60) return 'à l\'instant';
+    if ($diff < 3600) return 'il y a ' . floor($diff / 60) . ' min';
+    if ($diff < 86400) return 'il y a ' . floor($diff / 3600) . ' h';
+    if ($diff < 604800) return 'il y a ' . floor($diff / 86400) . ' j';
+    
+    return date('d/m/Y', $timestamp);
 }
 
 function resolveOfferImageUrl(?string $imagePath): string
@@ -279,35 +406,55 @@ function resolveOfferImageUrl(?string $imagePath): string
     if ($path === '') {
         return '';
     }
-
+    
     if (preg_match('#^(https?:)?//#i', $path) === 1 || str_starts_with($path, 'data:')) {
         return $path;
     }
-
-    $path = str_replace('\\\\', '/', $path);
+    
+    $path = str_replace(['\\\\', '\\'], '/', $path);
     if (str_starts_with($path, '/')) {
         return $path;
     }
-
+    
     $path = ltrim($path, './');
     if (str_starts_with($path, 'uploads/')) {
         return '/herfa/controllers/offer_emploi/' . $path;
     }
-
+    
     return '/herfa/' . ltrim($path, '/');
 }
+
+// Generate CSRF token for forms if not exists
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrfToken = $_SESSION['csrf_token'];
+
+// Get user initials for avatar placeholder
+$userInitials = strtoupper(mb_substr($userPrenom, 0, 1) . mb_substr($userNom, 0, 1));
 ?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <meta name="description" content="حرفة Tunisie - Plateforme dédiée à l'artisanat tunisien" />
+    <meta name="description" content="حرفة Tunisie - Plateforme dédiée à l'artisanat tunisien : connectez artisans, recruteurs et investisseurs" />
+    <meta name="theme-color" content="#2E6B3E" />
+    <meta name="csrf-token" content="<?php echo $csrfToken; ?>" />
     <title>Accueil | حرفة Tunisie</title>
-    <link rel="icon" type="image/x-icon" href="<?php echo h($baseUrl . 'public/assets/favicon.ico'); ?>" />
+    <link rel="icon" type="image/x-icon" href="<?php echo h($baseUrl . '/public/assets/favicon.ico'); ?>" />
+    
+    <!-- Preconnect to CDNs for performance -->
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+    
+    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <link href="<?php echo h($baseUrl . 'public/assets/css/styles.css'); ?>" rel="stylesheet" />
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <!-- Custom CSS -->
+    <link href="<?php echo h($baseUrl . '/public/assets/css/styles.css'); ?>" rel="stylesheet" />
+    
     <style>
         :root {
             --primary-brown: #8B5A3A;
@@ -315,6 +462,11 @@ function resolveOfferImageUrl(?string $imagePath): string
             --cream: #F5ECD7;
             --dark-brown: #3B2314;
             --light-cream: #FAF7F0;
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
+            --shadow-md: 0 5px 20px rgba(0,0,0,0.08);
+            --shadow-lg: 0 10px 30px rgba(0,0,0,0.12);
+            --transition-fast: 0.2s ease;
+            --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
         * {
@@ -325,19 +477,22 @@ function resolveOfferImageUrl(?string $imagePath): string
         
         body {
             background: var(--light-cream);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', system-ui, -apple-system, 'BlinkMacSystemFont', 'Roboto', sans-serif;
             scroll-behavior: smooth;
+            overflow-x: hidden;
         }
 
+        /* Scroll Progress Bar */
         .scroll-progress {
             position: fixed;
             top: 0;
             left: 0;
             height: 4px;
-            width: 0;
+            width: 0%;
             z-index: 2000;
-            background: linear-gradient(90deg, #2E6B3E, #C49A6C, #8B5A3A);
+            background: linear-gradient(90deg, var(--primary-green), #C49A6C, var(--primary-brown));
             box-shadow: 0 2px 10px rgba(46, 107, 62, 0.45);
+            transition: width 0.05s linear;
         }
         
         /* Navbar Styles */
@@ -346,7 +501,12 @@ function resolveOfferImageUrl(?string $imagePath): string
             backdrop-filter: blur(10px);
             padding: 0.8rem 0;
             box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            transition: all 0.3s;
+            transition: all var(--transition-normal);
+        }
+        
+        .dashboard-navbar.scrolled {
+            padding: 0.5rem 0;
+            background: rgba(59, 35, 20, 0.98) !important;
         }
         
         .dashboard-navbar .nav-link {
@@ -355,7 +515,8 @@ function resolveOfferImageUrl(?string $imagePath): string
             margin: 0 0.3rem;
             padding: 0.5rem 1rem;
             border-radius: 8px;
-            transition: all 0.3s;
+            transition: all var(--transition-fast);
+            position: relative;
         }
         
         .dashboard-navbar .nav-link:hover {
@@ -376,6 +537,22 @@ function resolveOfferImageUrl(?string $imagePath): string
             color: var(--cream);
             font-weight: 500;
             margin-right: 0.5rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .user-avatar-small {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--primary-green);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.9rem;
         }
         
         .btn-logout {
@@ -385,10 +562,11 @@ function resolveOfferImageUrl(?string $imagePath): string
             border-radius: 8px;
             text-decoration: none;
             font-weight: 600;
-            transition: all 0.3s;
+            transition: all var(--transition-fast);
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
+            border: none;
         }
         
         .btn-logout:hover {
@@ -400,7 +578,7 @@ function resolveOfferImageUrl(?string $imagePath): string
         /* Hero Section */
         .hero-banner {
             background: linear-gradient(135deg, rgba(139, 90, 58, 0.85), rgba(46, 107, 62, 0.85)), 
-                        url('<?php echo h($baseUrl . 'public/assets/img/item_pics/IMG_3043.JPG'); ?>');
+                        url('<?php echo h($baseUrl . '/public/assets/img/item_pics/IMG_3043.JPG'); ?>');
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
@@ -409,6 +587,12 @@ function resolveOfferImageUrl(?string $imagePath): string
             text-align: center;
             position: relative;
             overflow: hidden;
+        }
+
+        @media (max-width: 991px) {
+            .hero-banner {
+                background-attachment: scroll;
+            }
         }
 
         .hero-banner::before {
@@ -527,7 +711,7 @@ function resolveOfferImageUrl(?string $imagePath): string
             gap: 0.5rem;
             margin: 0.5rem;
             font-weight: 600;
-            transition: all 0.3s;
+            transition: all var(--transition-fast);
             animation: fadeInUp 0.8s ease 0.4s both;
         }
         
@@ -550,25 +734,18 @@ function resolveOfferImageUrl(?string $imagePath): string
             border-color: var(--cream);
         }
 
-        @media (max-width: 991px) {
-            .hero-banner {
-                background-attachment: scroll;
-            }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-            .hero-canvas,
-            .hero-glow {
+        @media (max-width: 768px) {
+            .hero-badge {
                 display: none;
             }
-
-            .reveal-on-scroll {
-                opacity: 1 !important;
-                transform: none !important;
-                transition: none !important;
+            .hero-banner h1 {
+                font-size: 2rem;
+            }
+            .hero-banner p {
+                font-size: 1rem;
             }
         }
-        
+
         /* Stats Section */
         .stats-section {
             background: white;
@@ -583,14 +760,15 @@ function resolveOfferImageUrl(?string $imagePath): string
         .stat-card {
             text-align: center;
             padding: 1.5rem;
-            transition: all 0.3s;
+            transition: all var(--transition-normal);
             border-radius: 16px;
+            background: white;
         }
 
         .stat-card:hover {
             background: #fffdf9;
             transform: translateY(-6px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+            box-shadow: var(--shadow-md);
         }
         
         .stat-card i {
@@ -614,6 +792,10 @@ function resolveOfferImageUrl(?string $imagePath): string
         }
         
         /* Section Styles */
+        .section-header {
+            margin-bottom: 2rem;
+        }
+        
         .section-title {
             font-size: 2rem;
             color: var(--primary-green);
@@ -636,7 +818,7 @@ function resolveOfferImageUrl(?string $imagePath): string
         
         .section-subtitle {
             color: var(--primary-brown);
-            margin-bottom: 2rem;
+            margin-bottom: 0;
             font-size: 1rem;
         }
         
@@ -645,8 +827,8 @@ function resolveOfferImageUrl(?string $imagePath): string
             background: white;
             border-radius: 20px;
             overflow: hidden;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.08);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--shadow-sm);
+            transition: all var(--transition-normal);
             height: 100%;
             display: flex;
             flex-direction: column;
@@ -654,7 +836,7 @@ function resolveOfferImageUrl(?string $imagePath): string
         
         .project-card:hover, .formation-card:hover, .offer-card:hover, .artisan-card:hover {
             transform: translateY(-8px);
-            box-shadow: 0 15px 35px rgba(0,0,0,0.12);
+            box-shadow: var(--shadow-lg);
         }
 
         .reveal-on-scroll {
@@ -676,6 +858,12 @@ function resolveOfferImageUrl(?string $imagePath): string
             align-items: center;
             justify-content: center;
             font-size: 3rem;
+        }
+        
+        .card-img-top img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
         
         .card-body {
@@ -732,7 +920,13 @@ function resolveOfferImageUrl(?string $imagePath): string
             border-radius: 20px;
             padding: 1.5rem;
             margin: 2rem 0;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .section-header-custom {
+            border-bottom: 2px solid var(--cream);
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
         }
         
         .notification-item {
@@ -741,12 +935,17 @@ function resolveOfferImageUrl(?string $imagePath): string
             padding: 1rem;
             margin-bottom: 0.8rem;
             border-radius: 10px;
-            transition: all 0.3s;
+            transition: all var(--transition-fast);
         }
         
         .notification-item:hover {
             transform: translateX(5px);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .notification-unread {
+            background: #FFF8E7;
+            border-left-color: var(--primary-brown);
         }
         
         .application-status {
@@ -762,6 +961,7 @@ function resolveOfferImageUrl(?string $imagePath): string
         .status-pending { background: #FFF3CD; color: #856404; }
         .status-accepted { background: #D4EDDA; color: #155724; }
         .status-rejected { background: #F8D7DA; color: #721C24; }
+        .status-reviewed { background: #D1ECF1; color: #0C5460; }
         
         /* CTA Section */
         .cta-section {
@@ -778,6 +978,36 @@ function resolveOfferImageUrl(?string $imagePath): string
             margin-bottom: 1rem;
         }
         
+        .btn-light-cta {
+            background: white;
+            color: var(--primary-green);
+            padding: 0.8rem 2rem;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all var(--transition-fast);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .btn-light-cta:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            color: var(--primary-brown);
+        }
+        
+        .btn-outline-light-cta {
+            background: transparent;
+            border: 2px solid white;
+            color: white;
+        }
+        
+        .btn-outline-light-cta:hover {
+            background: white;
+            color: var(--primary-green);
+        }
+        
         /* Footer */
         .footer-section {
             background: var(--dark-brown);
@@ -789,11 +1019,37 @@ function resolveOfferImageUrl(?string $imagePath): string
         .footer-section a {
             color: var(--cream);
             text-decoration: none;
-            transition: color 0.3s;
+            transition: color var(--transition-fast);
         }
         
         .footer-section a:hover {
             color: #C49A6C;
+        }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            background: white;
+            border-radius: 20px;
+        }
+        
+        .empty-state i {
+            font-size: 3rem;
+            color: #ccc;
+            margin-bottom: 1rem;
+        }
+        
+        /* Loading Skeleton */
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+        }
+        
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
         }
         
         /* Animations */
@@ -829,10 +1085,32 @@ function resolveOfferImageUrl(?string $imagePath): string
         
         /* Responsive */
         @media (max-width: 768px) {
-            .hero-banner h1 { font-size: 2rem; }
             .section-title { font-size: 1.5rem; }
             .stat-number { font-size: 1.5rem; }
-            .hero-badge { display: none; }
+            .cta-section h2 { font-size: 1.5rem; }
+            .cta-section { padding: 2rem 1rem; }
+            .user-greeting span { display: none; }
+        }
+        
+        /* Toast Notifications */
+        .toast-notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+            min-width: 280px;
+            animation: slideInRight 0.3s ease;
+        }
+        
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
     </style>
 </head>
@@ -840,33 +1118,41 @@ function resolveOfferImageUrl(?string $imagePath): string
 
 <div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
 
+<!-- Toast Container for notifications -->
+<div class="toast-notification" id="toastContainer"></div>
+
 <!-- NAVBAR -->
-<nav class="navbar navbar-expand-lg dashboard-navbar sticky-top">
+<nav class="navbar navbar-expand-lg dashboard-navbar sticky-top" id="mainNavbar">
     <div class="container">
-        <a class="navbar-brand d-flex align-items-center" href="/herfa/controllers/home.php">
-            <img src="<?php echo h($baseUrl . 'public/assets/img/logo_herfa.png'); ?>" alt="Logo" height="40" style="margin-right: 0.8rem;">
+        <a class="navbar-brand d-flex align-items-center" href="<?php echo h($baseUrl . '/controllers/home.php'); ?>">
+            <img src="<?php echo h($baseUrl . '/public/assets/img/logo_herfa.png'); ?>" alt="Logo حرفة" height="40" style="margin-right: 0.8rem;">
             <span style="color: var(--cream); font-weight: 700; font-size: 1.3rem;">حرفة Tunisie</span>
         </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-label="Menu de navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav ms-auto align-items-center gap-2">
-                <li class="nav-item"><a class="nav-link active" href="/herfa/controllers/home.php"><i class="fas fa-home me-1"></i>Accueil</a></li>
-                <li class="nav-item"><a class="nav-link" href="/herfa/controllers/projects/projets.php"><i class="fas fa-project-diagram me-1"></i>Projets</a></li>
-                <li class="nav-item"><a class="nav-link" href="/herfa/controllers/formation/formations.php"><i class="fas fa-graduation-cap me-1"></i>Formations</a></li>
-                <li class="nav-item"><a class="nav-link" href="/herfa/controllers/invester/invest.php"><i class="fas fa-chart-line me-1"></i>Investir</a></li>
-                <li class="nav-item"><a class="nav-link" href="/herfa/controllers/offer_emploi/offres.php"><i class="fas fa-briefcase me-1"></i>Emplois</a></li>
-                <li class="nav-item"><a class="nav-link" href="/herfa/controllers/user/profile.php"><i class="fas fa-user me-1"></i>Profil</a></li>
+                <li class="nav-item"><a class="nav-link active" href="<?php echo h($baseUrl . '/controllers/home.php'); ?>"><i class="fas fa-home me-1"></i>Accueil</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?php echo h($baseUrl . '/controllers/projects/projets.php'); ?>"><i class="fas fa-project-diagram me-1"></i>Projets</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?php echo h($baseUrl . '/controllers/formation/formations.php'); ?>"><i class="fas fa-graduation-cap me-1"></i>Formations</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?php echo h($baseUrl . '/controllers/invester/invest.php'); ?>"><i class="fas fa-chart-line me-1"></i>Investir</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?php echo h($baseUrl . '/controllers/offer_emploi/offres.php'); ?>"><i class="fas fa-briefcase me-1"></i>Emplois</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?php echo h($baseUrl . '/controllers/user/profile.php'); ?>"><i class="fas fa-user me-1"></i>Profil</a></li>
                 <li class="nav-item">
                     <span class="user-greeting">
-                        <i class="fas fa-user-circle me-1"></i><?php echo h(trim($userPrenom . ' ' . $userNom)); ?>
+                        <span class="user-avatar-small"><?php echo h($userInitials); ?></span>
+                        <span><?php echo h(trim($userPrenom . ' ' . $userNom)); ?></span>
                     </span>
                 </li>
                 <li class="nav-item">
-                    <a class="btn-logout" href="/herfa/controllers/session_status.php?action=logout">
-                        <i class="fas fa-sign-out-alt"></i> Déconnexion
-                    </a>
+                    <form action="<?php echo h($baseUrl . '/controllers/session_status.php'); ?>" method="POST" class="d-inline">
+                        <input type="hidden" name="action" value="logout">
+                        <input type="hidden" name="csrf_token" value="<?php echo $csrfToken; ?>">
+                        <button type="submit" class="btn-logout">
+                            <i class="fas fa-sign-out-alt"></i> Déconnexion
+                        </button>
+                    </form>
                 </li>
             </ul>
         </div>
@@ -884,8 +1170,8 @@ function resolveOfferImageUrl(?string $imagePath): string
         <h1><span class="hero-highlight">L'artisanat tunisien</span>,<br>à l'ère du numérique</h1>
         <p>Une plateforme qui connecte les créateurs, les artisans et les investisseurs pour faire vivre l'artisanat tunisien.</p>
         <div>
-            <a href="/herfa/controllers/projects/projets.php" class="btn-cta"><i class="fas fa-rocket me-2"></i>Explorer les projets</a>
-            <a href="/herfa/controllers/user/profile.php" class="btn-cta btn-outline-cta"><i class="fas fa-user-edit me-2"></i>Compléter mon profil</a>
+            <a href="<?php echo h($baseUrl . '/controllers/projects/projets.php'); ?>" class="btn-cta"><i class="fas fa-rocket me-2"></i>Explorer les projets</a>
+            <a href="<?php echo h($baseUrl . '/controllers/user/profile.php'); ?>" class="btn-cta btn-outline-cta"><i class="fas fa-user-edit me-2"></i>Compléter mon profil</a>
         </div>
     </div>
 </section>
@@ -928,21 +1214,26 @@ function resolveOfferImageUrl(?string $imagePath): string
 
 <div class="container mt-5">
     
-    <!-- NOTIFICATIONS SECTION (for artisans) -->
+    <!-- NOTIFICATIONS SECTION -->
     <?php if (!empty($notifications)): ?>
-    <div class="user-section fade-in">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h4 class="mb-0"><i class="fas fa-bell text-success me-2"></i>Notifications</h4>
-            <small class="text-muted">Nouveautés</small>
+    <div class="user-section reveal-on-scroll">
+        <div class="d-flex justify-content-between align-items-center section-header-custom">
+            <h4 class="mb-0">
+                <i class="fas fa-bell text-success me-2"></i>Notifications
+                <?php if ($unreadNotificationCount > 0): ?>
+                    <span class="badge bg-danger ms-2"><?php echo $unreadNotificationCount; ?> nouvelle(s)</span>
+                <?php endif; ?>
+            </h4>
+            <a href="<?php echo h($baseUrl . '/controllers/notifications.php'); ?>" class="btn btn-sm btn-link text-success">Voir tout</a>
         </div>
         <?php foreach ($notifications as $notif): ?>
-            <div class="notification-item">
+            <div class="notification-item <?php echo $notif['is_read'] ? '' : 'notification-unread'; ?>">
                 <div class="d-flex justify-content-between align-items-start">
-                    <div>
+                    <div class="flex-grow-1">
                         <strong><?php echo h($notif['title']); ?></strong>
                         <p class="mb-0 small text-muted"><?php echo h($notif['message']); ?></p>
                     </div>
-                    <small class="text-muted"><?php echo date('H:i', strtotime($notif['created_at'])); ?></small>
+                    <small class="text-muted ms-2"><?php echo getRelativeTime($notif['created_at']); ?></small>
                 </div>
             </div>
         <?php endforeach; ?>
@@ -950,26 +1241,27 @@ function resolveOfferImageUrl(?string $imagePath): string
     <?php endif; ?>
     
     <!-- FEATURED PROJECTS SECTION -->
-    <div class="d-flex justify-content-between align-items-center flex-wrap mb-4">
+    <div class="d-flex justify-content-between align-items-center flex-wrap mb-4 section-header">
         <div>
             <h2 class="section-title">Projets à la une</h2>
             <p class="section-subtitle">Découvrez les projets innovants de notre communauté</p>
         </div>
-        <a href="/herfa/controllers/projects/projets.php" class="btn btn-outline-success rounded-pill"><i class="fas fa-arrow-right me-2"></i>Voir tous</a>
+        <a href="<?php echo h($baseUrl . '/controllers/projects/projets.php'); ?>" class="btn btn-outline-success rounded-pill"><i class="fas fa-arrow-right me-2"></i>Voir tous</a>
     </div>
     
     <?php if (count($projects) > 0): ?>
         <div class="row g-4 mb-5">
             <?php foreach ($projects as $proj): 
-                $funding = rand(40, 95);
+                $funding = rand(40, 95); // Temporary - should be calculated from actual investments
+                $imagePath = !empty($proj['image_path']) ? h($proj['image_path']) : '';
             ?>
                 <div class="col-md-6 col-lg-4">
-                    <div class="project-card">
+                    <div class="project-card reveal-on-scroll">
                         <div class="card-img-top">
-                            <?php if (!empty($proj['image_path'])): ?>
-                                <img src="<?php echo h($proj['image_path']); ?>" alt="<?php echo h($proj['titre']); ?>" style="width:100%; height:100%; object-fit:cover;">
+                            <?php if ($imagePath): ?>
+                                <img src="<?php echo $imagePath; ?>" alt="<?php echo h($proj['titre']); ?>" loading="lazy">
                             <?php else: ?>
-                                <i class="fas fa-hands-helping"></i>
+                                <i class="fas fa-hands-helping fa-3x text-white"></i>
                             <?php endif; ?>
                         </div>
                         <div class="card-body">
@@ -977,13 +1269,13 @@ function resolveOfferImageUrl(?string $imagePath): string
                             <div class="badge-custom mb-2">
                                 <i class="fas fa-tag"></i> Budget: <?php echo formatCurrency($proj['budget_min']); ?>
                             </div>
-                            <p class="card-text"><?php echo h(mb_strimwidth((string)$proj['description'], 0, 100, '...')); ?></p>
+                            <p class="card-text"><?php echo h(truncateText((string)$proj['description'], 100)); ?></p>
                             <div class="progress-custom">
                                 <div class="progress-custom-bar" style="width: <?php echo $funding; ?>%"></div>
                             </div>
                             <div class="d-flex justify-content-between align-items-center mt-auto">
                                 <small class="text-muted"><i class="far fa-calendar-alt me-1"></i><?php echo date('d/m/Y', strtotime($proj['date_creation'])); ?></small>
-                                <a href="/herfa/controllers/projects/projets.php?id=<?php echo $proj['id']; ?>" class="btn btn-sm btn-success rounded-pill">En savoir plus <i class="fas fa-arrow-right ms-1"></i></a>
+                                <a href="<?php echo h($baseUrl . '/controllers/projects/projet_details.php?id=' . $proj['id']); ?>" class="btn btn-sm btn-success rounded-pill">En savoir plus <i class="fas fa-arrow-right ms-1"></i></a>
                             </div>
                         </div>
                     </div>
@@ -991,29 +1283,33 @@ function resolveOfferImageUrl(?string $imagePath): string
             <?php endforeach; ?>
         </div>
     <?php else: ?>
-        <div class="text-center py-5 bg-white rounded-4 mb-5">
-            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-            <p class="text-muted">Aucun projet actuellement. Soyez le premier à en créer un !</p>
-            <a href="create_project.php" class="btn btn-success rounded-pill">+ Créer un projet</a>
+        <div class="empty-state mb-5">
+            <i class="fas fa-inbox"></i>
+            <p class="text-muted mb-3">Aucun projet actuellement. Soyez le premier à en créer un !</p>
+            <a href="<?php echo h($baseUrl . '/controllers/projects/create_project.php'); ?>" class="btn btn-success rounded-pill"><i class="fas fa-plus me-2"></i>Créer un projet</a>
         </div>
     <?php endif; ?>
     
     <!-- FORMATIONS SECTION -->
     <?php if (count($formations) > 0): ?>
-    <div class="d-flex justify-content-between align-items-center flex-wrap mb-4 mt-5">
+    <div class="d-flex justify-content-between align-items-center flex-wrap mb-4 mt-5 section-header">
         <div>
             <h2 class="section-title">Formations populaires</h2>
             <p class="section-subtitle">Développez vos compétences avec nos experts</p>
         </div>
-        <a href="/herfa/controllers/formation/formations.php" class="btn btn-outline-success rounded-pill"><i class="fas fa-arrow-right me-2"></i>Voir toutes</a>
+        <a href="<?php echo h($baseUrl . '/controllers/formation/formations.php'); ?>" class="btn btn-outline-success rounded-pill"><i class="fas fa-arrow-right me-2"></i>Voir toutes</a>
     </div>
     
     <div class="row g-4 mb-5">
         <?php foreach ($formations as $form): ?>
             <div class="col-md-6 col-lg-3">
-                <div class="formation-card">
-                    <div class="card-img-top d-flex align-items-center justify-content-center" style="background: linear-gradient(135deg, #8B5A3A, #C49A6C);">
-                        <i class="fas fa-chalkboard-teacher fa-3x text-white"></i>
+                <div class="formation-card reveal-on-scroll">
+                    <div class="card-img-top d-flex align-items-center justify-content-center" style="background: linear-gradient(135deg, var(--primary-brown), #C49A6C);">
+                        <?php if (!empty($form['image_url'])): ?>
+                            <img src="<?php echo h($form['image_url']); ?>" alt="<?php echo h($form['titre']); ?>" loading="lazy">
+                        <?php else: ?>
+                            <i class="fas fa-chalkboard-teacher fa-3x text-white"></i>
+                        <?php endif; ?>
                     </div>
                     <div class="card-body">
                         <div class="card-title"><?php echo h($form['titre']); ?></div>
@@ -1021,16 +1317,14 @@ function resolveOfferImageUrl(?string $imagePath): string
                             <i class="fas fa-level-up-alt"></i> <?php echo h($form['niveau'] ?? 'Débutant'); ?>
                         </div>
                         <div class="mb-2">
-                            <i class="fas fa-star text-warning"></i>
-                            <i class="fas fa-star text-warning"></i>
-                            <i class="fas fa-star text-warning"></i>
-                            <i class="fas fa-star text-warning"></i>
-                            <i class="fas fa-star-half-alt text-warning"></i>
+                            <?php for ($i = 1; $i <= 5; $i++): ?>
+                                <i class="fas fa-star text-warning"></i>
+                            <?php endfor; ?>
                             <small class="text-muted">(4.8)</small>
                         </div>
                         <div class="d-flex justify-content-between align-items-center mt-auto">
                             <strong class="text-success"><?php echo formatCurrency($form['prix']); ?></strong>
-                            <a href="/herfa/controllers/formation/formations.php?id=<?php echo $form['id']; ?>" class="btn btn-sm btn-outline-success rounded-pill">S'inscrire</a>
+                            <a href="<?php echo h($baseUrl . '/controllers/formation/formation_details.php?id=' . $form['id']); ?>" class="btn btn-sm btn-outline-success rounded-pill">S'inscrire</a>
                         </div>
                     </div>
                 </div>
@@ -1041,22 +1335,22 @@ function resolveOfferImageUrl(?string $imagePath): string
     
     <!-- JOB OFFERS SECTION -->
     <?php if (count($offers) > 0): ?>
-    <div class="d-flex justify-content-between align-items-center flex-wrap mb-4 mt-5">
+    <div class="d-flex justify-content-between align-items-center flex-wrap mb-4 mt-5 section-header">
         <div>
             <h2 class="section-title">Offres d'emploi</h2>
             <p class="section-subtitle">Trouvez l'opportunité qui correspond à vos talents</p>
         </div>
-        <a href="/herfa/controllers/offer_emploi/offres.php" class="btn btn-outline-success rounded-pill"><i class="fas fa-arrow-right me-2"></i>Voir toutes</a>
+        <a href="<?php echo h($baseUrl . '/controllers/offer_emploi/offres.php'); ?>" class="btn btn-outline-success rounded-pill"><i class="fas fa-arrow-right me-2"></i>Voir toutes</a>
     </div>
     
     <div class="row g-4 mb-5">
         <?php foreach ($offers as $offer): ?>
+            <?php $offerImageUrl = resolveOfferImageUrl((string)($offer['image_path'] ?? '')); ?>
             <div class="col-md-6 col-lg-4">
-                <div class="offer-card">
-                    <div class="card-img-top d-flex align-items-center justify-content-center" style="background: linear-gradient(135deg, #2E6B3E, #8B5A3A);">
-                        <?php $offerImageUrl = resolveOfferImageUrl((string)($offer['image_path'] ?? '')); ?>
+                <div class="offer-card reveal-on-scroll">
+                    <div class="card-img-top d-flex align-items-center justify-content-center" style="background: linear-gradient(135deg, var(--primary-green), var(--primary-brown));">
                         <?php if ($offerImageUrl !== ''): ?>
-                            <img src="<?php echo h($offerImageUrl); ?>" alt="<?php echo h($offer['titre']); ?>" style="width:100%; height:100%; object-fit:cover;">
+                            <img src="<?php echo h($offerImageUrl); ?>" alt="<?php echo h($offer['titre']); ?>" loading="lazy">
                         <?php else: ?>
                             <i class="fas fa-briefcase fa-3x text-white"></i>
                         <?php endif; ?>
@@ -1070,10 +1364,10 @@ function resolveOfferImageUrl(?string $imagePath): string
                             <?php endif; ?>
                         </div>
                         <div class="badge bg-success mb-2"><?php echo formatCurrency($offer['budget']); ?></div>
-                        <p class="card-text"><?php echo h(mb_strimwidth((string)$offer['description'], 0, 80, '...')); ?></p>
+                        <p class="card-text"><?php echo h(truncateText((string)$offer['description'], 80)); ?></p>
                         <div class="d-flex justify-content-between align-items-center mt-auto">
                             <small class="text-muted"><i class="far fa-clock"></i> <?php echo h($offer['duree']); ?></small>
-                            <a href="offer_details.php?id_offer=<?php echo $offer['id_offer']; ?>" class="btn btn-sm btn-success rounded-pill">Postuler <i class="fas fa-paper-plane ms-1"></i></a>
+                            <a href="<?php echo h($baseUrl . '/controllers/offer_emploi/offer_details.php?id_offer=' . $offer['id_offer']); ?>" class="btn btn-sm btn-success rounded-pill">Postuler <i class="fas fa-paper-plane ms-1"></i></a>
                         </div>
                     </div>
                 </div>
@@ -1084,21 +1378,21 @@ function resolveOfferImageUrl(?string $imagePath): string
     
     <!-- ARTISANS SECTION -->
     <?php if (count($artisans) > 0): ?>
-    <div class="d-flex justify-content-between align-items-center flex-wrap mb-4 mt-5">
+    <div class="d-flex justify-content-between align-items-center flex-wrap mb-4 mt-5 section-header">
         <div>
             <h2 class="section-title">Artisans à découvrir</h2>
             <p class="section-subtitle">Rencontrez les talents de notre communauté</p>
         </div>
-        <a href="artisans.php" class="btn btn-outline-success rounded-pill"><i class="fas fa-arrow-right me-2"></i>Voir tous</a>
+        <a href="<?php echo h($baseUrl . '/controllers/user/artisans.php'); ?>" class="btn btn-outline-success rounded-pill"><i class="fas fa-arrow-right me-2"></i>Voir tous</a>
     </div>
     
     <div class="row g-4 mb-5">
         <?php foreach ($artisans as $art): ?>
             <div class="col-md-6 col-lg-3">
-                <div class="artisan-card text-center">
-                    <div class="card-img-top d-flex align-items-center justify-content-center" style="background: linear-gradient(135deg, #8B5A3A, #C49A6C);">
+                <div class="artisan-card text-center reveal-on-scroll">
+                    <div class="card-img-top d-flex align-items-center justify-content-center" style="background: linear-gradient(135deg, var(--primary-brown), #C49A6C);">
                         <?php if (!empty($art['avatar'])): ?>
-                            <img src="<?php echo h($art['avatar']); ?>" alt="Avatar" style="width:100px; height:100px; border-radius:50%; object-fit:cover; border:3px solid white;">
+                            <img src="<?php echo h($art['avatar']); ?>" alt="Avatar de <?php echo h($art['prenom']); ?>" style="width:100px; height:100px; border-radius:50%; object-fit:cover; border:3px solid white;" loading="lazy">
                         <?php else: ?>
                             <i class="fas fa-user-circle fa-4x text-white"></i>
                         <?php endif; ?>
@@ -1112,13 +1406,11 @@ function resolveOfferImageUrl(?string $imagePath): string
                             <div class="small text-muted mb-2"><i class="fas fa-map-marker-alt"></i> <?php echo h($art['ville']); ?></div>
                         <?php endif; ?>
                         <div class="mb-3">
-                            <i class="fas fa-star text-warning"></i>
-                            <i class="fas fa-star text-warning"></i>
-                            <i class="fas fa-star text-warning"></i>
-                            <i class="fas fa-star text-warning"></i>
-                            <i class="fas fa-star text-warning"></i>
+                            <?php for ($i = 1; $i <= 5; $i++): ?>
+                                <i class="fas fa-star text-warning"></i>
+                            <?php endfor; ?>
                         </div>
-                        <a href="/herfa/controllers/user/profile.php?user_id=<?php echo $art['id_user']; ?>" class="btn btn-sm btn-outline-success rounded-pill">Voir le profil</a>
+                        <a href="<?php echo h($baseUrl . '/controllers/user/profile.php?user_id=' . $art['id_user']); ?>" class="btn btn-sm btn-outline-success rounded-pill">Voir le profil</a>
                     </div>
                 </div>
             </div>
@@ -1126,10 +1418,12 @@ function resolveOfferImageUrl(?string $imagePath): string
     </div>
     <?php endif; ?>
     
-    <!-- PERSONALIZED USER SECTION (Artisan Applications) -->
+    <!-- PERSONALIZED USER SECTION - Artisan Applications -->
     <?php if ($userRole === 'artisan' && count($userApplications) > 0): ?>
-    <div class="user-section fade-in">
-        <h4 class="mb-3"><i class="fas fa-file-alt text-success me-2"></i>Mes candidatures récentes</h4>
+    <div class="user-section reveal-on-scroll">
+        <div class="section-header-custom">
+            <h4 class="mb-0"><i class="fas fa-file-alt text-success me-2"></i>Mes candidatures récentes</h4>
+        </div>
         <div class="row">
             <?php foreach ($userApplications as $app): ?>
                 <div class="col-md-6 mb-3">
@@ -1152,19 +1446,28 @@ function resolveOfferImageUrl(?string $imagePath): string
             <?php endforeach; ?>
         </div>
         <div class="text-center mt-3">
-            <a href="/herfa/controllers/offer_emploi/my_applications.php" class="btn btn-sm btn-outline-success rounded-pill">Voir toutes mes candidatures</a>
+            <a href="<?php echo h($baseUrl . '/controllers/offer_emploi/my_applications.php'); ?>" class="btn btn-sm btn-outline-success rounded-pill">Voir toutes mes candidatures <i class="fas fa-arrow-right ms-1"></i></a>
         </div>
     </div>
     <?php endif; ?>
     
-    <!-- PERSONALIZED USER SECTION (Recruiter Offers) -->
+    <!-- PERSONALIZED USER SECTION - Recruiter Offers -->
     <?php if (($userRole === 'recruteur' || $userRole === 'entrepreneur') && count($userOffers) > 0): ?>
-    <div class="user-section fade-in">
-        <h4 class="mb-3"><i class="fas fa-chart-line text-success me-2"></i>Mes offres d'emploi</h4>
+    <div class="user-section reveal-on-scroll">
+        <div class="section-header-custom">
+            <h4 class="mb-0"><i class="fas fa-chart-line text-success me-2"></i>Mes offres d'emploi</h4>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover">
                 <thead class="table-light">
-                    <tr><th>Titre</th><th>Budget</th><th>Candidatures</th><th>En attente</th><th>Statut</th><th>Action</th></tr>
+                    <tr>
+                        <th>Titre</th>
+                        <th>Budget</th>
+                        <th>Candidatures</th>
+                        <th>En attente</th>
+                        <th>Statut</th>
+                        <th>Action</th>
+                    </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($userOffers as $offer): ?>
@@ -1173,27 +1476,62 @@ function resolveOfferImageUrl(?string $imagePath): string
                         <td><?php echo formatCurrency($offer['budget']); ?></td>
                         <td><span class="badge bg-info"><?php echo (int)$offer['app_count']; ?></span></td>
                         <td><span class="badge bg-warning text-dark"><?php echo (int)($offer['pending_count'] ?? 0); ?></span></td>
-                        <td><span class="badge bg-<?php echo $offer['status'] === 'active' ? 'success' : 'secondary'; ?>"><?php echo $offer['status']; ?></span></td>
-                        <td><a href="/herfa/controllers/offer_emploi/recruiter_dashboard.php?offer=<?php echo $offer['id_offer']; ?>" class="btn btn-sm btn-outline-success rounded-pill">Gérer</a></td>
+                        <td><span class="badge bg-<?php echo getStatusBadgeClass($offer['status']); ?>"><?php echo ucfirst($offer['status']); ?></span></td>
+                        <td><a href="<?php echo h($baseUrl . '/controllers/offer_emploi/recruiter_dashboard.php?offer=' . $offer['id_offer']); ?>" class="btn btn-sm btn-outline-success rounded-pill">Gérer</a></td>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
         </div>
         <div class="text-center mt-3">
-            <a href="/herfa/controllers/offer_emploi/create_offre.php" class="btn btn-success rounded-pill"><i class="fas fa-plus me-2"></i>Créer une nouvelle offre</a>
+            <a href="<?php echo h($baseUrl . '/controllers/offer_emploi/create_offre.php'); ?>" class="btn btn-success rounded-pill"><i class="fas fa-plus me-2"></i>Créer une nouvelle offre</a>
+        </div>
+    </div>
+    <?php endif; ?>
+    
+    <!-- PERSONALIZED USER SECTION - Recruiter Projects -->
+    <?php if (($userRole === 'recruteur' || $userRole === 'entrepreneur') && count($userProjects) > 0): ?>
+    <div class="user-section reveal-on-scroll">
+        <div class="section-header-custom">
+            <h4 class="mb-0"><i class="fas fa-project-diagram text-success me-2"></i>Mes projets</h4>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Titre</th>
+                        <th>Budget min</th>
+                        <th>Budget max</th>
+                        <th>Statut</th>
+                        <th>Date</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($userProjects as $proj): ?>
+                    <tr>
+                        <td><strong><?php echo h($proj['titre']); ?></strong></td>
+                        <td><?php echo formatCurrency($proj['budget_min']); ?></td>
+                        <td><?php echo $proj['budget_max'] ? formatCurrency($proj['budget_max']) : '-'; ?></td>
+                        <td><span class="badge bg-<?php echo getStatusBadgeClass($proj['status']); ?>"><?php echo ucfirst($proj['status']); ?></span></td>
+                        <td><small><?php echo date('d/m/Y', strtotime($proj['date_creation'])); ?></small></td>
+                        <td><a href="<?php echo h($baseUrl . '/controllers/projects/projet_details.php?id=' . $proj['id']); ?>" class="btn btn-sm btn-outline-success rounded-pill">Voir</a></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
     </div>
     <?php endif; ?>
     
     <!-- CTA SECTION -->
-    <div class="cta-section">
+    <div class="cta-section reveal-on-scroll">
         <div class="container">
             <h2>Rejoignez notre communauté</h2>
             <p class="mb-4">Faites briller votre savoir-faire et connectez-vous avec les meilleurs talents et investisseurs tunisiens</p>
             <div>
-                <a href="/herfa/controllers/user/profile.php" class="btn btn-light rounded-pill me-3" style="color: var(--primary-green);"><i class="fas fa-user-plus me-2"></i>Compléter mon profil</a>
-                <a href="/herfa/controllers/projects/projets.php" class="btn btn-outline-light rounded-pill"><i class="fas fa-rocket me-2"></i>Explorer les projets</a>
+                <a href="<?php echo h($baseUrl . '/controllers/user/profile.php'); ?>" class="btn-light-cta me-3"><i class="fas fa-user-plus me-2"></i>Compléter mon profil</a>
+                <a href="<?php echo h($baseUrl . '/controllers/projects/projets.php'); ?>" class="btn-light-cta btn-outline-light-cta"><i class="fas fa-rocket me-2"></i>Explorer les projets</a>
             </div>
         </div>
     </div>
@@ -1204,31 +1542,31 @@ function resolveOfferImageUrl(?string $imagePath): string
     <div class="container">
         <div class="row">
             <div class="col-md-4 mb-4 mb-md-0">
-                <img src="<?php echo h($baseUrl . 'public/assets/img/logo_herfa.png'); ?>" alt="Logo" height="50" class="mb-3">
+                <img src="<?php echo h($baseUrl . '/public/assets/img/logo_herfa.png'); ?>" alt="Logo حرفة" height="50" class="mb-3">
                 <p class="small">حرفة Tunisie - La plateforme dédiée à l'artisanat tunisien et à l'entrepreneuriat responsable.</p>
                 <div class="mt-3">
-                    <a href="#" class="me-3"><i class="fab fa-facebook fa-lg"></i></a>
-                    <a href="#" class="me-3"><i class="fab fa-instagram fa-lg"></i></a>
-                    <a href="#" class="me-3"><i class="fab fa-linkedin fa-lg"></i></a>
-                    <a href="#"><i class="fab fa-youtube fa-lg"></i></a>
+                    <a href="#" class="me-3" aria-label="Facebook"><i class="fab fa-facebook fa-lg"></i></a>
+                    <a href="#" class="me-3" aria-label="Instagram"><i class="fab fa-instagram fa-lg"></i></a>
+                    <a href="#" class="me-3" aria-label="LinkedIn"><i class="fab fa-linkedin fa-lg"></i></a>
+                    <a href="#" aria-label="YouTube"><i class="fab fa-youtube fa-lg"></i></a>
                 </div>
             </div>
             <div class="col-md-2 mb-4 mb-md-0">
                 <h6 class="mb-3">Liens rapides</h6>
                 <ul class="list-unstyled small">
-                    <li class="mb-2"><a href="/herfa/controllers/home.php">Accueil</a></li>
-                    <li class="mb-2"><a href="/herfa/controllers/projects/projets.php">Projets</a></li>
-                    <li class="mb-2"><a href="/herfa/controllers/formation/formations.php">Formations</a></li>
-                    <li class="mb-2"><a href="/herfa/controllers/offer_emploi/offres.php">Emplois</a></li>
+                    <li class="mb-2"><a href="<?php echo h($baseUrl . '/controllers/home.php'); ?>">Accueil</a></li>
+                    <li class="mb-2"><a href="<?php echo h($baseUrl . '/controllers/projects/projets.php'); ?>">Projets</a></li>
+                    <li class="mb-2"><a href="<?php echo h($baseUrl . '/controllers/formation/formations.php'); ?>">Formations</a></li>
+                    <li class="mb-2"><a href="<?php echo h($baseUrl . '/controllers/offer_emploi/offres.php'); ?>">Emplois</a></li>
                 </ul>
             </div>
             <div class="col-md-3 mb-4 mb-md-0">
                 <h6 class="mb-3">Ressources</h6>
                 <ul class="list-unstyled small">
-                    <li class="mb-2"><a href="#">Blog</a></li>
-                    <li class="mb-2"><a href="#">FAQ</a></li>
-                    <li class="mb-2"><a href="#">Support</a></li>
-                    <li class="mb-2"><a href="#">Mentions légales</a></li>
+                    <li class="mb-2"><a href="<?php echo h($baseUrl . '/blog.php'); ?>">Blog</a></li>
+                    <li class="mb-2"><a href="<?php echo h($baseUrl . '/faq.php'); ?>">FAQ</a></li>
+                    <li class="mb-2"><a href="<?php echo h($baseUrl . '/support.php'); ?>">Support</a></li>
+                    <li class="mb-2"><a href="<?php echo h($baseUrl . '/legal.php'); ?>">Mentions légales</a></li>
                 </ul>
             </div>
             <div class="col-md-3">
@@ -1242,59 +1580,76 @@ function resolveOfferImageUrl(?string $imagePath): string
         </div>
         <hr class="mt-4 mb-3" style="border-color: rgba(245,236,215,0.2);">
         <div class="text-center small">
-            <p class="mb-0">© <?php echo date('Y'); ?> حرفة Tunisie - Tous droits réservés</p>
+            <p class="mb-0">&copy; <?php echo date('Y'); ?> حرفة Tunisie - Tous droits réservés</p>
         </div>
     </div>
 </footer>
 
+<!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="<?php echo h($baseUrl . 'public/assets/js/scripts.js'); ?>"></script>
 <script>
-    // Modern interactions for home page
-    document.addEventListener('DOMContentLoaded', function() {
+    // Enhanced JavaScript with performance optimizations
+    (function() {
+        'use strict';
+        
+        // Check for reduced motion preference
         const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        
+        // DOM Elements
         const progress = document.getElementById('scrollProgress');
         const revealElements = document.querySelectorAll('.stat-card, .project-card, .formation-card, .offer-card, .artisan-card, .user-section, .cta-section');
         const cards = document.querySelectorAll('.project-card, .formation-card, .offer-card, .artisan-card');
         const counters = document.querySelectorAll('[data-counter-target]');
-
+        const navbar = document.getElementById('mainNavbar');
+        
+        // Add reveal class to elements
         revealElements.forEach((el, index) => {
             el.classList.add('reveal-on-scroll');
             if (!reduceMotion) {
                 el.style.transitionDelay = `${Math.min(index * 45, 260)}ms`;
             }
         });
-
+        
+        // Scroll progress bar
         function updateScrollProgress() {
-            if (!progress) {
-                return;
-            }
+            if (!progress) return;
             const scrollTop = window.scrollY;
             const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
             const ratio = maxScroll > 0 ? Math.min(scrollTop / maxScroll, 1) : 0;
             progress.style.width = `${ratio * 100}%`;
         }
+        
+        // Navbar scroll effect
+        function updateNavbar() {
+            if (!navbar) return;
+            if (window.scrollY > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+        }
+        
         updateScrollProgress();
-        window.addEventListener('scroll', updateScrollProgress, { passive: true });
-
-        if (reduceMotion) {
-            revealElements.forEach(el => el.classList.add('is-visible'));
-            counters.forEach(counter => {
-                counter.textContent = counter.getAttribute('data-counter-target') || '0';
-            });
-        } else if ('IntersectionObserver' in window) {
+        updateNavbar();
+        window.addEventListener('scroll', () => {
+            updateScrollProgress();
+            updateNavbar();
+        }, { passive: true });
+        
+        // Intersection Observer for reveal animations
+        if (!reduceMotion && 'IntersectionObserver' in window) {
             const observer = new IntersectionObserver((entries, obs) => {
                 entries.forEach(entry => {
-                    if (!entry.isIntersecting) {
-                        return;
-                    }
+                    if (!entry.isIntersecting) return;
+                    
                     entry.target.classList.add('is-visible');
-
+                    
+                    // Handle counter animations
                     if (entry.target.hasAttribute('data-counter-target')) {
                         const endValue = parseInt(entry.target.getAttribute('data-counter-target') || '0', 10);
                         const duration = 1000;
                         const startAt = performance.now();
-
+                        
                         const tick = (now) => {
                             const elapsed = now - startAt;
                             const progressRatio = Math.min(elapsed / duration, 1);
@@ -1306,23 +1661,25 @@ function resolveOfferImageUrl(?string $imagePath): string
                                 entry.target.textContent = String(endValue);
                             }
                         };
-
+                        
                         requestAnimationFrame(tick);
                     }
-
+                    
                     obs.unobserve(entry.target);
                 });
-            }, { threshold: 0.14 });
-
+            }, { threshold: 0.14, rootMargin: '0px 0px -50px 0px' });
+            
             revealElements.forEach(el => observer.observe(el));
             counters.forEach(counter => observer.observe(counter));
         } else {
+            // Fallback for no observer or reduced motion
             revealElements.forEach(el => el.classList.add('is-visible'));
             counters.forEach(counter => {
                 counter.textContent = counter.getAttribute('data-counter-target') || '0';
             });
         }
-
+        
+        // 3D card tilt effect (only if motion not reduced)
         if (!reduceMotion) {
             cards.forEach(card => {
                 card.addEventListener('mousemove', (event) => {
@@ -1333,111 +1690,166 @@ function resolveOfferImageUrl(?string $imagePath): string
                     const rotateX = (0.5 - y) * 6;
                     card.style.transform = `perspective(900px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-8px)`;
                 });
-
+                
                 card.addEventListener('mouseleave', () => {
                     card.style.transform = '';
                 });
             });
         }
-
-        if (reduceMotion) {
-            return;
-        }
-
-        const hero = document.querySelector('.hero-banner');
-        const canvas = document.getElementById('heroCanvas');
-        const glow = document.getElementById('heroGlow');
-        if (!hero || !canvas) {
-            return;
-        }
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-            return;
-        }
-
-        let width = 0;
-        let height = 0;
-        const particles = [];
-        const particleCount = window.innerWidth < 768 ? 20 : 34;
-
-        function resizeCanvas() {
-            const rect = hero.getBoundingClientRect();
-            width = Math.max(1, Math.floor(rect.width));
-            height = Math.max(1, Math.floor(rect.height));
-            canvas.width = width;
-            canvas.height = height;
-        }
-
-        function createParticles() {
-            particles.length = 0;
-            for (let i = 0; i < particleCount; i++) {
-                particles.push({
-                    x: Math.random() * width,
-                    y: Math.random() * height,
-                    vx: (Math.random() - 0.5) * 0.35,
-                    vy: (Math.random() - 0.5) * 0.35,
-                    r: Math.random() * 2 + 1,
-                    alpha: Math.random() * 0.5 + 0.18
-                });
-            }
-        }
-
-        function animateCanvas() {
-            ctx.clearRect(0, 0, width, height);
-
-            for (let i = 0; i < particles.length; i++) {
-                const p = particles[i];
-                p.x += p.vx;
-                p.y += p.vy;
-
-                if (p.x < 0 || p.x > width) p.vx *= -1;
-                if (p.y < 0 || p.y > height) p.vy *= -1;
-
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(245, 236, 215, ${p.alpha})`;
-                ctx.fill();
-
-                for (let j = i + 1; j < particles.length; j++) {
-                    const q = particles[j];
-                    const dx = p.x - q.x;
-                    const dy = p.y - q.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < 140) {
-                        ctx.beginPath();
-                        ctx.moveTo(p.x, p.y);
-                        ctx.lineTo(q.x, q.y);
-                        ctx.strokeStyle = `rgba(245, 236, 215, ${(1 - dist / 140) * 0.16})`;
-                        ctx.lineWidth = 1;
-                        ctx.stroke();
+        
+        // Hero canvas animation
+        if (!reduceMotion) {
+            const hero = document.querySelector('.hero-banner');
+            const canvas = document.getElementById('heroCanvas');
+            const glow = document.getElementById('heroGlow');
+            
+            if (hero && canvas) {
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    let width = 0, height = 0;
+                    const particles = [];
+                    const particleCount = window.innerWidth < 768 ? 20 : 34;
+                    
+                    function resizeCanvas() {
+                        const rect = hero.getBoundingClientRect();
+                        width = Math.max(1, Math.floor(rect.width));
+                        height = Math.max(1, Math.floor(rect.height));
+                        canvas.width = width;
+                        canvas.height = height;
+                        createParticles();
+                    }
+                    
+                    function createParticles() {
+                        particles.length = 0;
+                        for (let i = 0; i < particleCount; i++) {
+                            particles.push({
+                                x: Math.random() * width,
+                                y: Math.random() * height,
+                                vx: (Math.random() - 0.5) * 0.35,
+                                vy: (Math.random() - 0.5) * 0.35,
+                                r: Math.random() * 2 + 1,
+                                alpha: Math.random() * 0.5 + 0.18
+                            });
+                        }
+                    }
+                    
+                    function animateCanvas() {
+                        if (!ctx) return;
+                        ctx.clearRect(0, 0, width, height);
+                        
+                        for (let i = 0; i < particles.length; i++) {
+                            const p = particles[i];
+                            p.x += p.vx;
+                            p.y += p.vy;
+                            
+                            if (p.x < 0 || p.x > width) p.vx *= -1;
+                            if (p.y < 0 || p.y > height) p.vy *= -1;
+                            
+                            ctx.beginPath();
+                            ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                            ctx.fillStyle = `rgba(245, 236, 215, ${p.alpha})`;
+                            ctx.fill();
+                            
+                            for (let j = i + 1; j < particles.length; j++) {
+                                const q = particles[j];
+                                const dx = p.x - q.x;
+                                const dy = p.y - q.y;
+                                const dist = Math.sqrt(dx * dx + dy * dy);
+                                if (dist < 140) {
+                                    ctx.beginPath();
+                                    ctx.moveTo(p.x, p.y);
+                                    ctx.lineTo(q.x, q.y);
+                                    ctx.strokeStyle = `rgba(245, 236, 215, ${(1 - dist / 140) * 0.16})`;
+                                    ctx.lineWidth = 1;
+                                    ctx.stroke();
+                                }
+                            }
+                        }
+                        
+                        requestAnimationFrame(animateCanvas);
+                    }
+                    
+                    resizeCanvas();
+                    animateCanvas();
+                    
+                    window.addEventListener('resize', () => {
+                        resizeCanvas();
+                    });
+                    
+                    // Mouse move effect for glow
+                    if (glow) {
+                        hero.addEventListener('mousemove', (event) => {
+                            const rect = hero.getBoundingClientRect();
+                            const x = (event.clientX - rect.left) / rect.width;
+                            const y = (event.clientY - rect.top) / rect.height;
+                            const moveX = (x - 0.5) * 36;
+                            const moveY = (y - 0.5) * 24;
+                            glow.style.transform = `translate(-50%, 0) translate(${moveX}px, ${moveY}px)`;
+                        });
                     }
                 }
             }
-
-            requestAnimationFrame(animateCanvas);
         }
-
-        resizeCanvas();
-        createParticles();
-        animateCanvas();
-
-        window.addEventListener('resize', () => {
-            resizeCanvas();
-            createParticles();
-        });
-
-        hero.addEventListener('mousemove', (event) => {
-            const rect = hero.getBoundingClientRect();
-            const x = (event.clientX - rect.left) / rect.width;
-            const y = (event.clientY - rect.top) / rect.height;
-            if (glow) {
-                const moveX = (x - 0.5) * 36;
-                const moveY = (y - 0.5) * 24;
-                glow.style.transform = `translate(-50%, 0) translate(${moveX}px, ${moveY}px)`;
-            }
-        });
-    });
+        
+        // Toast notification function
+        window.showToast = function(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+            
+            const colors = {
+                success: '#28a745',
+                error: '#dc3545',
+                warning: '#ffc107',
+                info: '#17a2b8'
+            };
+            
+            const toast = document.createElement('div');
+            toast.className = 'toast align-items-center text-white border-0 show';
+            toast.setAttribute('role', 'alert');
+            toast.style.background = colors[type] || colors.success;
+            toast.style.borderRadius = '8px';
+            toast.style.marginTop = '10px';
+            toast.style.minWidth = '280px';
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${escapeHtml(message)}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transition = 'opacity 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
+        };
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Check for URL parameters (success/error messages)
+        const urlParams = new URLSearchParams(window.location.search);
+        const successMsg = urlParams.get('success');
+        const errorMsg = urlParams.get('error');
+        
+        if (successMsg) {
+            showToast(decodeURIComponent(successMsg), 'success');
+            // Clean URL without reload
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+        }
+        
+        if (errorMsg) {
+            showToast(decodeURIComponent(errorMsg), 'error');
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+        }
+    })();
 </script>
 </body>
 </html>
