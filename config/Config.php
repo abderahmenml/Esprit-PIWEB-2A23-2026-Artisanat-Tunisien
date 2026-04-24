@@ -23,11 +23,40 @@ spl_autoload_register(static function (string $class): void {
     }
 });
 
-$host = '127.0.0.1';
-$db   = 'herfa_tunisie';
-$user = 'root';
-$pass = '';
-$charset = 'utf8mb4';
+$envPath = dirname(__DIR__) . '/.env';
+if (is_file($envPath)) {
+    $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '' || str_starts_with($line, '#')) {
+            continue;
+        }
+        $parts = explode('=', $line, 2);
+        if (count($parts) === 2) {
+            [$k, $v] = $parts;
+            $k = trim($k);
+            $v = trim($v);
+            putenv("{$k}={$v}");
+            $_ENV[$k] = $v;
+            $_SERVER[$k] = $v;
+        }
+    }
+}
+
+function env(string $key, $default = null)
+{
+    $val = getenv($key);
+    return $val === false ? $default : $val;
+}
+
+$host = env('DB_HOST', '127.0.0.1');
+$db   = env('DB_NAME', 'herfa_tunisie');
+$user = env('DB_USER', 'root');
+$pass = env('DB_PASS', '');
+$charset = env('DB_CHARSET', 'utf8mb4');
+
+// OpenAI API key (load from environment)
+$OPENAI_API_KEY = env('OPENAI_API_KEY', null);
 
 $dsn = "mysql:host={$host};dbname={$db};charset={$charset}";
 

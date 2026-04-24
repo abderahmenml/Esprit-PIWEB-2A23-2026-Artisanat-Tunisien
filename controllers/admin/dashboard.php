@@ -53,5 +53,6 @@ $stats = $schemaReady
     : ['total_offers' => 0, 'verified_offers' => 0, 'not_verified_offers' => 0, 'active_recruiters' => 0];
 
 $offers = $schemaReady ? admin_fetch_offers($pdo, $search, $verificationFilter, '', $sort, 12) : [];
+$latestApplications = $schemaReady ? admin_fetch_latest_applications($pdo, 8) : [];
 
 require dirname(__DIR__, 2) . '/views/backend/admin/dashboard.php';

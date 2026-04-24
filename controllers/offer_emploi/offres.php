@@ -5,6 +5,7 @@
 
 declare(strict_types=1);
 require_once dirname(__DIR__, 2) . '/config/Config.php';
+require_once dirname(__DIR__, 2) . '/views/partials/app_header.php';
 require_auth();
 
 $baseUrl = app_base_url();
@@ -395,6 +396,8 @@ function normalize_offer_image_url(?string $imagePath): string
             --dark-brown: #3B2314;
         }
         body { background: #faf7f0; }
+        <?php echo app_header_styles(); ?>
+        .legacy-page-navbar { display: none !important; }
         .dashboard-navbar { background-color: rgba(59, 35, 20, 0.96) !important; padding: 0.8rem 0; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
         .dashboard-navbar .nav-link { color: #F5ECD7 !important; font-weight: 600; margin: 0 0.35rem; transition: color 0.3s; }
         .dashboard-navbar .nav-link.active { color: #fff !important; }
@@ -442,7 +445,8 @@ function normalize_offer_image_url(?string $imagePath): string
     </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg dashboard-navbar sticky-top">
+<?php render_app_header('jobs'); ?>
+<nav class="navbar navbar-expand-lg dashboard-navbar sticky-top legacy-page-navbar">
     <div class="container">
         <a class="navbar-brand d-flex align-items-center" href="<?php echo h(app_url('controllers/home.php')); ?>">
             <img src="<?php echo h(app_url('public/assets/img/logo_herfa.png')); ?>" alt="Logo" height="40" style="margin-right: 0.8rem;">

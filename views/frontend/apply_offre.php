@@ -4,7 +4,10 @@
 
 declare(strict_types=1);
 require_once dirname(__DIR__, 2) . '/config/Config.php';
+require_once dirname(__DIR__, 2) . '/services/CvParserService.php';
+require_once dirname(__DIR__, 2) . '/services/CandidateService.php';
 require_once dirname(__DIR__) . '/partials/job_ui.php';
+require_once dirname(__DIR__) . '/partials/app_header.php';
 require_role('artisan');
 
 $userNom = (string)($_SESSION['nom'] ?? 'Utilisateur');
@@ -25,7 +28,12 @@ if ($idOffer <= 0) {
 
 $notice = trim((string)($_GET['notice'] ?? ''));
 
-$userStmt = $pdo->prepare('SELECT email FROM user WHERE id_user = ? LIMIT 1');
+$hasUserPhoneColumn = (bool)$pdo->query("SHOW COLUMNS FROM `user` LIKE 'phone'")->fetch();
+$hasUserVilleColumn = (bool)$pdo->query("SHOW COLUMNS FROM `user` LIKE 'ville'")->fetch();
+$userSelect = 'email'
+    . ($hasUserPhoneColumn ? ', phone' : ", '' AS phone")
+    . ($hasUserVilleColumn ? ', ville' : ", '' AS ville");
+$userStmt = $pdo->prepare('SELECT ' . $userSelect . ' FROM `user` WHERE id_user = ? LIMIT 1');
 $userStmt->execute([$userId]);
 $currentUser = $userStmt->fetch() ?: [];
 
@@ -48,6 +56,11 @@ $hasCvFileHashColumn = (bool)$pdo->query("SHOW COLUMNS FROM application LIKE 'cv
 $formData = [
     'candidate_name' => trim($userPrenom . ' ' . $userNom),
     'candidate_email' => (string)($currentUser['email'] ?? ''),
+    'phone' => (string)($currentUser['phone'] ?? ''),
+    'location' => (string)($currentUser['ville'] ?? ''),
+    'professional_title' => '',
+    'professional_summary' => '',
+    'profile_completeness' => 0,
     'skills' => '',
     'experience' => '',
     'education' => '',
@@ -56,6 +69,50 @@ $formData = [
 ];
 
 $errors = [];
+$cvParser = new CvParserService();
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_GET['parse_cv'])) {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $postedCsrf = (string)($_POST['csrf'] ?? '');
+    if ($applyCsrf === '' || !hash_equals($applyCsrf, $postedCsrf)) {
+        http_response_code(419);
+        echo json_encode(['ok' => false, 'error' => 'Session expirée. Veuillez réessayer.']);
+        exit();
+    }
+
+    if (!isset($_FILES['cv_file']) || ($_FILES['cv_file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        http_response_code(422);
+        echo json_encode(['ok' => false, 'error' => 'Ajoutez un fichier CV valide.']);
+        exit();
+    }
+
+    $tmp = (string)($_FILES['cv_file']['tmp_name'] ?? '');
+    $originalName = basename((string)($_FILES['cv_file']['name'] ?? ''));
+    $fileSize = (int)($_FILES['cv_file']['size'] ?? 0);
+    $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+
+    if ($fileSize <= 0 || $fileSize > (8 * 1024 * 1024) || !in_array($ext, ['pdf', 'doc', 'docx', 'txt'], true)) {
+        http_response_code(422);
+        echo json_encode(['ok' => false, 'error' => 'Format CV non supporté ou fichier trop volumineux.']);
+        exit();
+    }
+
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $tmp !== '' ? (string)$finfo->file($tmp) : '';
+    $parsed = $cvParser->parseUploadedFile($tmp, $originalName, $mime);
+    $hasText = trim((string)($parsed['raw_text'] ?? '')) !== '';
+    $parserError = trim($cvParser->getLastError());
+
+    echo json_encode([
+        'ok' => true,
+        'parsed' => $parsed,
+        'message' => $hasText
+            ? 'CV lu. Les champs trouvés ont été pré-remplis.'
+            : ($parserError !== '' ? $parserError : 'Fichier reçu, mais le texte n’a pas pu être extrait automatiquement. Complétez les champs manuellement.'),
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit();
+}
 
 $buildStructuredCv = static function (array $payload): array {
     $skills = array_values(array_filter(array_map(
@@ -66,9 +123,23 @@ $buildStructuredCv = static function (array $payload): array {
     return [
         'full_name' => trim((string)($payload['candidate_name'] ?? '')),
         'email' => trim((string)($payload['candidate_email'] ?? '')),
+        'phone' => trim((string)($payload['phone'] ?? '')),
+        'location' => trim((string)($payload['location'] ?? '')),
+        'professional_title' => trim((string)($payload['professional_title'] ?? '')),
+        'professional_summary' => trim((string)($payload['professional_summary'] ?? '')),
         'skills' => $skills,
         'experience' => trim((string)($payload['experience'] ?? '')),
+        'work_experience' => trim((string)($payload['experience'] ?? '')),
         'education' => trim((string)($payload['education'] ?? '')),
+        'profile_completeness' => (int)($payload['profile_completeness'] ?? round((count(array_filter([
+            $payload['candidate_name'] ?? '',
+            $payload['candidate_email'] ?? '',
+            $payload['phone'] ?? '',
+            $payload['professional_title'] ?? '',
+            $payload['skills'] ?? '',
+            $payload['experience'] ?? '',
+            $payload['education'] ?? '',
+        ], static fn ($value): bool => trim((string)$value) !== '')) / 7) * 100)),
     ];
 };
 
@@ -110,6 +181,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cvText = trim((string)($_POST['cv_text'] ?? ''));
     $formData['candidate_name'] = trim((string)($_POST['candidate_name'] ?? $formData['candidate_name']));
     $formData['candidate_email'] = trim((string)($_POST['candidate_email'] ?? $formData['candidate_email']));
+    $formData['phone'] = trim((string)($_POST['phone'] ?? $formData['phone']));
+    $formData['location'] = trim((string)($_POST['location'] ?? $formData['location']));
+    $formData['professional_title'] = trim((string)($_POST['professional_title'] ?? ''));
+    $formData['professional_summary'] = trim((string)($_POST['professional_summary'] ?? ''));
     $formData['skills'] = trim((string)($_POST['skills'] ?? ''));
     $formData['experience'] = trim((string)($_POST['experience'] ?? ''));
     $formData['education'] = trim((string)($_POST['education'] ?? ''));
@@ -117,9 +192,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $formData['cv_text'] = $cvText;
 
     if ($cvText !== '') {
-        $auto = $autoFillFromCvText($cvText);
+        $auto = $cvParser->extractHints($cvText);
         foreach ($auto as $key => $value) {
-            if (($formData[$key] ?? '') === '' && $value !== '') {
+            if (array_key_exists($key, $formData) && ($formData[$key] ?? '') === '' && $value !== '') {
                 $formData[$key] = $value;
             }
         }
@@ -161,11 +236,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $fileSize = (int)($_FILES['cv_file']['size'] ?? 0);
         $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
 
-        $allowedExt = ['pdf', 'doc', 'docx'];
+        $allowedExt = ['pdf', 'doc', 'docx', 'txt'];
         $allowedMime = [
             'application/pdf',
             'application/msword',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'text/plain',
         ];
 
         $finfo = new finfo(FILEINFO_MIME_TYPE);
@@ -173,10 +249,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($fileSize <= 0 || $fileSize > (8 * 1024 * 1024)) {
             $errors[] = 'Le CV doit faire entre 1 Ko et 8 Mo.';
-        } elseif (!in_array($ext, $allowedExt, true) || !in_array($mime, $allowedMime, true)) {
-            $errors[] = 'Format CV non supporté. Utilisez PDF, DOC ou DOCX.';
+        } elseif (!in_array($ext, $allowedExt, true) || (!in_array($mime, $allowedMime, true) && !str_starts_with($mime, 'text/'))) {
+            $errors[] = 'Format CV non supporté. Utilisez PDF, DOC, DOCX ou TXT.';
         } else {
-            $uploadDir = dirname(__DIR__, 2) . '/uploads/cv/';
+            $parsedUpload = $cvParser->parseUploadedFile($tmp, $originalName, $mime);
+            if (!empty($parsedUpload['raw_text']) && $cvText === '') {
+                $cvText = (string)$parsedUpload['raw_text'];
+                $formData['cv_text'] = $cvText;
+            }
+            foreach ($parsedUpload as $key => $value) {
+                if (array_key_exists($key, $formData) && trim((string)$formData[$key]) === '' && trim((string)$value) !== '') {
+                    $formData[$key] = trim((string)$value);
+                }
+            }
+
+            $uploadDir = dirname(__DIR__, 2) . '/public/uploads/cv/';
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0755, true);
             }
@@ -185,7 +272,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $target = $uploadDir . $filename;
 
             if (move_uploaded_file($tmp, $target)) {
-                $cvPath = 'uploads/cv/' . $filename;
+                $cvPath = 'public/uploads/cv/' . $filename;
                 $cvFileMeta['name'] = $originalName;
                 $cvFileMeta['size'] = $fileSize;
                 $cvFileMeta['type'] = $mime;
@@ -254,6 +341,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $insertPivot = $pdo->prepare('INSERT INTO application_offre (id_offre, id_application) VALUES (?, ?)');
             $insertPivot->execute([$idOffer, $applicationId]);
 
+            if ($pdo->query("SHOW TABLES LIKE 'candidate_profile'")->fetch()) {
+                $candidateService = new CandidateService($pdo);
+                $candidateService->upsertFromApplication($applicationId, $userId, $structuredCv);
+                $candidateProfile = $candidateService->getProfileByApplication($applicationId);
+                if ($candidateProfile && !empty($structuredCv['skills']) && $pdo->query("SHOW TABLES LIKE 'candidate_skills'")->fetch()) {
+                    $candidateService->saveSkills((int)$candidateProfile['id'], $structuredCv['skills']);
+                }
+            }
+
             $pdo->commit();
             header('Location: ' . $baseUrl . 'controllers/offer_emploi/my_applications.php?notice=applied');
             exit();
@@ -280,6 +376,8 @@ function h(?string $value): string
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="<?php echo h(job_asset('assets/css/styles.css')); ?>" rel="stylesheet" />
     <style>
+        <?php echo app_header_styles(); ?>
+        .legacy-page-navbar { display: none !important; }
         .dashboard-navbar { background-color: rgba(59, 35, 20, 0.96) !important; padding: 0.8rem 0; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
         .dashboard-navbar .nav-link { color: #F5ECD7 !important; font-weight: 600; margin: 0 0.35rem; }
         .dashboard-navbar .nav-link:hover { color: #C49A6C !important; }
@@ -292,7 +390,8 @@ function h(?string $value): string
     </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg dashboard-navbar sticky-top">
+<?php render_app_header('jobs'); ?>
+<nav class="navbar navbar-expand-lg dashboard-navbar sticky-top legacy-page-navbar">
     <div class="container">
         <a class="navbar-brand d-flex align-items-center" href="<?php echo h($baseUrl . 'controllers/home.php'); ?>">
             <img src="<?php echo h(job_asset('assets/img/logo_herfa.png')); ?>" alt="Logo" height="40" style="margin-right: 0.8rem;">
@@ -343,6 +442,18 @@ function h(?string $value): string
                     <input class="form-control" type="email" name="candidate_email" value="<?php echo h($formData['candidate_email']); ?>" />
                 </div>
                 <div class="col-md-6">
+                    <label class="form-label">Téléphone</label>
+                    <input class="form-control" name="phone" value="<?php echo h($formData['phone']); ?>" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Ville / localisation</label>
+                    <input class="form-control" name="location" value="<?php echo h($formData['location']); ?>" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Titre professionnel</label>
+                    <input class="form-control" name="professional_title" value="<?php echo h($formData['professional_title']); ?>" placeholder="Ex: Designer textile" />
+                </div>
+                <div class="col-md-6">
                     <label class="form-label">Compétences</label>
                     <input class="form-control" name="skills" value="<?php echo h($formData['skills']); ?>" placeholder="Ex: PHP, Laravel, UI/UX" />
                 </div>
@@ -355,6 +466,10 @@ function h(?string $value): string
                     <textarea class="form-control" name="education" rows="2"><?php echo h($formData['education']); ?></textarea>
                 </div>
                 <div class="col-12">
+                    <label class="form-label">Résumé professionnel</label>
+                    <textarea class="form-control" name="professional_summary" rows="3"><?php echo h($formData['professional_summary']); ?></textarea>
+                </div>
+                <div class="col-12">
                     <label class="form-label">Lettre de motivation</label>
                     <textarea class="form-control" name="lettre_de_motivation" rows="6" required><?php echo h($formData['lettre_de_motivation']); ?></textarea>
                 </div>
@@ -364,8 +479,9 @@ function h(?string $value): string
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">CV (fichier)</label>
-                    <input class="form-control" type="file" name="cv_file" accept=".pdf,.doc,.docx" />
-                    <small class="text-muted">Formats acceptés: PDF/DOC/DOCX (8 Mo max).</small>
+                    <input class="form-control" type="file" name="cv_file" accept=".pdf,.doc,.docx,.txt" />
+                    <small class="text-muted">Formats acceptés: PDF/DOC/DOCX/TXT (8 Mo max).</small>
+                    <div id="cvParseStatus" class="small mt-2 text-muted"></div>
                 </div>
                 <div class="col-12 text-center">
                     <button class="btn btn-primary btn-xl" type="submit">Envoyer candidature</button>
@@ -380,5 +496,75 @@ function h(?string $value): string
 </footer>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="<?php echo h(job_asset('assets/js/scripts.js')); ?>"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const fileInput = document.querySelector('input[name="cv_file"]');
+    const csrfInput = document.querySelector('input[name="csrf"]');
+    const status = document.getElementById('cvParseStatus');
+    const fields = {
+        candidate_name: document.querySelector('[name="candidate_name"]'),
+        candidate_email: document.querySelector('[name="candidate_email"]'),
+        phone: document.querySelector('[name="phone"]'),
+        location: document.querySelector('[name="location"]'),
+        professional_title: document.querySelector('[name="professional_title"]'),
+        professional_summary: document.querySelector('[name="professional_summary"]'),
+        skills: document.querySelector('[name="skills"]'),
+        experience: document.querySelector('[name="experience"]'),
+        education: document.querySelector('[name="education"]'),
+        cv_text: document.querySelector('[name="cv_text"]')
+    };
+
+    if (!fileInput || !csrfInput || !status) {
+        return;
+    }
+
+    fileInput.addEventListener('change', async () => {
+        if (!fileInput.files.length) {
+            status.textContent = '';
+            return;
+        }
+
+        status.className = 'small mt-2 text-muted';
+        status.textContent = 'Lecture du CV...';
+
+        const body = new FormData();
+        body.append('csrf', csrfInput.value);
+        body.append('cv_file', fileInput.files[0]);
+
+        try {
+            const separator = window.location.search ? '&' : '?';
+            const response = await fetch(`${window.location.pathname}${window.location.search}${separator}parse_cv=1`, {
+                method: 'POST',
+                body
+            });
+            const data = await response.json();
+
+            if (!response.ok || !data.ok) {
+                throw new Error(data.error || 'Lecture impossible.');
+            }
+
+            const parsed = data.parsed || {};
+            if (parsed.raw_text && fields.cv_text && fields.cv_text.value.trim() === '') {
+                fields.cv_text.value = parsed.raw_text;
+            }
+
+            Object.entries(parsed).forEach(([key, value]) => {
+                if (!fields[key] || !value) {
+                    return;
+                }
+                if (key === 'cv_text' || fields[key].value.trim() === '') {
+                    fields[key].value = value;
+                }
+            });
+
+            status.className = 'small mt-2 text-success';
+            status.textContent = data.message || 'CV lu.';
+        } catch (error) {
+            status.className = 'small mt-2 text-warning';
+            status.textContent = error.message || 'Complétez les champs manuellement.';
+        }
+    });
+});
+</script>
 </body>
 </html>

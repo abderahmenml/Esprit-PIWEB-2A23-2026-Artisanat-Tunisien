@@ -34,7 +34,39 @@ function admin_get_offer_dashboard_stats(PDO $pdo): array
         'verified_offers' => (int)$pdo->query("SELECT COUNT(*) FROM offre_emploi WHERE verification_status = 'verified'")->fetchColumn(),
         'not_verified_offers' => (int)$pdo->query("SELECT COUNT(*) FROM offre_emploi WHERE verification_status = 'not_verified'")->fetchColumn(),
         'active_recruiters' => (int)$pdo->query("SELECT COUNT(DISTINCT id_recruteur) FROM offre_emploi")->fetchColumn(),
+        'total_applications' => (int)$pdo->query("SELECT COUNT(*) FROM application")->fetchColumn(),
     ];
+}
+
+function admin_fetch_latest_applications(PDO $pdo, int $limit = 8): array
+{
+    $limit = max(1, min(50, $limit));
+    $stmt = $pdo->prepare(
+        "SELECT
+            a.id AS id_application,
+            a.status,
+            a.date_creation,
+            a.parsed_cv_data,
+            a.cv_parsing_status,
+            a.cv_file_name,
+            candidate.nom AS candidate_nom,
+            candidate.prenom AS candidate_prenom,
+            candidate.email AS candidate_email,
+            o.id_offer,
+            o.titre AS offer_title,
+            recruiter.nom AS recruiter_nom,
+            recruiter.prenom AS recruiter_prenom
+         FROM application a
+         LEFT JOIN application_offre ao ON ao.id_application = a.id
+         LEFT JOIN offre_emploi o ON o.id_offer = ao.id_offre
+         LEFT JOIN `user` candidate ON candidate.id_user = a.id_user
+         LEFT JOIN `user` recruiter ON recruiter.id_user = o.id_recruteur
+         ORDER BY a.date_creation DESC
+         LIMIT {$limit}"
+    );
+    $stmt->execute();
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function admin_fetch_offers(PDO $pdo, string $search = '', string $verification = '', string $status = '', string $sort = 'latest', int $limit = 50): array
@@ -141,6 +173,68 @@ function admin_update_offer_verification(PDO $pdo, int $offerId, bool $verified,
     );
 
     return $stmt->execute([$status, $verifiedAt, $verifiedBy, $note, $offerId]);
+}
+
+function admin_delete_offer_with_reason(PDO $pdo, int $offerId, int $adminId, string $reason): bool
+{
+    $reason = trim($reason);
+    if ($offerId <= 0 || $adminId <= 0 || $reason === '') {
+        return false;
+    }
+
+    try {
+        $offerStmt = $pdo->prepare(
+            "SELECT o.id_offer, o.titre, o.id_recruteur
+             FROM offre_emploi o
+             WHERE o.id_offer = ?
+             LIMIT 1"
+        );
+        $offerStmt->execute([$offerId]);
+        $offer = $offerStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$offer) {
+            return false;
+        }
+
+        $recruiterId = (int)($offer['id_recruteur'] ?? 0);
+        if ($recruiterId <= 0) {
+            return false;
+        }
+
+        $title = trim((string)($offer['titre'] ?? 'Offre'));
+        if ($title === '') {
+            $title = 'Offre';
+        }
+
+        $pdo->beginTransaction();
+
+        $deleteStmt = $pdo->prepare("DELETE FROM offre_emploi WHERE id_offer = ?");
+        $deleteStmt->execute([$offerId]);
+
+        if ($deleteStmt->rowCount() < 1) {
+            $pdo->rollBack();
+            return false;
+        }
+
+        $hasNotificationsTable = (bool)$pdo->query("SHOW TABLES LIKE 'notifications'")->fetch();
+        if ($hasNotificationsTable) {
+            $message = "Votre offre \"" . $title . "\" a ete supprimee par un administrateur.\nRaison: " . $reason;
+            $notifStmt = $pdo->prepare(
+                "INSERT INTO notifications (user_id, title, message, type, is_read)
+                 VALUES (?, ?, ?, 'warning', 0)"
+            );
+            $notifStmt->execute([$recruiterId, 'Offre supprimee par moderation', $message]);
+        }
+
+        $pdo->commit();
+        return true;
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('admin_delete_offer_with_reason failed: ' . $e->getMessage());
+        return false;
+    }
 }
 
 function admin_h(?string $value): string

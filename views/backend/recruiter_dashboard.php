@@ -1,18 +1,38 @@
 <?php
 // recruiter_dashboard.php
-// Recruiter dashboard: own offers + applications + status update + applicant profile link
 
 declare(strict_types=1);
 require_once dirname(__DIR__, 2) . '/config/Config.php';
 require_once dirname(__DIR__) . '/partials/job_ui.php';
-require_role('recruteur');
+require_once dirname(__DIR__) . '/partials/app_header.php';
+require_auth();
+
+$role = (string)($_SESSION['role'] ?? 'artisan');
+if (!in_array($role, ['recruteur', 'entrepreneur', 'admin'], true)) {
+    http_response_code(403);
+    die('Accès refusé.');
+}
 
 $userNom = (string)($_SESSION['nom'] ?? 'Utilisateur');
 $userPrenom = (string)($_SESSION['prenom'] ?? '');
 $baseUrl = app_base_url();
-
 $recruiterId = (int)$_SESSION['user_id'];
+$isAdmin = $role === 'admin';
+$notice = '';
+$noticeType = 'success';
+$notifications = [];
+$unreadNotificationCount = 0;
+
 $hasVerificationColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'verification_status'")->fetch();
+$hasViewsColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'views_count'")->fetch();
+$hasApplicationsColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'applications_count'")->fetch();
+$hasLocationColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'location'")->fetch();
+$hasCreatedAtColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'created_at'")->fetch();
+$hasParsedCvDataColumn = (bool)$pdo->query("SHOW COLUMNS FROM application LIKE 'parsed_cv_data'")->fetch();
+$hasCvParsingStatusColumn = (bool)$pdo->query("SHOW COLUMNS FROM application LIKE 'cv_parsing_status'")->fetch();
+$hasCvFileNameColumn = (bool)$pdo->query("SHOW COLUMNS FROM application LIKE 'cv_file_name'")->fetch();
+$hasCvFileSizeColumn = (bool)$pdo->query("SHOW COLUMNS FROM application LIKE 'cv_file_size'")->fetch();
+$hasNotificationsTable = (bool)$pdo->query("SHOW TABLES LIKE 'notifications'")->fetch();
 
 if (!isset($_SESSION['recruiter_dashboard_csrf'])) {
     $_SESSION['recruiter_dashboard_csrf'] = bin2hex(random_bytes(16));
@@ -21,45 +41,183 @@ $csrf = (string)$_SESSION['recruiter_dashboard_csrf'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postedCsrf = (string)($_POST['csrf'] ?? '');
-    if (hash_equals($csrf, $postedCsrf)) {
-        if (isset($_POST['application_id'], $_POST['status'])) {
-            $applicationId = (int)$_POST['application_id'];
-            $status = trim((string)$_POST['status']);
-            if (in_array($status, ['pending', 'submitted', 'reviewed', 'shortlisted', 'interview', 'accepted', 'rejected'], true)) {
+    if (!hash_equals($csrf, $postedCsrf)) {
+        $notice = 'Jeton de sécurité invalide.';
+        $noticeType = 'danger';
+    } elseif (isset($_POST['application_id'], $_POST['status'])) {
+        $applicationId = (int)$_POST['application_id'];
+        $status = trim((string)$_POST['status']);
+        if ($applicationId > 0 && in_array($status, ['pending', 'submitted', 'reviewed', 'shortlisted', 'interview', 'accepted', 'rejected'], true)) {
+            if ($isAdmin) {
                 $update = $pdo->prepare('UPDATE application SET status = ? WHERE id = ?');
-                $update->execute([$status, $applicationId]);
+                $ok = $update->execute([$status, $applicationId]);
+            } else {
+                $update = $pdo->prepare(
+                    'UPDATE application a
+                     JOIN application_offre ao ON ao.id_application = a.id
+                     JOIN offre_emploi o ON o.id_offer = ao.id_offre
+                     SET a.status = ?
+                     WHERE a.id = ? AND o.id_recruteur = ?'
+                );
+                $ok = $update->execute([$status, $applicationId, $recruiterId]);
             }
+            $notice = $ok ? 'Statut de candidature mis à jour.' : 'Mise à jour impossible.';
+            $noticeType = $ok ? 'success' : 'danger';
         }
-
-        if (isset($_POST['offer_id'], $_POST['offer_status'])) {
-            $offerId = (int)$_POST['offer_id'];
-            $offerStatus = trim((string)$_POST['offer_status']);
-            if ($offerId > 0 && in_array($offerStatus, ['draft', 'published', 'paused', 'closed'], true)) {
+    } elseif (isset($_POST['offer_id'], $_POST['offer_status'])) {
+        $offerId = (int)$_POST['offer_id'];
+        $offerStatus = trim((string)$_POST['offer_status']);
+        if ($offerId > 0 && in_array($offerStatus, ['draft', 'published', 'paused', 'closed'], true)) {
+            if ($isAdmin) {
+                $updateOffer = $pdo->prepare('UPDATE offre_emploi SET status = ? WHERE id_offer = ?');
+                $ok = $updateOffer->execute([$offerStatus, $offerId]);
+            } else {
                 $updateOffer = $pdo->prepare('UPDATE offre_emploi SET status = ? WHERE id_offer = ? AND id_recruteur = ?');
-                $updateOffer->execute([$offerStatus, $offerId, $recruiterId]);
+                $ok = $updateOffer->execute([$offerStatus, $offerId, $recruiterId]);
             }
+            $notice = $ok ? 'Statut de l’offre mis à jour.' : 'Mise à jour impossible.';
+            $noticeType = $ok ? 'success' : 'danger';
         }
     }
 }
 
-$offersVerificationSelect = $hasVerificationColumn ? 'verification_status' : "'not_verified' AS verification_status";
-$offersStmt = $pdo->prepare('SELECT id_offer, titre, budget, duree, status, ' . $offersVerificationSelect . ' FROM offre_emploi WHERE id_recruteur = ? ORDER BY id_offer DESC');
-$offersStmt->execute([$recruiterId]);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hasNotificationsTable) {
+    $postedCsrf = (string)($_POST['csrf'] ?? '');
+    $action = trim((string)($_POST['action'] ?? ''));
+
+    if (hash_equals($csrf, $postedCsrf) && $action === 'dismiss_notification') {
+        $notificationId = (int)($_POST['notification_id'] ?? 0);
+        if ($notificationId > 0) {
+            $dismissStmt = $pdo->prepare('DELETE FROM notifications WHERE id = ? AND user_id = ?');
+            $ok = $dismissStmt->execute([$notificationId, $recruiterId]);
+            $notice = $ok ? 'Notification retiree.' : 'Suppression impossible.';
+            $noticeType = $ok ? 'success' : 'danger';
+        }
+    } elseif (hash_equals($csrf, $postedCsrf) && $action === 'dismiss_all_notifications') {
+        $dismissAllStmt = $pdo->prepare('DELETE FROM notifications WHERE user_id = ?');
+        $ok = $dismissAllStmt->execute([$recruiterId]);
+        $notice = $ok ? 'Toutes les notifications ont ete retirees.' : 'Suppression impossible.';
+        $noticeType = $ok ? 'success' : 'danger';
+    }
+}
+
+if ($hasNotificationsTable) {
+    try {
+        $notifCountStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM notifications
+             WHERE user_id = ? AND is_read = 0"
+        );
+        $notifCountStmt->execute([$recruiterId]);
+        $unreadNotificationCount = (int)$notifCountStmt->fetchColumn();
+
+        $notifStmt = $pdo->prepare(
+            "SELECT id, title, message, type, is_read, created_at
+             FROM notifications
+             WHERE user_id = ?
+             ORDER BY created_at DESC
+             LIMIT 6"
+        );
+        $notifStmt->execute([$recruiterId]);
+        $notifications = $notifStmt->fetchAll() ?: [];
+    } catch (Throwable $e) {
+        error_log('Recruiter notifications fetch error: ' . $e->getMessage());
+    }
+}
+
+$scopeWhere = $isAdmin ? '1=1' : 'o.id_recruteur = ?';
+$scopeParams = $isAdmin ? [] : [$recruiterId];
+
+$selectVerification = $hasVerificationColumn ? 'o.verification_status' : "'not_verified' AS verification_status";
+$selectViews = $hasViewsColumn ? 'o.views_count' : '0 AS views_count';
+$selectApplications = $hasApplicationsColumn ? 'o.applications_count' : '0 AS applications_count';
+$selectLocation = $hasLocationColumn ? 'o.location' : "'' AS location";
+$selectCreatedAt = $hasCreatedAtColumn ? 'o.created_at' : 'NULL AS created_at';
+
+$offersStmt = $pdo->prepare(
+    "SELECT o.id_offer, o.titre, o.budget, o.duree, o.status,
+            {$selectVerification}, {$selectViews}, {$selectApplications}, {$selectLocation}, {$selectCreatedAt},
+            u.nom AS recruiter_nom, u.prenom AS recruiter_prenom,
+            (SELECT COUNT(*) FROM application_offre ao WHERE ao.id_offre = o.id_offer) AS actual_applications
+     FROM offre_emploi o
+     LEFT JOIN `user` u ON u.id_user = o.id_recruteur
+     WHERE {$scopeWhere}
+     ORDER BY o.id_offer DESC"
+);
+$offersStmt->execute($scopeParams);
 $offers = $offersStmt->fetchAll();
 
-$appStmt = $pdo->prepare(
+$selectParsedCv = $hasParsedCvDataColumn ? 'a.parsed_cv_data' : 'NULL AS parsed_cv_data';
+$selectParsingStatus = $hasCvParsingStatusColumn ? 'a.cv_parsing_status' : "'pending' AS cv_parsing_status";
+$selectCvFileName = $hasCvFileNameColumn ? 'a.cv_file_name' : 'NULL AS cv_file_name';
+$selectCvFileSize = $hasCvFileSizeColumn ? 'a.cv_file_size' : 'NULL AS cv_file_size';
+
+$applicationsStmt = $pdo->prepare(
     "SELECT o.id_offer, o.titre AS offre_titre,
             a.id AS application_id, a.lettre_de_motivation, a.cv, a.status, a.date_creation,
-            u.id_user AS artisan_id, u.nom, u.prenom
+            {$selectParsedCv}, {$selectParsingStatus}, {$selectCvFileName}, {$selectCvFileSize},
+            candidate.id_user AS artisan_id, candidate.nom, candidate.prenom, candidate.email,
+            recruiter.nom AS recruiter_nom, recruiter.prenom AS recruiter_prenom
      FROM offre_emploi o
-     LEFT JOIN application_offre ao ON ao.id_offre = o.id_offer
-     LEFT JOIN application a ON a.id = ao.id_application
-     LEFT JOIN `user` u ON u.id_user = a.id_user
-     WHERE o.id_recruteur = ?
-     ORDER BY o.id_offer DESC, a.id DESC"
+     JOIN application_offre ao ON ao.id_offre = o.id_offer
+     JOIN application a ON a.id = ao.id_application
+     JOIN `user` candidate ON candidate.id_user = a.id_user
+     LEFT JOIN `user` recruiter ON recruiter.id_user = o.id_recruteur
+     WHERE {$scopeWhere}
+     ORDER BY a.date_creation DESC, a.id DESC
+     LIMIT 40"
 );
-$appStmt->execute([$recruiterId]);
-$applications = $appStmt->fetchAll();
+$applicationsStmt->execute($scopeParams);
+$applications = $applicationsStmt->fetchAll();
+
+$statusCounts = ['pending' => 0, 'reviewed' => 0, 'shortlisted' => 0, 'interview' => 0, 'accepted' => 0, 'rejected' => 0];
+foreach ($applications as $application) {
+    $status = (string)$application['status'];
+    $statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
+}
+$totalOffers = count($offers);
+$publishedOffers = count(array_filter($offers, static fn (array $offer): bool => in_array((string)($offer['status'] ?? ''), ['published', 'active', 'open', 'actif'], true)));
+$totalApplications = count($applications);
+$totalViews = array_sum(array_map(static fn (array $offer): int => (int)($offer['views_count'] ?? 0), $offers));
+
+function h(?string $value): string
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function application_status_label(string $status): string
+{
+    return match ($status) {
+        'pending', 'submitted' => 'À revoir',
+        'reviewed' => 'Consultée',
+        'shortlisted' => 'Présélectionnée',
+        'interview' => 'Entretien',
+        'accepted' => 'Acceptée',
+        'rejected' => 'Refusée',
+        default => ucfirst($status),
+    };
+}
+
+function parsing_status_label(string $status): string
+{
+    return match ($status) {
+        'success' => 'CV lu',
+        'manual_entry' => 'Manuel',
+        'failed' => 'Échec lecture',
+        'parsing' => 'Lecture',
+        default => 'En attente',
+    };
+}
+
+function cv_label(array $application): string
+{
+    if (!empty($application['cv_file_name'])) {
+        return (string)$application['cv_file_name'];
+    }
+    if (!empty($application['cv']) && preg_match('#^(?:public/)?uploads/cv/#', (string)$application['cv'])) {
+        return basename((string)$application['cv']);
+    }
+    return trim((string)($application['cv'] ?? '')) !== '' ? 'CV texte' : 'Aucun CV';
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -67,133 +225,226 @@ $applications = $appStmt->fetchAll();
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <title>Dashboard Recruteur | حرفة Tunisie</title>
-    <link rel="icon" type="image/x-icon" href="<?php echo htmlspecialchars(job_asset('assets/favicon.ico'), ENT_QUOTES, 'UTF-8'); ?>" />
+    <link rel="icon" type="image/x-icon" href="<?php echo h(job_asset('assets/favicon.ico')); ?>" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-    <link href="<?php echo htmlspecialchars(job_asset('assets/css/styles.css'), ENT_QUOTES, 'UTF-8'); ?>" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="<?php echo h(job_asset('assets/css/styles.css')); ?>" rel="stylesheet" />
     <style>
-        .dashboard-navbar { background-color: rgba(59, 35, 20, 0.95) !important; padding: 1rem 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        .dashboard-navbar .nav-link { color: #F5ECD7 !important; font-weight: 600; margin: 0 0.35rem; }
-        .dashboard-navbar .nav-link:hover { color: #C49A6C !important; }
-        .user-greeting { color: #C49A6C; font-weight: bold; margin-right: 1rem; }
-        .btn-logout { background: #2E6B3E !important; color: white !important; padding: 0.45rem 0.9rem; border-radius: 4px; text-decoration: none; font-weight: 600; }
-        .hero-banner { background: linear-gradient(135deg, rgba(139, 90, 58, 0.75), rgba(46, 107, 62, 0.75)), url('<?php echo htmlspecialchars(job_asset('assets/img/item_pics/IMG_3043.JPG'), ENT_QUOTES, 'UTF-8'); ?>'); background-size: cover; background-position: center; color: #F5ECD7; padding: 3.2rem 0; text-align: center; border-bottom: 5px solid #8B5A3A; margin-bottom: 2rem; }
+        <?php echo app_header_styles(); ?>
+        body { background:#faf7f0; }
+        .hero-banner { background: linear-gradient(135deg, rgba(59,35,20,.82), rgba(46,107,62,.78)), url('<?php echo h(job_asset('assets/img/item_pics/IMG_3043.JPG')); ?>'); background-size:cover; background-position:center; color:#F5ECD7; padding:3.4rem 0 2.7rem; border-bottom:5px solid #8B5A3A; margin-bottom:2rem; }
+        .metric-card { background:#fff; border:1px solid rgba(139,90,58,.16); border-left:5px solid #2E6B3E; border-radius:8px; box-shadow:0 8px 22px rgba(0,0,0,.07); padding:1rem; height:100%; }
+        .metric-card .value { font-size:1.7rem; font-weight:800; color:#3B2314; line-height:1; }
+        .metric-card .label { color:#6c5f55; font-size:.88rem; margin-top:.35rem; }
+        .panel { background:#fff; border:1px solid rgba(139,90,58,.16); border-radius:8px; box-shadow:0 10px 24px rgba(0,0,0,.08); }
+        .panel-head { padding:1rem 1.15rem; border-bottom:1px solid rgba(139,90,58,.14); display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; }
+        .panel-body { padding:1.15rem; }
+        .offer-row { display:grid; grid-template-columns: minmax(220px,1fr) 120px 130px 150px 220px; gap:.75rem; align-items:center; padding:.9rem 0; border-bottom:1px solid rgba(139,90,58,.10); }
+        .offer-row:last-child { border-bottom:0; }
+        .candidate-card { border:1px solid rgba(139,90,58,.14); border-radius:8px; padding:1rem; background:#fbfaf7; height:100%; }
+        .candidate-avatar { width:44px; height:44px; border-radius:50%; background:#2E6B3E; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:800; flex:0 0 auto; }
+        .chip { display:inline-flex; align-items:center; gap:.35rem; border-radius:999px; background:#eef6ef; color:#244f2e; border:1px solid rgba(46,107,62,.16); padding:.22rem .55rem; font-size:.78rem; margin:.12rem .14rem .12rem 0; }
+        .message-preview { max-height:76px; overflow:auto; font-size:.88rem; color:#5d534b; }
+        .small-label { color:#7a6d63; font-size:.76rem; font-weight:800; text-transform:uppercase; }
+        .notif-list { display:flex; flex-direction:column; gap:.65rem; }
+        .notif-item { background:#fff; border:1px solid rgba(139,90,58,.14); border-left:4px solid #2E6B3E; border-radius:8px; padding:.75rem .85rem; }
+        .notif-item.unread { background:#f8fcf8; border-left-color:#f6c23e; }
+        .notif-title { font-weight:700; color:#3B2314; margin-bottom:.2rem; }
+        .notif-message { color:#5d534b; font-size:.88rem; white-space:pre-line; margin:0; }
+        .notif-meta { color:#8a7d71; font-size:.76rem; margin-top:.35rem; }
+        .notif-actions { display:flex; justify-content:flex-end; margin-top:.4rem; }
+        .notif-dismiss-btn { border:0; background:transparent; color:#8a7d71; font-size:.78rem; font-weight:700; padding:0; }
+        .notif-dismiss-btn:hover { color:#b02a37; text-decoration:underline; }
+        @media (max-width: 992px) { .offer-row { grid-template-columns:1fr; } }
     </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg dashboard-navbar sticky-top">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="<?php echo htmlspecialchars($baseUrl . 'controllers/home.php', ENT_QUOTES, 'UTF-8'); ?>">
-            <img src="<?php echo htmlspecialchars(job_asset('assets/img/logo_herfa.png'), ENT_QUOTES, 'UTF-8'); ?>" alt="Logo" height="40" style="margin-right: 0.5rem;">
-            <span style="color: #F5ECD7; font-weight: bold;">حرفة Tunisie</span>
-        </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"><span class="navbar-toggler-icon"></span></button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav ms-auto">
-                <li class="nav-item"><a class="nav-link" href="<?php echo htmlspecialchars($baseUrl . 'controllers/home.php', ENT_QUOTES, 'UTF-8'); ?>">Accueil</a></li>
-                <li class="nav-item"><a class="nav-link active" href="<?php echo htmlspecialchars($baseUrl . 'controllers/offer_emploi/offres.php', ENT_QUOTES, 'UTF-8'); ?>">Emplois</a></li>
-                <li class="nav-item"><a class="nav-link" href="<?php echo htmlspecialchars($baseUrl . 'controllers/offer_emploi/create_offre.php', ENT_QUOTES, 'UTF-8'); ?>">Créer</a></li>
-                <li class="nav-item"><a class="nav-link" href="<?php echo htmlspecialchars($baseUrl . 'controllers/user/profile.php', ENT_QUOTES, 'UTF-8'); ?>">Profil</a></li>
-                <li class="nav-item"><span class="user-greeting">👋 <?php echo htmlspecialchars(trim($userPrenom . ' ' . $userNom)); ?></span></li>
-                <li class="nav-item"><a class="btn-logout" href="<?php echo htmlspecialchars($baseUrl . 'controllers/session_status.php?action=logout', ENT_QUOTES, 'UTF-8'); ?>">Déconnexion</a></li>
-            </ul>
-        </div>
-    </div>
-</nav>
+<?php render_app_header('recruiter_dashboard'); ?>
 
-<section class="hero-banner"><div class="container"><h2 class="mb-0">Dashboard Recruteur</h2></div></section>
-
-<section class="page-section cta">
+<section class="hero-banner">
     <div class="container">
-        <div class="cta-inner bg-faded rounded p-5">
-            <p>
-                <a class="btn btn-primary btn-xl" href="<?php echo htmlspecialchars($baseUrl . 'controllers/offer_emploi/create_offre.php', ENT_QUOTES, 'UTF-8'); ?>">Créer nouvelle offre</a>
-                <a class="btn btn-outline-secondary btn-xl" href="<?php echo htmlspecialchars($baseUrl . 'controllers/offer_emploi/offres.php', ENT_QUOTES, 'UTF-8'); ?>">Gérer toutes mes offres</a>
-            </p>
-
-            <h4>Mes offres</h4>
-            <?php if (count($offers) === 0): ?>
-                <p>Aucune offre publiée.</p>
-            <?php else: ?>
-                <ul>
-                    <?php foreach ($offers as $o): ?>
-                        <li>
-                            <strong><?php echo htmlspecialchars($o['titre']); ?></strong>
-                            — Budget: <?php echo htmlspecialchars((string)$o['budget']); ?>
-                            — Durée: <?php echo htmlspecialchars((string)$o['duree']); ?>
-                            — Statut: <span class="badge <?php echo job_offer_status_badge_class((string)($o['status'] ?? 'draft')); ?>"><?php echo htmlspecialchars(job_offer_status_label((string)($o['status'] ?? 'draft')), ENT_QUOTES, 'UTF-8'); ?></span>
-                            — Vérification:
-                            <?php if ((string)($o['verification_status'] ?? 'not_verified') === 'verified'): ?>
-                                <span class="badge bg-success">Vérifiée</span>
-                            <?php else: ?>
-                                <span class="badge bg-warning text-dark">Non vérifiée</span>
-                            <?php endif; ?>
-                            <form method="post" class="d-inline ms-2">
-                                <input type="hidden" name="csrf" value="<?php echo htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8'); ?>" />
-                                <input type="hidden" name="offer_id" value="<?php echo (int)$o['id_offer']; ?>" />
-                                <select name="offer_status" class="form-select form-select-sm d-inline-block" style="width:auto;">
-                                    <option value="draft" <?php echo ($o['status'] ?? '') === 'draft' ? 'selected' : ''; ?>>Brouillon</option>
-                                    <option value="published" <?php echo ($o['status'] ?? '') === 'published' ? 'selected' : ''; ?>>Publiée</option>
-                                    <option value="paused" <?php echo ($o['status'] ?? '') === 'paused' ? 'selected' : ''; ?>>En pause</option>
-                                    <option value="closed" <?php echo ($o['status'] ?? '') === 'closed' ? 'selected' : ''; ?>>Clôturée</option>
-                                </select>
-                                <button class="btn btn-sm btn-outline-primary" type="submit">Changer</button>
-                            </form>
-                            <a class="btn btn-sm btn-outline-success ms-1" href="<?php echo htmlspecialchars($baseUrl . 'controllers/offer_emploi/offres.php?edit=' . (int)$o['id_offer'], ENT_QUOTES, 'UTF-8'); ?>">Modifier</a>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
-            <?php endif; ?>
-
-            <hr />
-            <h4>Candidatures reçues</h4>
-            <?php if (count($applications) === 0): ?>
-                <p>Aucune candidature.</p>
-            <?php else: ?>
-                <?php foreach ($applications as $app): ?>
-                    <?php if (empty($app['application_id'])) { continue; } ?>
-                    <div class="bg-white rounded p-4 mb-3">
-                        <p><strong>Offre:</strong> <?php echo htmlspecialchars((string)$app['offre_titre']); ?></p>
-                        <p>
-                            <strong>Candidat:</strong>
-                            <?php echo htmlspecialchars((string)$app['prenom'] . ' ' . (string)$app['nom']); ?>
-                            <?php if (!empty($app['artisan_id'])): ?>
-                                — <a href="<?php echo htmlspecialchars($baseUrl . 'controllers/user/profile.php?user_id=' . (int)$app['artisan_id'], ENT_QUOTES, 'UTF-8'); ?>">Voir profil</a>
-                            <?php endif; ?>
-                        </p>
-                        <p><strong>Lettre:</strong><br /><?php echo nl2br(htmlspecialchars((string)$app['lettre_de_motivation'])); ?></p>
-                        <p><strong>CV:</strong> <?php echo htmlspecialchars((string)$app['cv']); ?></p>
-
-                        <form method="post" class="row g-2 align-items-center">
-                            <input type="hidden" name="csrf" value="<?php echo htmlspecialchars($csrf, ENT_QUOTES, 'UTF-8'); ?>" />
-                            <input type="hidden" name="application_id" value="<?php echo (int)$app['application_id']; ?>" />
-                            <div class="col-md-5">
-                                <select class="form-control" name="status">
-                                    <option value="pending" <?php echo $app['status'] === 'pending' ? 'selected' : ''; ?>>pending</option>
-                                    <option value="reviewed" <?php echo $app['status'] === 'reviewed' ? 'selected' : ''; ?>>reviewed</option>
-                                    <option value="shortlisted" <?php echo $app['status'] === 'shortlisted' ? 'selected' : ''; ?>>shortlisted</option>
-                                    <option value="interview" <?php echo $app['status'] === 'interview' ? 'selected' : ''; ?>>interview</option>
-                                    <option value="accepted" <?php echo $app['status'] === 'accepted' ? 'selected' : ''; ?>>accepted</option>
-                                    <option value="rejected" <?php echo $app['status'] === 'rejected' ? 'selected' : ''; ?>>rejected</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <button class="btn btn-primary" type="submit">Mettre à jour</button>
-                            </div>
-                            <div class="col-md-4">
-                                <small>Statut actuel: <?php echo htmlspecialchars((string)$app['status']); ?></small>
-                            </div>
-                        </form>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
+        <div class="d-flex justify-content-between align-items-end flex-wrap gap-3">
+            <div>
+                <h1 class="mb-2"><?php echo $isAdmin ? 'Dashboard emploi admin' : 'Dashboard recruteur'; ?></h1>
+                <p class="mb-0"><?php echo $isAdmin ? 'Vue globale des offres et candidatures.' : 'Pilotez vos offres, candidatures et décisions.'; ?></p>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <a class="btn btn-light" href="<?php echo h($baseUrl . 'controllers/offer_emploi/create_offre.php'); ?>"><i class="fas fa-plus me-1"></i>Créer offre</a>
+                <a class="btn btn-outline-light" href="<?php echo h($baseUrl . 'controllers/offer_emploi/offres.php'); ?>"><i class="fas fa-briefcase me-1"></i>Voir offres</a>
+            </div>
         </div>
     </div>
 </section>
 
-<footer class="footer text-faded text-center py-5">
-    <div class="container"><p class="m-0 small">Copyright &copy; حرفة Tunisie 2026</p></div>
+<main class="container">
+    <?php if ($notice !== ''): ?>
+        <div class="alert alert-<?php echo h($noticeType); ?>"><?php echo h($notice); ?></div>
+    <?php endif; ?>
+
+    <?php if (!empty($notifications)): ?>
+        <section class="panel mb-4">
+            <div class="panel-head">
+                <div>
+                    <h4 class="mb-0">Notifications</h4>
+                    <div class="text-muted small">Messages systeme et moderation</div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <?php if ($unreadNotificationCount > 0): ?>
+                        <span class="badge bg-danger"><?php echo (int)$unreadNotificationCount; ?> non lue(s)</span>
+                    <?php endif; ?>
+                    <form method="post" class="m-0">
+                        <input type="hidden" name="csrf" value="<?php echo h($csrf); ?>">
+                        <input type="hidden" name="action" value="dismiss_all_notifications">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Tout effacer</button>
+                    </form>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="notif-list">
+                    <?php foreach ($notifications as $notif): ?>
+                        <article class="notif-item <?php echo ((int)($notif['is_read'] ?? 0) === 0) ? 'unread' : ''; ?>">
+                            <div class="notif-title"><?php echo h((string)($notif['title'] ?? 'Notification')); ?></div>
+                            <p class="notif-message"><?php echo h((string)($notif['message'] ?? '')); ?></p>
+                            <div class="notif-meta"><?php echo h((string)($notif['created_at'] ?? '')); ?></div>
+                            <div class="notif-actions">
+                                <form method="post" class="m-0">
+                                    <input type="hidden" name="csrf" value="<?php echo h($csrf); ?>">
+                                    <input type="hidden" name="action" value="dismiss_notification">
+                                    <input type="hidden" name="notification_id" value="<?php echo (int)($notif['id'] ?? 0); ?>">
+                                    <button type="submit" class="notif-dismiss-btn">Dismiss</button>
+                                </form>
+                            </div>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </section>
+    <?php endif; ?>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3"><div class="metric-card"><div class="value"><?php echo (int)$totalOffers; ?></div><div class="label">Offres gérées</div></div></div>
+        <div class="col-md-3"><div class="metric-card"><div class="value"><?php echo (int)$publishedOffers; ?></div><div class="label">Offres visibles</div></div></div>
+        <div class="col-md-3"><div class="metric-card"><div class="value"><?php echo (int)$totalApplications; ?></div><div class="label">Candidatures reçues</div></div></div>
+        <div class="col-md-3"><div class="metric-card"><div class="value"><?php echo (int)$totalViews; ?></div><div class="label">Vues cumulées</div></div></div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-xl-7">
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <h4 class="mb-0">Offres</h4>
+                        <div class="text-muted small"><?php echo $isAdmin ? 'Toutes les offres de la plateforme' : 'Vos offres publiées ou en préparation'; ?></div>
+                    </div>
+                    <a class="btn btn-sm btn-outline-primary" href="<?php echo h($baseUrl . 'controllers/offer_emploi/offres.php'); ?>">Gérer</a>
+                </div>
+                <div class="panel-body">
+                    <?php if (!$offers): ?>
+                        <div class="text-center text-muted py-4">Aucune offre pour le moment.</div>
+                    <?php else: ?>
+                        <?php foreach ($offers as $offer): ?>
+                            <div class="offer-row">
+                                <div>
+                                    <div class="fw-bold"><?php echo h((string)$offer['titre']); ?></div>
+                                    <div class="text-muted small"><?php echo h(trim((string)($offer['recruiter_prenom'] ?? '') . ' ' . (string)($offer['recruiter_nom'] ?? ''))); ?> <?php echo !empty($offer['location']) ? '· ' . h((string)$offer['location']) : ''; ?></div>
+                                </div>
+                                <div><span class="badge <?php echo h(job_offer_status_badge_class((string)($offer['status'] ?? 'draft'))); ?>"><?php echo h(job_offer_status_label((string)($offer['status'] ?? 'draft'))); ?></span></div>
+                                <div class="small"><?php echo h((string)$offer['budget']); ?> TND<br><span class="text-muted"><?php echo h((string)$offer['duree']); ?></span></div>
+                                <div class="small"><i class="fas fa-users me-1"></i><?php echo (int)$offer['actual_applications']; ?> candidatures<br><i class="fas fa-eye me-1"></i><?php echo (int)($offer['views_count'] ?? 0); ?> vues</div>
+                                <div>
+                                    <form method="post" class="d-flex gap-2">
+                                        <input type="hidden" name="csrf" value="<?php echo h($csrf); ?>">
+                                        <input type="hidden" name="offer_id" value="<?php echo (int)$offer['id_offer']; ?>">
+                                        <select name="offer_status" class="form-select form-select-sm">
+                                            <?php foreach (['draft' => 'Brouillon', 'published' => 'Publiée', 'paused' => 'En pause', 'closed' => 'Clôturée'] as $value => $label): ?>
+                                                <option value="<?php echo h($value); ?>" <?php echo (string)$offer['status'] === $value ? 'selected' : ''; ?>><?php echo h($label); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <button class="btn btn-sm btn-primary" type="submit"><i class="fas fa-save"></i></button>
+                                    </form>
+                                    <div class="mt-2 d-flex gap-2">
+                                        <a class="btn btn-sm btn-outline-secondary" href="<?php echo h($baseUrl . 'controllers/offer_emploi/offer_details.php?id_offer=' . (int)$offer['id_offer']); ?>">Détails</a>
+                                        <a class="btn btn-sm btn-outline-success" href="<?php echo h($baseUrl . 'controllers/offer_emploi/applications.php?id_offer=' . (int)$offer['id_offer']); ?>">Candidats</a>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </section>
+        </div>
+
+        <div class="col-xl-5">
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <h4 class="mb-0">Candidatures récentes</h4>
+                        <div class="text-muted small">CV, statut et décision rapide</div>
+                    </div>
+                    <div class="small text-muted"><?php echo (int)$statusCounts['shortlisted']; ?> présélectionnée(s)</div>
+                </div>
+                <div class="panel-body">
+                    <?php if (!$applications): ?>
+                        <div class="text-center text-muted py-4">Aucune candidature reçue.</div>
+                    <?php else: ?>
+                        <div class="row g-3">
+                            <?php foreach (array_slice($applications, 0, 12) as $app): ?>
+                                <?php
+                                    $fullName = trim((string)$app['prenom'] . ' ' . (string)$app['nom']);
+                                    $initials = mb_strtoupper(mb_substr((string)$app['prenom'], 0, 1) . mb_substr((string)$app['nom'], 0, 1)) ?: 'C';
+                                    $cvData = !empty($app['parsed_cv_data']) ? (json_decode((string)$app['parsed_cv_data'], true) ?: []) : [];
+                                    $skills = $cvData['skills'] ?? [];
+                                    $skills = is_array($skills) ? $skills : array_filter(array_map('trim', explode(',', (string)$skills)));
+                                ?>
+                                <div class="col-12">
+                                    <article class="candidate-card">
+                                        <div class="d-flex gap-3 mb-2">
+                                            <div class="candidate-avatar"><?php echo h($initials); ?></div>
+                                            <div class="flex-grow-1">
+                                                <div class="d-flex justify-content-between gap-2">
+                                                    <div>
+                                                        <div class="fw-bold"><?php echo h($fullName); ?></div>
+                                                        <div class="text-muted small"><?php echo h((string)$app['email']); ?></div>
+                                                    </div>
+                                                    <span class="badge <?php echo h(job_application_status_badge_class((string)$app['status'])); ?> align-self-start"><?php echo h(application_status_label((string)$app['status'])); ?></span>
+                                                </div>
+                                                <div class="text-muted small mt-1"><?php echo h((string)$app['offre_titre']); ?><?php echo $isAdmin ? ' · ' . h(trim((string)$app['recruiter_prenom'] . ' ' . (string)$app['recruiter_nom'])) : ''; ?></div>
+                                            </div>
+                                        </div>
+                                        <div class="mb-2">
+                                            <?php foreach (array_slice($skills, 0, 5) as $skill): ?>
+                                                <span class="chip"><i class="fas fa-check"></i><?php echo h((string)$skill); ?></span>
+                                            <?php endforeach; ?>
+                                            <?php if (!$skills): ?><span class="text-muted small">Aucune compétence extraite</span><?php endif; ?>
+                                        </div>
+                                        <div class="small mb-2"><strong>CV:</strong> <?php echo h(cv_label($app)); ?> · <?php echo h(parsing_status_label((string)$app['cv_parsing_status'])); ?></div>
+                                        <div class="message-preview mb-3"><?php echo nl2br(h((string)$app['lettre_de_motivation'])); ?></div>
+                                        <form method="post" class="d-flex gap-2">
+                                            <input type="hidden" name="csrf" value="<?php echo h($csrf); ?>">
+                                            <input type="hidden" name="application_id" value="<?php echo (int)$app['application_id']; ?>">
+                                            <select class="form-select form-select-sm" name="status">
+                                                <?php foreach (['pending', 'reviewed', 'shortlisted', 'interview', 'accepted', 'rejected'] as $status): ?>
+                                                    <option value="<?php echo h($status); ?>" <?php echo (string)$app['status'] === $status ? 'selected' : ''; ?>><?php echo h(application_status_label($status)); ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <button class="btn btn-sm btn-primary" type="submit">OK</button>
+                                            <a class="btn btn-sm btn-outline-secondary" href="<?php echo h($baseUrl . 'controllers/user/profile.php?user_id=' . (int)$app['artisan_id']); ?>"><i class="fas fa-id-card"></i></a>
+                                        </form>
+                                    </article>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </section>
+        </div>
+    </div>
+</main>
+
+<footer class="footer-section mt-5">
+    <div class="container text-center small py-4">© <?php echo date('Y'); ?> حرفة Tunisie</div>
 </footer>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="<?php echo htmlspecialchars(job_asset('assets/js/scripts.js'), ENT_QUOTES, 'UTF-8'); ?>"></script>
+<script src="<?php echo h(job_asset('assets/js/scripts.js')); ?>"></script>
 </body>
 </html>

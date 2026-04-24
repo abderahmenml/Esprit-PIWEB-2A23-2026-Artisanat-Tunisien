@@ -5,6 +5,7 @@
 
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/config/Config.php';
+require_once dirname(__DIR__) . '/views/partials/app_header.php';
 require_auth();
 
 $userId = (int)$_SESSION['user_id'];
@@ -278,32 +279,6 @@ if ($userRole === 'artisan') {
         error_log("User applications fetch error: " . $e->getMessage());
     }
     
-    // Fetch notifications for artisan
-    if ($hasNotificationsTable) {
-        try {
-            // Get unread count
-            $notifCountStmt = $pdo->prepare(
-                "SELECT COUNT(*) FROM notifications 
-                 WHERE user_id = ? AND is_read = 0"
-            );
-            $notifCountStmt->execute([$userId]);
-            $unreadNotificationCount = (int)$notifCountStmt->fetchColumn();
-            
-            // Get notifications
-            $notifStmt = $pdo->prepare(
-                "SELECT id, title, message, type, is_read, created_at 
-                 FROM notifications 
-                 WHERE user_id = ?
-                 ORDER BY created_at DESC
-                 LIMIT 5"
-            );
-            $notifStmt->execute([$userId]);
-            $notifications = $notifStmt->fetchAll() ?: [];
-        } catch (Throwable $e) {
-            error_log("Notifications fetch error: " . $e->getMessage());
-        }
-    }
-    
 } elseif ($userRole === 'recruteur' || $userRole === 'entrepreneur') {
     // Fetch recruiter's job offers
     try {
@@ -351,6 +326,30 @@ if ($userRole === 'artisan') {
         } catch (PDOException $e) {
             error_log("User projects fetch error: " . $e->getMessage());
         }
+    }
+}
+
+// Fetch notifications for every authenticated role
+if ($hasNotificationsTable) {
+    try {
+        $notifCountStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM notifications
+             WHERE user_id = ? AND is_read = 0"
+        );
+        $notifCountStmt->execute([$userId]);
+        $unreadNotificationCount = (int)$notifCountStmt->fetchColumn();
+
+        $notifStmt = $pdo->prepare(
+            "SELECT id, title, message, type, is_read, created_at
+             FROM notifications
+             WHERE user_id = ?
+             ORDER BY created_at DESC
+             LIMIT 5"
+        );
+        $notifStmt->execute([$userId]);
+        $notifications = $notifStmt->fetchAll() ?: [];
+    } catch (Throwable $e) {
+        error_log("Notifications fetch error: " . $e->getMessage());
     }
 }
 
@@ -432,6 +431,108 @@ $csrfToken = $_SESSION['csrf_token'];
 
 // Get user initials for avatar placeholder
 $userInitials = strtoupper(mb_substr($userPrenom, 0, 1) . mb_substr($userNom, 0, 1));
+
+// Build personalized quick actions and snapshot cards
+$quickActions = [];
+$snapshotCards = [];
+
+if ($userRole === 'artisan') {
+    $pendingApplications = 0;
+    foreach ($userApplications as $application) {
+        if (($application['status'] ?? '') === 'pending') {
+            $pendingApplications++;
+        }
+    }
+
+    $quickActions[] = [
+        'title' => "Trouver une mission",
+        'description' => "Parcourez les offres publiees et postulez en quelques clics.",
+        'icon' => 'fas fa-briefcase',
+        'url' => $baseUrl . '/controllers/offer_emploi/offres.php'
+    ];
+    $quickActions[] = [
+        'title' => "Mon profil",
+        'description' => "Renforcez votre profil pour augmenter votre visibilite.",
+        'icon' => 'fas fa-user-check',
+        'url' => $baseUrl . '/controllers/user/profile.php'
+    ];
+    $quickActions[] = [
+        'title' => "Developper mes competences",
+        'description' => "Suivez des formations adaptees a votre niveau.",
+        'icon' => 'fas fa-graduation-cap',
+        'url' => $baseUrl . '/controllers/formation/formations.php'
+    ];
+
+    $snapshotCards[] = [
+        'label' => 'Candidatures',
+        'value' => (int)count($userApplications),
+        'hint' => 'envoyees'
+    ];
+    $snapshotCards[] = [
+        'label' => 'En attente',
+        'value' => (int)$pendingApplications,
+        'hint' => 'a suivre'
+    ];
+} elseif ($userRole === 'recruteur' || $userRole === 'entrepreneur') {
+    $pendingCandidates = 0;
+    foreach ($userOffers as $offer) {
+        $pendingCandidates += (int)($offer['pending_count'] ?? 0);
+    }
+
+    $quickActions[] = [
+        'title' => "Publier une offre",
+        'description' => "Attirez les bons profils avec une annonce claire et complete.",
+        'icon' => 'fas fa-plus-circle',
+        'url' => $baseUrl . '/controllers/offer_emploi/create_offre.php'
+    ];
+    $quickActions[] = [
+        'title' => "Suivre mes candidatures",
+        'description' => "Priorisez les profils en attente et accelerez vos recrutements.",
+        'icon' => 'fas fa-user-clock',
+        'url' => $baseUrl . '/controllers/offer_emploi/recruiter_dashboard.php'
+    ];
+    $quickActions[] = [
+        'title' => "Lancer un projet",
+        'description' => "Transformez vos idees en projets visibles par les investisseurs.",
+        'icon' => 'fas fa-lightbulb',
+        'url' => $baseUrl . '/controllers/projects/create_project.php'
+    ];
+
+    $snapshotCards[] = [
+        'label' => 'Mes offres',
+        'value' => (int)count($userOffers),
+        'hint' => 'publiees'
+    ];
+    $snapshotCards[] = [
+        'label' => 'Candidats',
+        'value' => (int)$pendingCandidates,
+        'hint' => 'en attente'
+    ];
+    $snapshotCards[] = [
+        'label' => 'Mes projets',
+        'value' => (int)count($userProjects),
+        'hint' => 'actifs'
+    ];
+} else {
+    $quickActions[] = [
+        'title' => "Explorer les projets",
+        'description' => "Decouvrez les projets qui font bouger la communaute.",
+        'icon' => 'fas fa-project-diagram',
+        'url' => $baseUrl . '/controllers/projects/projets.php'
+    ];
+    $quickActions[] = [
+        'title' => "Voir les offres",
+        'description' => "Consultez les opportunites disponibles sur la plateforme.",
+        'icon' => 'fas fa-briefcase',
+        'url' => $baseUrl . '/controllers/offer_emploi/offres.php'
+    ];
+    $quickActions[] = [
+        'title' => "Completer mon profil",
+        'description' => "Ajoutez vos informations pour mieux vous connecter aux autres.",
+        'icon' => 'fas fa-user-edit',
+        'url' => $baseUrl . '/controllers/user/profile.php'
+    ];
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -503,6 +604,7 @@ $userInitials = strtoupper(mb_substr($userPrenom, 0, 1) . mb_substr($userNom, 0,
             box-shadow: 0 4px 20px rgba(0,0,0,0.1);
             transition: all var(--transition-normal);
         }
+        .legacy-page-navbar { display: none !important; }
         
         .dashboard-navbar.scrolled {
             padding: 0.5rem 0;
@@ -789,6 +891,136 @@ $userInitials = strtoupper(mb_substr($userPrenom, 0, 1) . mb_substr($userNom, 0,
             font-size: 0.9rem;
             text-transform: uppercase;
             letter-spacing: 1px;
+        }
+
+        /* Quick Actions */
+        .quick-actions-section {
+            padding: 2rem 0 1rem;
+        }
+
+        .quick-actions-shell {
+            background: white;
+            border-radius: 22px;
+            box-shadow: var(--shadow-sm);
+            padding: 1.5rem;
+        }
+
+        .quick-actions-title {
+            color: var(--primary-green);
+            font-size: 1.45rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .quick-actions-subtitle {
+            color: #6a6a6a;
+            margin: 0.4rem 0 0;
+            font-size: 0.95rem;
+        }
+
+        .role-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.35rem 0.8rem;
+            border-radius: 999px;
+            background: #f3f8f4;
+            color: var(--primary-green);
+            border: 1px solid rgba(46, 107, 62, 0.2);
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .action-tile {
+            background: linear-gradient(145deg, #ffffff, #fcfaf6);
+            border: 1px solid #efe6d7;
+            border-radius: 16px;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.9rem;
+            text-decoration: none;
+            color: inherit;
+            min-height: 118px;
+            transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+        }
+
+        .action-tile:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-md);
+            border-color: #e0c69f;
+            color: inherit;
+        }
+
+        .action-tile-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary-green), #3f8b55);
+            color: white;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+
+        .action-tile-content h3 {
+            margin: 0;
+            color: var(--dark-brown);
+            font-size: 1rem;
+            font-weight: 700;
+        }
+
+        .action-tile-content p {
+            margin: 0.35rem 0 0;
+            color: #6f6f6f;
+            font-size: 0.86rem;
+            line-height: 1.45;
+        }
+
+        .action-tile-arrow {
+            margin-left: auto;
+            color: var(--primary-brown);
+            opacity: 0.75;
+        }
+
+        .snapshot-grid {
+            margin-top: 1rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 0.8rem;
+        }
+
+        .snapshot-chip {
+            background: #fffaf0;
+            border: 1px solid #f0e2cb;
+            border-radius: 14px;
+            padding: 0.75rem 0.8rem;
+            text-align: center;
+        }
+
+        .snapshot-value {
+            color: var(--primary-green);
+            font-size: 1.3rem;
+            font-weight: 800;
+            line-height: 1.1;
+        }
+
+        .snapshot-label {
+            color: var(--dark-brown);
+            font-size: 0.8rem;
+            margin-top: 0.2rem;
+            font-weight: 700;
+        }
+
+        .snapshot-hint {
+            color: #7d7d7d;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.45px;
         }
         
         /* Section Styles */
@@ -1090,6 +1322,8 @@ $userInitials = strtoupper(mb_substr($userPrenom, 0, 1) . mb_substr($userNom, 0,
             .cta-section h2 { font-size: 1.5rem; }
             .cta-section { padding: 2rem 1rem; }
             .user-greeting span { display: none; }
+            .quick-actions-shell { padding: 1rem; }
+            .action-tile { min-height: 102px; }
         }
         
         /* Toast Notifications */
@@ -1122,7 +1356,8 @@ $userInitials = strtoupper(mb_substr($userPrenom, 0, 1) . mb_substr($userNom, 0,
 <div class="toast-notification" id="toastContainer"></div>
 
 <!-- NAVBAR -->
-<nav class="navbar navbar-expand-lg dashboard-navbar sticky-top" id="mainNavbar">
+<?php render_app_header('home'); ?>
+<nav class="navbar navbar-expand-lg dashboard-navbar sticky-top legacy-page-navbar" id="legacyNavbar">
     <div class="container">
         <a class="navbar-brand d-flex align-items-center" href="<?php echo h($baseUrl . '/controllers/home.php'); ?>">
             <img src="<?php echo h($baseUrl . '/public/assets/img/logo_herfa.png'); ?>" alt="Logo حرفة" height="40" style="margin-right: 0.8rem;">
@@ -1208,6 +1443,48 @@ $userInitials = strtoupper(mb_substr($userPrenom, 0, 1) . mb_substr($userNom, 0,
                     <div class="stat-label">Formations</div>
                 </div>
             </div>
+        </div>
+    </div>
+</section>
+
+<!-- QUICK ACTIONS -->
+<section class="quick-actions-section">
+    <div class="container">
+        <div class="quick-actions-shell reveal-on-scroll">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+                <div>
+                    <h2 class="quick-actions-title">Vos prochaines etapes</h2>
+                    <p class="quick-actions-subtitle">Un acces rapide aux actions les plus utiles pour votre espace.</p>
+                </div>
+                <span class="role-pill"><i class="fas fa-compass"></i><?php echo h($userRole); ?></span>
+            </div>
+
+            <div class="row g-3">
+                <?php foreach ($quickActions as $action): ?>
+                    <div class="col-md-4">
+                        <a href="<?php echo h($action['url']); ?>" class="action-tile">
+                            <span class="action-tile-icon"><i class="<?php echo h($action['icon']); ?>"></i></span>
+                            <span class="action-tile-content">
+                                <h3><?php echo h($action['title']); ?></h3>
+                                <p><?php echo h($action['description']); ?></p>
+                            </span>
+                            <i class="fas fa-arrow-right action-tile-arrow" aria-hidden="true"></i>
+                        </a>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <?php if (!empty($snapshotCards)): ?>
+                <div class="snapshot-grid">
+                    <?php foreach ($snapshotCards as $snapshot): ?>
+                        <div class="snapshot-chip">
+                            <div class="snapshot-value"><?php echo (int)$snapshot['value']; ?></div>
+                            <div class="snapshot-label"><?php echo h($snapshot['label']); ?></div>
+                            <div class="snapshot-hint"><?php echo h($snapshot['hint']); ?></div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 </section>
@@ -1597,7 +1874,7 @@ $userInitials = strtoupper(mb_substr($userPrenom, 0, 1) . mb_substr($userNom, 0,
         
         // DOM Elements
         const progress = document.getElementById('scrollProgress');
-        const revealElements = document.querySelectorAll('.stat-card, .project-card, .formation-card, .offer-card, .artisan-card, .user-section, .cta-section');
+        const revealElements = document.querySelectorAll('.stat-card, .project-card, .formation-card, .offer-card, .artisan-card, .user-section, .cta-section, .quick-actions-shell, .action-tile, .snapshot-chip');
         const cards = document.querySelectorAll('.project-card, .formation-card, .offer-card, .artisan-card');
         const counters = document.querySelectorAll('[data-counter-target]');
         const navbar = document.getElementById('mainNavbar');

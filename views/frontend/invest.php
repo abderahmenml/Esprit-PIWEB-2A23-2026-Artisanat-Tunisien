@@ -3,6 +3,7 @@
 // Investment opportunities linked to projects
 declare(strict_types=1);
 require_once dirname(__DIR__, 2) . '/config/Config.php';
+require_once dirname(__DIR__) . '/partials/app_header.php';
 require_auth();
 
 $userId = (int)$_SESSION['user_id'];
@@ -49,6 +50,8 @@ $investments = $stmt->fetchAll();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="/assets/css/styles.css" rel="stylesheet" />
     <style>
+        <?php echo app_header_styles(); ?>
+        .legacy-page-navbar { display: none !important; }
         .dashboard-navbar { background-color: rgba(59, 35, 20, 0.95) !important; padding: 1rem 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
         .dashboard-navbar .nav-link { color: #F5ECD7 !important; font-weight: 600; margin: 0 0.35rem; transition: color .3s; }
         .dashboard-navbar .nav-link:hover { color: #C49A6C !important; }
@@ -76,7 +79,8 @@ $investments = $stmt->fetchAll();
     </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg dashboard-navbar sticky-top">
+<?php render_app_header('invest'); ?>
+<nav class="navbar navbar-expand-lg dashboard-navbar sticky-top legacy-page-navbar">
     <div class="container">
         <a class="navbar-brand d-flex align-items-center" href="home.php">
             <img src="assets/img/logo_herfa.png" alt="Logo" height="40" style="margin-right: 0.8rem;">

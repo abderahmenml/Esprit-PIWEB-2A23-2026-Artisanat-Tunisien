@@ -18,24 +18,43 @@ $noticeType = 'success';
 try {
     admin_ensure_offer_verification_schema($pdo);
 } catch (Throwable $e) {
-    $notice = 'Erreur de schéma: ' . $e->getMessage();
+    $notice = 'Erreur de schema: ' . $e->getMessage();
     $noticeType = 'danger';
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $postedCsrf = (string)($_POST['csrf'] ?? '');
     if (!hash_equals($csrf, $postedCsrf)) {
-        $notice = 'Jeton de sécurité invalide.';
+        $notice = 'Jeton de securite invalide.';
         $noticeType = 'danger';
     } else {
         $action = (string)($_POST['action'] ?? '');
+
         if ($action === 'set_verification') {
             $offerId = (int)($_POST['offer_id'] ?? 0);
             $target = (string)($_POST['target'] ?? '');
             $moderationNote = trim((string)($_POST['moderation_note'] ?? ''));
+
             if ($offerId > 0 && in_array($target, ['verified', 'not_verified'], true)) {
                 $ok = admin_update_offer_verification($pdo, $offerId, $target === 'verified', $adminId, $moderationNote);
-                $notice = $ok ? 'Statut mis à jour.' : 'Mise à jour échouée.';
+                $notice = $ok ? 'Statut mis a jour.' : 'Mise a jour echouee.';
+                $noticeType = $ok ? 'success' : 'danger';
+            }
+        } elseif ($action === 'delete_offer') {
+            $offerId = (int)($_POST['offer_id'] ?? 0);
+            $deleteReason = trim((string)($_POST['delete_reason'] ?? $_POST['moderation_note'] ?? ''));
+
+            if ($offerId <= 0) {
+                $notice = 'Offre invalide.';
+                $noticeType = 'danger';
+            } elseif ($deleteReason === '') {
+                $notice = 'Veuillez fournir une raison de suppression.';
+                $noticeType = 'danger';
+            } else {
+                $ok = admin_delete_offer_with_reason($pdo, $offerId, $adminId, $deleteReason);
+                $notice = $ok
+                    ? 'Offre supprimee et raison envoyee au recruteur.'
+                    : 'Suppression impossible. Veuillez reessayer.';
                 $noticeType = $ok ? 'success' : 'danger';
             }
         }
