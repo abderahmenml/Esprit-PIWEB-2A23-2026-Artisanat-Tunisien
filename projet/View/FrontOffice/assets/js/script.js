@@ -156,6 +156,40 @@ function handleMaterialRowRemove(event) {
   }
 }
 
+function validateSkillRows() {
+  if (!skillRows) {
+    return true;
+  }
+
+  const rows = Array.from(skillRows.querySelectorAll('.skill-row'));
+
+  for (const row of rows) {
+    const nameInput = row.querySelector('.row-name');
+    const levelSelect = row.querySelector('.row-level');
+
+    if (!(nameInput instanceof HTMLInputElement) || !(levelSelect instanceof HTMLSelectElement)) {
+      continue;
+    }
+
+    const nameValue = nameInput.value.trim();
+    const levelValue = levelSelect.value.trim();
+
+    if (nameValue !== '' && levelValue === '') {
+      alert('Chaque competence doit avoir un niveau.');
+      levelSelect.focus();
+      return false;
+    }
+
+    if (nameValue === '' && levelValue !== '') {
+      alert('Ajoutez aussi le nom de la competence.');
+      nameInput.focus();
+      return false;
+    }
+  }
+
+  return true;
+}
+
 if (skillRows) {
   skillRows.addEventListener('click', handleSkillRowRemove);
   if (skillRows.children.length === 0) {
@@ -223,6 +257,12 @@ if (form) {
       } else if (statusSelect && statusValue === '') {
         statusSelect.focus();
       }
+      return;
+    }
+
+    if (!validateSkillRows()) {
+      event.preventDefault();
+      return;
     }
   });
 }
