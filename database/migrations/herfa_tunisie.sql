@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 23, 2026 at 04:41 PM
+-- Generation Time: Apr 24, 2026 at 03:51 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -363,6 +363,14 @@ CREATE TABLE `projet` (
   `id_createur` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `projet`
+--
+
+INSERT INTO `projet` (`id`, `titre`, `description`, `skills_needed`, `budget_min`, `status`, `image_path`, `date_creation`, `id_categorie`, `budget_max`, `id_createur`) VALUES
+(3, 'test', 'dadad', 'Bois sculpté', 150.00, 'active', 'uploads/projects/project_69ea3b6ee80f30.50455603.jpg', '2026-04-23 16:31:58', NULL, NULL, 3),
+(4, 'micheal moilano', 'cqcq', 'Bois sculpté', 1000.00, 'active', 'uploads/projects/project_69eb4c1dca5804.35419959.png', '2026-04-24 11:55:25', NULL, NULL, 3);
+
 -- --------------------------------------------------------
 
 --
@@ -401,9 +409,10 @@ INSERT INTO `user` (`id_user`, `nom`, `prenom`, `email`, `mot_de_passe`, `role`,
 --
 ALTER TABLE `application`
   ADD PRIMARY KEY (`id`),
-  ADD KEY `fk_application_user` (`id_user`),
+  ADD UNIQUE KEY `uq_application_user_offer` (`id_user`,`id_offer`),
   ADD KEY `idx_application_status` (`status`),
-  ADD KEY `idx_application_offer` (`id_offer`);
+  ADD KEY `idx_application_offer` (`id_offer`),
+  ADD KEY `idx_application_user` (`id_user`);
 
 --
 -- Indexes for table `application_messages`
@@ -502,10 +511,13 @@ ALTER TABLE `offer_views`
 ALTER TABLE `offre_emploi`
   ADD PRIMARY KEY (`id_offer`),
   ADD KEY `fk_offer_project` (`id_projet`),
-  ADD KEY `fk_offer_recruiter` (`id_recruteur`),
   ADD KEY `idx_offer_status_created` (`status`,`created_at`),
   ADD KEY `idx_offer_verification_created` (`verification_status`,`created_at`),
-  ADD KEY `idx_offer_verified_by` (`verified_by`);
+  ADD KEY `idx_offer_verified_by` (`verified_by`),
+  ADD KEY `idx_offer_status` (`status`),
+  ADD KEY `idx_offer_verification` (`verification_status`),
+  ADD KEY `idx_offer_recruiter` (`id_recruteur`),
+  ADD KEY `idx_offer_created_at` (`created_at`);
 
 --
 -- Indexes for table `password_resets`
@@ -557,7 +569,7 @@ ALTER TABLE `user`
 -- AUTO_INCREMENT for table `application`
 --
 ALTER TABLE `application`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `application_messages`
@@ -581,7 +593,7 @@ ALTER TABLE `candidate_experience`
 -- AUTO_INCREMENT for table `candidate_profile`
 --
 ALTER TABLE `candidate_profile`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `candidate_skills`
@@ -605,7 +617,7 @@ ALTER TABLE `formations`
 -- AUTO_INCREMENT for table `notifications`
 --
 ALTER TABLE `notifications`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT for table `offer_bookmarks`
@@ -629,7 +641,7 @@ ALTER TABLE `offer_views`
 -- AUTO_INCREMENT for table `offre_emploi`
 --
 ALTER TABLE `offre_emploi`
-  MODIFY `id_offer` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `id_offer` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
 
 --
 -- AUTO_INCREMENT for table `password_resets`
@@ -653,7 +665,7 @@ ALTER TABLE `profil_profetionnel`
 -- AUTO_INCREMENT for table `projet`
 --
 ALTER TABLE `projet`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `user`
