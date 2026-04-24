@@ -7,6 +7,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+// Returns a trimmed POST value for the provided key.
 function postValue($key)
 {
     if (!isset($_POST[$key])) {

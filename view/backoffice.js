@@ -16,6 +16,7 @@ let prochainId = 7;
 let idEnEdition = null;
 
 // ========== AFFICHER LE TABLEAU ==========
+// Displays content in the interface based on current data.
 function afficherTableau(formationsAAfficher) {
   const corpsTableau = document.getElementById('tableBody');
   
@@ -72,6 +73,7 @@ function afficherTableau(formationsAAfficher) {
 }
 
 // ========== FILTRER LES FORMATIONS ==========
+// Returns data needed by the current workflow.
 function getFormationsFiltrees() {
   const recherche = document.getElementById('tbSearch').value.toLowerCase();
   const niveauChoisi = document.getElementById('tbNiveau').value;
@@ -108,17 +110,20 @@ function getFormationsFiltrees() {
   return resultat;
 }
 
+// Filters displayed data based on selected criteria.
 function filtrerTableau() {
   const formationsFiltrees = getFormationsFiltrees();
   afficherTableau(formationsFiltrees);
 }
 
 // Compatibilite avec d'anciens attributs HTML encore en cache
+// Keeps compatibility with legacy cached HTML handlers.
 function filtrerTable() {
   filtrerTableau();
 }
 
 // ========== VOIR UNE FORMATION ==========
+// Shows a quick preview of the selected item.
 function voirFormation(id) {
   let formation = null;
   
@@ -135,6 +140,7 @@ function voirFormation(id) {
 }
 
 // ========== AJOUTER / MODIFIER ==========
+// Opens the related modal or panel.
 function ouvrirFormulaireAjout() {
   idEnEdition = null;
   document.getElementById('modalTitre').textContent = 'Ajouter une formation';
@@ -142,6 +148,7 @@ function ouvrirFormulaireAjout() {
   ouvrirModal();
 }
 
+// Opens the edit form and pre-fills it with the selected formation.
 function editerFormation(id) {
   idEnEdition = id;
   
@@ -170,6 +177,7 @@ function editerFormation(id) {
   }
 }
 
+// Resets all form inputs and clears validation states.
 function viderFormulaire() {
   document.getElementById('f_titre').value = '';
   document.getElementById('f_niveau').value = '';
@@ -193,16 +201,19 @@ function viderFormulaire() {
   }
 }
 
+// Opens the related modal or panel.
 function ouvrirModal() {
   const modal = document.getElementById('modalOverlay');
   if (modal) modal.classList.add('open');
 }
 
+// Closes the related modal or panel.
 function fermerModal() {
   const modal = document.getElementById('modalOverlay');
   if (modal) modal.classList.remove('open');
 }
 
+// Closes the related modal or panel.
 function fermerModalSiExterieur(event) {
   if (event.target.id === 'modalOverlay') {
     fermerModal();
@@ -210,11 +221,13 @@ function fermerModalSiExterieur(event) {
 }
 
 // Compatibilite avec un ancien nom de handler dans le HTML
+// Redirects legacy overlay-close handlers to the current function.
 function fermerModalOverlay(event) {
   fermerModalSiExterieur(event);
 }
 
 // ========== VALIDATION SIMPLE ==========
+// Validates input values and returns whether they are valid.
 function estEntierPositif(valeur) {
   if (valeur === '') {
     return false;
@@ -234,6 +247,7 @@ function estEntierPositif(valeur) {
   return false;
 }
 
+// Validates input values and returns whether they are valid.
 function estPrixValide(valeur) {
   if (valeur === '') {
     return false;
@@ -263,6 +277,7 @@ function estPrixValide(valeur) {
   return false;
 }
 
+// Validates input values and returns whether they are valid.
 function validerChamp(idChamp, typeValidation, idErreur) {
   const champ = document.getElementById(idChamp);
   const valeur = champ.value.trim();
@@ -293,6 +308,7 @@ function validerChamp(idChamp, typeValidation, idErreur) {
   return estValide;
 }
 
+// Saves the provided data to persistent storage.
 function sauvegarderFormation() {
   let toutEstValide = true;
   
@@ -354,6 +370,7 @@ function sauvegarderFormation() {
 }
 
 // ========== SUPPRESSION ==========
+// Removes the selected item from the current dataset or form.
 function supprimerFormation(id) {
   // Trouver le titre de la formation
   let titre = '';
@@ -383,6 +400,7 @@ function supprimerFormation(id) {
 }
 
 // ========== TOAST (Message popup) ==========
+// Displays content in the interface based on current data.
 function afficherToast(message) {
   const toast = document.getElementById('toast');
   if (!toast) return;

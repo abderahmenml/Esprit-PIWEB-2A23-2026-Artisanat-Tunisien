@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Formations CraftLink</title>
+<link href="https://fonts.googleapis.com/css2?family=Georgia&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Calibri:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../view/style.css">
+<style>
+.inline-alert {
+  max-width: 1100px;
+  margin: 16px auto 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.inline-alert.error {
+  background: rgba(192, 57, 43, 0.12);
+  color: #7b1f15;
+  border: 1px solid rgba(192, 57, 43, 0.35);
+}
+.inline-alert.success {
+  background: rgba(46, 107, 62, 0.12);
+  color: #1f4d2b;
+  border: 1px solid rgba(46, 107, 62, 0.35);
+}
+.inline-alert.info {
+  background: rgba(139, 90, 58, 0.10);
+  color: #4d3422;
+  border: 1px solid rgba(139, 90, 58, 0.25);
+}
+.filter-form {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 10px 32px 0;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.filter-form select {
+  padding: 8px 12px;
+  border-radius: 20px;
+  border: 1.5px solid var(--caramel);
+  color: var(--marron);
+  background: transparent;
+}
+.filter-form .btn-inscrit {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.filter-actions-right {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+.filter-actions-right .btn-inscrit {
+  white-space: nowrap;
+}
+.front-form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.front-form-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.btn-cancel {
+  border: 1px solid rgba(196,154,108,0.5);
+  color: var(--gris);
+  background: transparent;
+  border-radius: 6px;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+.btn-save {
+  border: none;
+  color: var(--creme);
+  background: var(--marron);
+  border-radius: 6px;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+.btn-save:hover {
+  background: var(--brun);
+}
+.form-subtitle {
+  margin: 10px 0 8px;
+  color: var(--marron);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.form-note {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--gris);
+}
+.quiz-builder-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.quiz-builder-question {
+  border: 1px solid rgba(196,154,108,0.35);
+  border-radius: 8px;
+  background: rgba(245,236,215,0.5);
+  padding: 10px;
+}
+.quiz-builder-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.quiz-builder-head strong {
+  color: var(--marron);
+  font-size: 0.85rem;
+}
+.quiz-remove-btn {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+}
+.quiz-builder-answer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.quiz-builder-answer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.quiz-builder-answer-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--gris);
+  white-space: nowrap;
+}
+.quiz-builder-question .btn-inscrit {
+  text-decoration: none;
+}
+.quiz-builder-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 4px;
+}
+.quiz-builder-hidden {
+  display: none;
+}
+#modalAjoutFront {
+  align-items: flex-start;
+  padding: 18px 0;
+  overflow-y: auto;
+}
+#modalAjoutFront .modal {
+  width: calc(100% - 24px);
+  max-width: 620px;
+  max-height: calc(100vh - 36px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+#modalAjoutFront .modal-body {
+  overflow-y: auto;
+}
+#modalAjoutFront .form-group {
+  margin-bottom: 12px;
+}
+#modalAjoutFront .modal-footer {
+  position: sticky;
+  bottom: 0;
+  background: var(--blanc);
+  padding-top: 10px;
+}
+.formation-card {
+  cursor: pointer;
+}
+.formation-card:focus-visible {
+  outline: 2px solid var(--marron);
+  outline-offset: 2px;
+}
+.formation-card .card-info {
+  min-height: 24px;
+}
+.formation-detail-btn {
+  text-decoration: none;
+}
+.formation-detail-view {
+  max-width: 1100px;
+  margin: 0 auto 36px;
+  padding: 0 32px;
+  display: none;
+}
+.formation-detail-view.open {
+  display: block;
+}
+.formation-detail-card {
+  display: none;
+  background: var(--blanc);
+  border: 1px solid rgba(196,154,108,0.2);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(59,35,20,0.08);
+  padding: 22px;
+}
+.detail-actions-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.detail-actions-top .btn-inscrit,
+.detail-actions-top .btn-cancel {
+  text-decoration: none;
+}
+.detail-head h2 {
+  font-family: 'Playfair Display', serif;
+  color: var(--brun);
+  margin-bottom: 8px;
+}
+.detail-chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.detail-chip {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  color: var(--marron);
+  border: 1px solid rgba(139,90,58,0.28);
+  background: rgba(245,236,215,0.7);
+}
+.detail-description {
+  margin: 16px 0;
+  color: var(--gris);
+  line-height: 1.6;
+}
+.detail-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.detail-meta-item {
+  background: rgba(245,236,215,0.65);
+  border: 1px solid rgba(196,154,108,0.2);
+  border-radius: 8px;
+  padding: 10px;
+}
+.detail-meta-item .k {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--gris);
+}
+.detail-meta-item .v {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--brun);
+  font-weight: 700;
+}
+.detail-block {
+  border-top: 1px solid rgba(196,154,108,0.2);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+.detail-block h3 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1rem;
+  color: var(--brun);
+  margin-bottom: 8px;
+}
+.detail-block p {
+  color: var(--gris);
+  line-height: 1.55;
+  font-size: 0.9rem;
+}
+.detail-block-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.detail-video-embed {
+  width: 100%;
+  max-width: 760px;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  border: 1px solid rgba(196,154,108,0.25);
+  overflow: hidden;
+  background: #000;
+  margin-top: 8px;
+}
+.detail-video-embed iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.detail-link {
+  display: inline-flex;
+  margin-top: 8px;
+  text-decoration: none;
+}
+.formation-quiz-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: var(--gris);
+  margin-bottom: 10px;
+}
+.formation-quiz-hint {
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  color: var(--gris);
+}
+.quiz-launch-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.quiz-launch-row .form-note {
+  margin: 0;
+}
+.quiz-questions-panel {
+  display: none;
+  border: 1px solid rgba(196,154,108,0.25);
+  border-radius: 10px;
+  background: rgba(245,236,215,0.6);
+  padding: 12px;
+  margin-top: 10px;
+}
+.quiz-questions-panel.open {
+  display: block;
+}
+.quiz-submit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.quiz-question-item {
+  border-bottom: 1px dashed rgba(196,154,108,0.35);
+  padding-bottom: 10px;
+}
+.quiz-question-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.quiz-question-title {
+  margin: 0 0 6px;
+  color: var(--brun);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.quiz-answer-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 0;
+  color: var(--gris);
+  font-size: 0.85rem;
+}
+.quiz-answer-option input {
+  margin-top: 2px;
+}
+.quiz-submit-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.quiz-feedback {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.84rem;
+}
+.quiz-feedback.success {
+  background: rgba(46,107,62,0.12);
+  border: 1px solid rgba(46,107,62,0.32);
+  color: #1f4d2b;
+}
+.quiz-feedback.error {
+  background: rgba(192,57,43,0.12);
+  border: 1px solid rgba(192,57,43,0.32);
+  color: #7b1f15;
+}
+.associated-workshops {
+  display: none;
+  margin-top: 10px;
+}
+.associated-workshops.open {
+  display: block;
+}
+.associated-workshop-item {
+  border: 1px solid rgba(196,154,108,0.2);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(245,236,215,0.55);
+  margin-bottom: 10px;
+}
+.associated-workshop-item h4 {
+  font-size: 1rem;
+  color: var(--brun);
+  margin-bottom: 6px;
+}
+.workshop-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+  font-size: 0.82rem;
+  color: var(--gris);
+}
+.workshop-program {
+  margin-top: 8px;
+}
+.workshop-program strong {
+  display: block;
+  color: var(--marron);
+  margin-bottom: 4px;
+  font-size: 0.84rem;
+}
+.workshop-actions {
+  margin-top: 10px;
+}
+.btn-meet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  background: var(--marron);
+  color: var(--creme);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.btn-meet:hover {
+  background: var(--brun);
+}
+.btn-meet.disabled {
+  background: rgba(107,91,78,0.2);
+  color: var(--gris);
+  cursor: not-allowed;
+}
+.migration-hint-list {
+  margin: 4px 0 0 18px;
+  color: #4d3422;
+}
+@media (max-width: 900px) {
+  .detail-meta-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 800px) {
+  .filter-actions-right {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .front-form-row-2,
+  .front-form-row-3 {
+    grid-template-columns: 1fr;
+  }
+  .formation-detail-view {
+    padding: 0 20px;
+  }
+}
+</style>
+</head>
+<body>
+<nav>
+  <div class="logo">
+    Ï¡ <span>CraftLink Tunisie</span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="frontWorkshops.php" id="workshopsTabLink">Workshops</a></li>
+    <li><a href="front.php" class="active" id="formationsTabLink">Formations</a></li>
+    <li><a href="back.php">Admin</a></li>
+  </ul>
+</nav>
+
+<section class="hero">
+  <h1>D├®veloppez votre <em>savoir-faire</em><br>artisanal tunisien</h1>
+  <p>Des formations structur├®es par des mentors certifi├®s, li├®es ├á de vrais projets artisanaux. Obtenez un certificat CraftLink reconnu.</p>
+  <form method="get" action="front.php" class="search-bar">
+    <input type="text" name="q" value="" placeholder="Rechercher une formation...">
+    <button type="submit">Rechercher</button>
+  </form>
+</section>
+
+<div class="stats-bar">
+  <div class="stat"><strong>7</strong><span>Formations dans la base</span></div>
+  <div class="stat"><strong>7</strong><span>Mentors</span></div>
+  <div class="stat"><strong>0+</strong><span>Inscriptions</span></div>
+  <div class="stat"><strong>0</strong><span>R├®sultats affich├®s</span></div>
+</div>
+
+<div class="filter-section">
+  <span class="filter-label">Filtrer la liste :</span>
+</div>
+<form method="get" action="front.php" class="filter-form">
+  <input type="hidden" name="q" value="">
+  <select name="niveau">
+    <option value="">Tous niveaux</option>
+    <option value="debutant" >D├®butant</option>
+    <option value="intermediaire" >Interm├®diaire</option>
+    <option value="avance" >Avanc├®</option>
+  </select>
+  <select name="certif">
+    <option value="">Certif ou non</option>
+    <option value="oui" >Avec certification</option>
+    <option value="non" >Sans certification</option>
+  </select>
+  <button type="submit" class="btn-inscrit">Appliquer</button>
+  <a href="front.php" class="btn-inscrit vert">R├®initialiser</a>
+  <div class="filter-actions-right">
+    <button type="button" class="btn-inscrit" id="btnAjouterFormationFrontPhp" onclick="ouvrirFormAjoutFront()">´╝ï Ajouter une formation</button>
+  </div>
+</form>
+
+
+  <div class="inline-alert error">Impossible de charger les formations depuis la base.</div>
+
+
+
+
+<div class="section-title container">Formations disponibles</div>
+<div class="berber-divider container">Ôùå Ôùç Ôùå Ôùç Ôùå</div>
+
+<div id="formationsGridSection" class="cards-wrapper">
+  <div class="cards-grid" id="cardsGrid">
+          <div class="card">
+        <div class="card-body">
+          <h3>Aucune formation trouv├®e</h3>
+          <p>Essayez un autre filtre ou ajoutez une nouvelle formation via le bouton Ajouter une formation.</p>
+        </div>
+      </div>
+      </div>
+</div>
+
+<div id="formationDetailView" class="formation-detail-view" aria-live="polite">
+  </div>
+
+<div class="modal-overlay" id="modalAjoutFront" onclick="fermerFormFrontSiExterieur(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2>Ajouter une formation</h2>
+        <p>Les donn├®es seront enregistr├®es dans la base</p>
+      </div>
+      <button class="modal-close" type="button" onclick="fermerFormAjoutFront()">Ô£ò</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="front.php">
+        <input type="hidden" name="action" value="add_formation">
+
+        <div class="front-form-row-2">
+          <div class="form-group">
+            <label>Titre *</label>
+            <input type="text" name="titre" value="" placeholder="Ex: Initiation ├á la poterie">
+          </div>
+          <div class="form-group">
+            <label>Mentor *</label>
+            <input type="text" name="mentor" value="" placeholder="Ex: Fatma Ayari">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea name="description" rows="3" placeholder="Description de la formation"></textarea>
+        </div>
+
+        <div class="front-form-row-3">
+          <div class="form-group">
+            <label>Niveau *</label>
+            <select name="niveau">
+              <option value="debutant" selected>D├®butant</option>
+              <option value="intermediaire" >Interm├®diaire</option>
+              <option value="avance" >Avanc├®</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Dur├®e (heures) *</label>
+            <input type="text" name="duree" value="" placeholder="Ex: 24">
+          </div>
+          <div class="form-group">
+            <label>Prix (TND) *</label>
+            <input type="text" name="prix" value="" placeholder="Ex: 180">
+          </div>
+        </div>
+
+        <div class="front-form-row-3">
+          <div class="form-group">
+            <label>Certification</label>
+            <select name="certification">
+              <option value="oui" selected>Oui</option>
+              <option value="non" >Non</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Statut</label>
+            <select name="etat">
+              <option value="Actif" selected>Actif</option>
+              <option value="Inactif" >Inactif</option>
+              <option value="Brouillon" >Brouillon</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Date de r├®alisation</label>
+            <input type="date" name="date_realisation" value="">
+          </div>
+        </div>
+
+        <div class="front-form-row-2">
+          <div class="form-group">
+            <label>URL vid├®o (YouTube/Vimeo)</label>
+            <input type="url" name="video_url" value="" placeholder="Ex: https://www.youtube.com/watch?v=...">
+          </div>
+          <div class="form-group">
+            <label>Lien rencontre formateur (Meet/Zoom/booking)</label>
+            <input type="url" name="meet_link" value="" placeholder="Ex: https://calendly.com/...">
+          </div>
+        </div>
+
+                  <p class="form-note">Note: ex├®cutez les migrations SQL pour enregistrer video_url et booking_url/meet_link en base.</p>
+        
+        <div class="form-subtitle">Quiz obligatoire de la formation</div>
+
+        <div class="form-group">
+          <label>Titre du quiz *</label>
+          <input type="text" name="quiz_titre" value="" placeholder="Ex: Quiz final - Initiation ├á la poterie" required>
+        </div>
+
+        <div class="form-group">
+          <label>Description du quiz</label>
+          <textarea name="quiz_description" rows="3" placeholder="Description du quiz (optionnel)"></textarea>
+        </div>
+
+        <div class="front-form-row-3">
+          <div class="form-group">
+            <label>Note de passage (%) *</label>
+            <input type="number" min="0" max="100" step="1" name="quiz_note_passage" value="60" required>
+          </div>
+          <div class="form-group">
+            <label>Nombre de tentatives *</label>
+            <input type="number" min="1" step="1" name="quiz_nb_tentatives" value="3" required>
+          </div>
+          <div class="form-group">
+            <label>Dur├®e du quiz (minutes) *</label>
+            <input type="number" min="1" step="1" name="quiz_duree_minutes" value="20" required>
+          </div>
+        </div>
+
+        <div class="form-subtitle">Questions du quiz</div>
+        <p class="form-note">Ajoutez le texte de la question, choisissez le type, puis ajoutez autant de r├®ponses que n├®cessaire.</p>
+
+        <div id="quizBuilderQuestions" class="quiz-builder-wrap" data-next-question-index="1">
+                                  <div class="quiz-builder-question" data-question-index="0" data-next-answer-index="2">
+              <div class="quiz-builder-head">
+                <strong>Question <span class="quiz-builder-number">1</span></strong>
+                <button type="button" class="btn-cancel quiz-remove-btn" onclick="removeQuizBuilderQuestion(this)">Supprimer</button>
+              </div>
+
+              <div class="form-group">
+                <label>Texte de la question *</label>
+                <input type="text" name="quiz_question_text[0]" value="" placeholder="Ex: Quelle mati├¿re est utilis├®e en vannerie ?">
+              </div>
+
+              <div class="front-form-row-3">
+                <div class="form-group">
+                  <label>Type</label>
+                  <select class="quiz-builder-type-select" data-question-index="0" name="quiz_question_type[0]" onchange="onQuizBuilderTypeChange(this, '0')">
+                    <option value="choix_unique" selected>Choix unique</option>
+                    <option value="choix_multiple" >Choix multiple</option>
+                    <option value="vrai_faux" >Vrai / Faux</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>Points</label>
+                  <input type="number" min="1" step="1" name="quiz_question_points[0]" value="1">
+                </div>
+                <div class="form-group quiz-builder-hidden" id="quizTrueFalseBox0">
+                  <label>Bonne r├®ponse (Vrai/Faux)</label>
+                  <select name="quiz_tf_correct[0]">
+                    <option value="true" selected>True</option>
+                    <option value="false" >False</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-group " id="quizAnswersBox0">
+                <label>R├®ponses *</label>
+                <div class="quiz-builder-answer-list" id="quizAnswerList0">
+                                                          <div class="quiz-builder-answer-row">
+                      <input type="text" name="quiz_answer_text[0][0]" value="" placeholder="Texte de la r├®ponse">
+                      <label>
+                        <input type="checkbox" name="quiz_answer_correct[0][]" value="0" >
+                        Bonne r├®ponse
+                      </label>
+                    </div>
+                                                          <div class="quiz-builder-answer-row">
+                      <input type="text" name="quiz_answer_text[0][1]" value="" placeholder="Texte de la r├®ponse">
+                      <label>
+                        <input type="checkbox" name="quiz_answer_correct[0][]" value="1" >
+                        Bonne r├®ponse
+                      </label>
+                    </div>
+                                  </div>
+                <button type="button" class="btn-inscrit vert" onclick="addQuizBuilderAnswer('0')">+ Ajouter une r├®ponse</button>
+              </div>
+            </div>
+                  </div>
+
+        <div class="quiz-builder-actions">
+          <button type="button" class="btn-inscrit vert" onclick="addQuizBuilderQuestion()">+ Ajouter une question</button>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" onclick="fermerFormAjoutFront()">Annuler</button>
+          <button type="submit" class="btn-save">­ƒÆ¥ Enregistrer dans la base</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <strong>Ï¡ CraftLink Tunisie</strong> ┬À 
+</footer>
+<script>
+// Opens the related modal or panel.
+function ouvrirFormAjoutFront()
+{
+  var modal = document.getElementById('modalAjoutFront');
+  if (modal) {
+    modal.classList.add('open');
+  }
+}
+
+// Closes the related modal or panel.
+function fermerFormAjoutFront()
+{
+  var modal = document.getElementById('modalAjoutFront');
+  if (modal) {
+    modal.classList.remove('open');
+  }
+}
+
+// Closes the related modal or panel.
+function fermerFormFrontSiExterieur(event)
+{
+  if (event.target && event.target.id === 'modalAjoutFront') {
+    fermerFormAjoutFront();
+  }
+}
+
+// Escapes text before injecting it into quiz builder markup.
+function quizBuilderEscapeHtml(value)
+{
+  var text = String(value);
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Builds HTML markup used by the dynamic form builder.
+function quizBuilderAnswerRowMarkup(questionIndex, answerIndex, answerText, isCorrect)
+{
+  var checked = isCorrect ? ' checked' : '';
+  return ''
+    + '<div class="quiz-builder-answer-row">'
+    + '<input type="text" name="quiz_answer_text[' + questionIndex + '][' + answerIndex + ']" value="' + quizBuilderEscapeHtml(answerText) + '" placeholder="Texte de la r├®ponse">'
+    + '<label>'
+    + '<input type="checkbox" name="quiz_answer_correct[' + questionIndex + '][]" value="' + answerIndex + '"' + checked + '>'
+    + 'Bonne r├®ponse'
+    + '</label>'
+    + '</div>';
+}
+
+// Refreshes derived UI values and labels.
+function refreshQuizBuilderQuestionLabels()
+{
+  var container = document.getElementById('quizBuilderQuestions');
+  if (!container) {
+    return;
+  }
+
+  var cards = container.querySelectorAll('.quiz-builder-question');
+  for (var i = 0; i < cards.length; i++) {
+    var label = cards[i].querySelector('.quiz-builder-number');
+    if (label) {
+      label.textContent = String(i + 1);
+    }
+  }
+}
+
+// Updates question inputs when the quiz question type changes.
+function onQuizBuilderTypeChange(selectElement, questionIndex)
+{
+  var tfBox = document.getElementById('quizTrueFalseBox' + String(questionIndex));
+  var answersBox = document.getElementById('quizAnswersBox' + String(questionIndex));
+  if (!tfBox || !answersBox) {
+    return;
+  }
+
+  if (selectElement.value === 'vrai_faux') {
+    tfBox.classList.remove('quiz-builder-hidden');
+    answersBox.classList.add('quiz-builder-hidden');
+  } else {
+    tfBox.classList.add('quiz-builder-hidden');
+    answersBox.classList.remove('quiz-builder-hidden');
+  }
+}
+
+// Adds a new item to the current dataset or form.
+function addQuizBuilderAnswer(questionIndex)
+{
+  var questionCard = document.querySelector('.quiz-builder-question[data-question-index="' + String(questionIndex) + '"]');
+  if (!questionCard) {
+    return;
+  }
+
+  var answerList = document.getElementById('quizAnswerList' + String(questionIndex));
+  if (!answerList) {
+    return;
+  }
+
+  var nextAnswerIndex = parseInt(questionCard.getAttribute('data-next-answer-index'), 10);
+  if (isNaN(nextAnswerIndex) || nextAnswerIndex < 0) {
+    nextAnswerIndex = answerList.children.length;
+  }
+
+  answerList.insertAdjacentHTML('beforeend', quizBuilderAnswerRowMarkup(questionIndex, nextAnswerIndex, '', false));
+  questionCard.setAttribute('data-next-answer-index', String(nextAnswerIndex + 1));
+}
+
+// Removes the selected item from the current dataset or form.
+function removeQuizBuilderQuestion(buttonElement)
+{
+  var card = buttonElement.closest('.quiz-builder-question');
+  if (!card) {
+    return;
+  }
+
+  var container = document.getElementById('quizBuilderQuestions');
+  card.remove();
+  refreshQuizBuilderQuestionLabels();
+
+  if (container && container.querySelectorAll('.quiz-builder-question').length === 0) {
+    addQuizBuilderQuestion();
+  }
+}
+
+// Adds a new item to the current dataset or form.
+function addQuizBuilderQuestion()
+{
+  var container = document.getElementById('quizBuilderQuestions');
+  if (!container) {
+    return;
+  }
+
+  var nextQuestionIndex = parseInt(container.getAttribute('data-next-question-index'), 10);
+  if (isNaN(nextQuestionIndex) || nextQuestionIndex < 0) {
+    nextQuestionIndex = container.querySelectorAll('.quiz-builder-question').length;
+  }
+
+  var questionIndex = String(nextQuestionIndex);
+  container.setAttribute('data-next-question-index', String(nextQuestionIndex + 1));
+
+  var html = ''
+    + '<div class="quiz-builder-question" data-question-index="' + questionIndex + '" data-next-answer-index="2">'
+    + '  <div class="quiz-builder-head">'
+    + '    <strong>Question <span class="quiz-builder-number">0</span></strong>'
+    + '    <button type="button" class="btn-cancel quiz-remove-btn" onclick="removeQuizBuilderQuestion(this)">Supprimer</button>'
+    + '  </div>'
+    + '  <div class="form-group">'
+    + '    <label>Texte de la question *</label>'
+    + '    <input type="text" name="quiz_question_text[' + questionIndex + ']" placeholder="Ex: Quelle mati├¿re est utilis├®e en vannerie ?">'
+    + '  </div>'
+    + '  <div class="front-form-row-3">'
+    + '    <div class="form-group">'
+    + '      <label>Type</label>'
+    + '      <select class="quiz-builder-type-select" data-question-index="' + questionIndex + '" name="quiz_question_type[' + questionIndex + ']" onchange="onQuizBuilderTypeChange(this, \'' + questionIndex + '\')">'
+    + '        <option value="choix_unique">Choix unique</option>'
+    + '        <option value="choix_multiple">Choix multiple</option>'
+    + '        <option value="vrai_faux">Vrai / Faux</option>'
+    + '      </select>'
+    + '    </div>'
+    + '    <div class="form-group">'
+    + '      <label>Points</label>'
+    + '      <input type="number" min="1" step="1" name="quiz_question_points[' + questionIndex + ']" value="1">'
+    + '    </div>'
+    + '    <div class="form-group quiz-builder-hidden" id="quizTrueFalseBox' + questionIndex + '">'
+    + '      <label>Bonne r├®ponse (Vrai/Faux)</label>'
+    + '      <select name="quiz_tf_correct[' + questionIndex + ']">'
+    + '        <option value="true">True</option>'
+    + '        <option value="false">False</option>'
+    + '      </select>'
+    + '    </div>'
+    + '  </div>'
+    + '  <div class="form-group" id="quizAnswersBox' + questionIndex + '">'
+    + '    <label>R├®ponses *</label>'
+    + '    <div class="quiz-builder-answer-list" id="quizAnswerList' + questionIndex + '">'
+    +       quizBuilderAnswerRowMarkup(questionIndex, 0, '', false)
+    +       quizBuilderAnswerRowMarkup(questionIndex, 1, '', false)
+    + '    </div>'
+    + '    <button type="button" class="btn-inscrit vert" onclick="addQuizBuilderAnswer(\'' + questionIndex + '\')">+ Ajouter une r├®ponse</button>'
+    + '  </div>'
+    + '</div>';
+
+  container.insertAdjacentHTML('beforeend', html);
+  refreshQuizBuilderQuestionLabels();
+}
+
+// Opens the related modal or panel.
+function openFormationDetails(formationId)
+{
+  var sectionGrid = document.getElementById('formationsGridSection');
+  var sectionDetail = document.getElementById('formationDetailView');
+
+  if (!sectionGrid || !sectionDetail) {
+    return;
+  }
+
+  var panels = sectionDetail.querySelectorAll('.formation-detail-card');
+  var found = false;
+
+  for (var i = 0; i < panels.length; i++) {
+    var panel = panels[i];
+    var panelId = parseInt(panel.getAttribute('data-detail-id'), 10);
+
+    if (panelId === formationId) {
+      panel.style.display = 'block';
+      found = true;
+    } else {
+      panel.style.display = 'none';
+    }
+  }
+
+  if (!found) {
+    return;
+  }
+
+  sectionGrid.style.display = 'none';
+  sectionDetail.classList.add('open');
+  sectionDetail.setAttribute('data-active-id', String(formationId));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Closes the related modal or panel.
+function closeFormationDetails()
+{
+  var sectionGrid = document.getElementById('formationsGridSection');
+  var sectionDetail = document.getElementById('formationDetailView');
+
+  if (!sectionGrid || !sectionDetail) {
+    return;
+  }
+
+  sectionGrid.style.display = '';
+  sectionDetail.classList.remove('open');
+  sectionDetail.removeAttribute('data-active-id');
+
+  var panels = sectionDetail.querySelectorAll('.formation-detail-card');
+  for (var i = 0; i < panels.length; i++) {
+    panels[i].style.display = 'none';
+  }
+
+  var workshopSections = sectionDetail.querySelectorAll('.associated-workshops');
+  for (var j = 0; j < workshopSections.length; j++) {
+    workshopSections[j].classList.remove('open');
+  }
+
+  var workshopButtons = sectionDetail.querySelectorAll('.workshops-toggle-btn');
+  for (var k = 0; k < workshopButtons.length; k++) {
+    workshopButtons[k].textContent = 'Voir ateliers';
+  }
+
+  var quizPanels = sectionDetail.querySelectorAll('.quiz-questions-panel');
+  for (var l = 0; l < quizPanels.length; l++) {
+    quizPanels[l].classList.remove('open');
+  }
+
+  var quizButtons = sectionDetail.querySelectorAll('.quiz-launch-btn');
+  for (var m = 0; m < quizButtons.length; m++) {
+    quizButtons[m].textContent = 'Passer quizz';
+  }
+}
+
+// Toggles visibility for the requested section.
+function toggleAssociatedWorkshops(formationId)
+{
+  var container = document.getElementById('associatedWorkshops' + String(formationId));
+  if (!container) {
+    return;
+  }
+
+  var button = document.querySelector('.workshops-toggle-btn[data-formation-id="' + String(formationId) + '"]');
+  var isOpen = container.classList.contains('open');
+
+  if (isOpen) {
+    container.classList.remove('open');
+    if (button) {
+      button.textContent = 'Voir ateliers';
+    }
+  } else {
+    container.classList.add('open');
+    if (button) {
+      button.textContent = 'Masquer ateliers';
+    }
+  }
+}
+
+// Toggles visibility for the requested section.
+function toggleQuizPanel(formationId)
+{
+  var panel = document.getElementById('quizPanel' + String(formationId));
+  if (!panel) {
+    return;
+  }
+
+  var button = document.querySelector('.quiz-launch-btn[data-formation-id="' + String(formationId) + '"]');
+  var isOpen = panel.classList.contains('open');
+
+  if (isOpen) {
+    panel.classList.remove('open');
+    if (button) {
+      button.textContent = 'Passer quizz';
+    }
+  } else {
+    panel.classList.add('open');
+    if (button) {
+      button.textContent = 'Masquer quizz';
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function ()
+{
+  var boutonAjout = document.getElementById('btnAjouterFormationFrontPhp');
+  if (boutonAjout) {
+    boutonAjout.addEventListener('click', function (event) {
+      event.preventDefault();
+      ouvrirFormAjoutFront();
+    });
+  }
+
+  refreshQuizBuilderQuestionLabels();
+
+  var typeSelects = document.querySelectorAll('.quiz-builder-type-select');
+  for (var ts = 0; ts < typeSelects.length; ts++) {
+    var typeSelect = typeSelects[ts];
+    var questionIndex = typeSelect.getAttribute('data-question-index');
+    if (questionIndex !== null && questionIndex !== '') {
+      onQuizBuilderTypeChange(typeSelect, questionIndex);
+    }
+  }
+
+  var cartesFormations = document.querySelectorAll('.formation-card');
+  for (var i = 0; i < cartesFormations.length; i++) {
+    (function (carte) {
+      var formationId = parseInt(carte.getAttribute('data-formation-id'), 10);
+
+      carte.addEventListener('click', function (event) {
+        if (event.target && event.target.closest('.formation-detail-btn')) {
+          return;
+        }
+
+        if (formationId > 0) {
+          openFormationDetails(formationId);
+        }
+      });
+
+      carte.addEventListener('keydown', function (event) {
+        if ((event.key === 'Enter' || event.key === ' ') && formationId > 0) {
+          event.preventDefault();
+          openFormationDetails(formationId);
+        }
+      });
+
+      var boutonDetail = carte.querySelector('.formation-detail-btn');
+      if (boutonDetail) {
+        boutonDetail.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+
+          if (formationId > 0) {
+            openFormationDetails(formationId);
+          }
+        });
+      }
+    })(cartesFormations[i]);
+  }
+
+  var autoOpenId = 0;
+  if (autoOpenId > 0) {
+    openFormationDetails(autoOpenId);
+  }
+});
+</script>
+</body>
+</html>

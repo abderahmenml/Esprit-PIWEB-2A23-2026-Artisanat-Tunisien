@@ -1,0 +1,1485 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Formations CraftLink</title>
+<link href="https://fonts.googleapis.com/css2?family=Georgia&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Calibri:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../view/style.css">
+<style>
+.inline-alert {
+  max-width: 1100px;
+  margin: 16px auto 0;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.inline-alert.error {
+  background: rgba(192, 57, 43, 0.12);
+  color: #7b1f15;
+  border: 1px solid rgba(192, 57, 43, 0.35);
+}
+.inline-alert.success {
+  background: rgba(46, 107, 62, 0.12);
+  color: #1f4d2b;
+  border: 1px solid rgba(46, 107, 62, 0.35);
+}
+.inline-alert.info {
+  background: rgba(139, 90, 58, 0.10);
+  color: #4d3422;
+  border: 1px solid rgba(139, 90, 58, 0.25);
+}
+.filter-form {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 10px 32px 0;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.filter-form select {
+  padding: 8px 12px;
+  border-radius: 20px;
+  border: 1.5px solid var(--caramel);
+  color: var(--marron);
+  background: transparent;
+}
+.filter-form .btn-inscrit {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.filter-actions-right {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+.filter-actions-right .btn-inscrit {
+  white-space: nowrap;
+}
+.front-form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.front-form-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.btn-cancel {
+  border: 1px solid rgba(196,154,108,0.5);
+  color: var(--gris);
+  background: transparent;
+  border-radius: 6px;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+.btn-save {
+  border: none;
+  color: var(--creme);
+  background: var(--marron);
+  border-radius: 6px;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+.btn-save:hover {
+  background: var(--brun);
+}
+.form-subtitle {
+  margin: 10px 0 8px;
+  color: var(--marron);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.form-note {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--gris);
+}
+#modalAjoutFront {
+  align-items: flex-start;
+  padding: 18px 0;
+  overflow-y: auto;
+}
+#modalAjoutFront .modal {
+  width: calc(100% - 24px);
+  max-width: 620px;
+  max-height: calc(100vh - 36px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+#modalAjoutFront .modal-body {
+  overflow-y: auto;
+}
+#modalAjoutFront .form-group {
+  margin-bottom: 12px;
+}
+#modalAjoutFront .modal-footer {
+  position: sticky;
+  bottom: 0;
+  background: var(--blanc);
+  padding-top: 10px;
+}
+.formation-card {
+  cursor: pointer;
+}
+.formation-card:focus-visible {
+  outline: 2px solid var(--marron);
+  outline-offset: 2px;
+}
+.formation-card .card-info {
+  min-height: 24px;
+}
+.formation-detail-btn {
+  text-decoration: none;
+}
+.formation-detail-view {
+  max-width: 1100px;
+  margin: 0 auto 36px;
+  padding: 0 32px;
+  display: none;
+}
+.formation-detail-view.open {
+  display: block;
+}
+.formation-detail-card {
+  display: none;
+  background: var(--blanc);
+  border: 1px solid rgba(196,154,108,0.2);
+  border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(59,35,20,0.08);
+  padding: 22px;
+}
+.detail-actions-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.detail-actions-top .btn-inscrit,
+.detail-actions-top .btn-cancel {
+  text-decoration: none;
+}
+.detail-head h2 {
+  font-family: 'Playfair Display', serif;
+  color: var(--brun);
+  margin-bottom: 8px;
+}
+.detail-chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.detail-chip {
+  display: inline-block;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  color: var(--marron);
+  border: 1px solid rgba(139,90,58,0.28);
+  background: rgba(245,236,215,0.7);
+}
+.detail-description {
+  margin: 16px 0;
+  color: var(--gris);
+  line-height: 1.6;
+}
+.detail-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.detail-meta-item {
+  background: rgba(245,236,215,0.65);
+  border: 1px solid rgba(196,154,108,0.2);
+  border-radius: 8px;
+  padding: 10px;
+}
+.detail-meta-item .k {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--gris);
+}
+.detail-meta-item .v {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--brun);
+  font-weight: 700;
+}
+.detail-block {
+  border-top: 1px solid rgba(196,154,108,0.2);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+.detail-block h3 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1rem;
+  color: var(--brun);
+  margin-bottom: 8px;
+}
+.detail-block p {
+  color: var(--gris);
+  line-height: 1.55;
+  font-size: 0.9rem;
+}
+.detail-block-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.detail-video-embed {
+  width: 100%;
+  max-width: 760px;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  border: 1px solid rgba(196,154,108,0.25);
+  overflow: hidden;
+  background: #000;
+  margin-top: 8px;
+}
+.detail-video-embed iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.detail-link {
+  display: inline-flex;
+  margin-top: 8px;
+  text-decoration: none;
+}
+.formation-quiz-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.8rem;
+  color: var(--gris);
+  margin-bottom: 10px;
+}
+.formation-quiz-hint {
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  color: var(--gris);
+}
+.quiz-launch-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.quiz-launch-row .form-note {
+  margin: 0;
+}
+.quiz-questions-panel {
+  display: none;
+  border: 1px solid rgba(196,154,108,0.25);
+  border-radius: 10px;
+  background: rgba(245,236,215,0.6);
+  padding: 12px;
+  margin-top: 10px;
+}
+.quiz-questions-panel.open {
+  display: block;
+}
+.quiz-submit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.quiz-question-item {
+  border-bottom: 1px dashed rgba(196,154,108,0.35);
+  padding-bottom: 10px;
+}
+.quiz-question-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.quiz-question-title {
+  margin: 0 0 6px;
+  color: var(--brun);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.quiz-answer-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 0;
+  color: var(--gris);
+  font-size: 0.85rem;
+}
+.quiz-answer-option input {
+  margin-top: 2px;
+}
+.quiz-submit-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.quiz-feedback {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.84rem;
+}
+.quiz-feedback.success {
+  background: rgba(46,107,62,0.12);
+  border: 1px solid rgba(46,107,62,0.32);
+  color: #1f4d2b;
+}
+.quiz-feedback.error {
+  background: rgba(192,57,43,0.12);
+  border: 1px solid rgba(192,57,43,0.32);
+  color: #7b1f15;
+}
+.associated-workshops {
+  display: none;
+  margin-top: 10px;
+}
+.associated-workshops.open {
+  display: block;
+}
+.associated-workshop-item {
+  border: 1px solid rgba(196,154,108,0.2);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(245,236,215,0.55);
+  margin-bottom: 10px;
+}
+.associated-workshop-item h4 {
+  font-size: 1rem;
+  color: var(--brun);
+  margin-bottom: 6px;
+}
+.workshop-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 8px 0;
+  font-size: 0.82rem;
+  color: var(--gris);
+}
+.workshop-program {
+  margin-top: 8px;
+}
+.workshop-program strong {
+  display: block;
+  color: var(--marron);
+  margin-bottom: 4px;
+  font-size: 0.84rem;
+}
+.workshop-actions {
+  margin-top: 10px;
+}
+.btn-meet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  background: var(--marron);
+  color: var(--creme);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.btn-meet:hover {
+  background: var(--brun);
+}
+.btn-meet.disabled {
+  background: rgba(107,91,78,0.2);
+  color: var(--gris);
+  cursor: not-allowed;
+}
+.migration-hint-list {
+  margin: 4px 0 0 18px;
+  color: #4d3422;
+}
+@media (max-width: 900px) {
+  .detail-meta-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 800px) {
+  .filter-actions-right {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .front-form-row-2,
+  .front-form-row-3 {
+    grid-template-columns: 1fr;
+  }
+  .formation-detail-view {
+    padding: 0 20px;
+  }
+}
+</style>
+</head>
+<body>
+<nav>
+  <div class="logo">
+    Ï¡ <span>CraftLink Tunisie</span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="frontWorkshops.php" id="workshopsTabLink">Workshops</a></li>
+    <li><a href="front.php" class="active" id="formationsTabLink">Formations</a></li>
+    <li><a href="back.php">Admin</a></li>
+  </ul>
+</nav>
+
+<section class="hero">
+  <h1>D├®veloppez votre <em>savoir-faire</em><br>artisanal tunisien</h1>
+  <p>Des formations structur├®es par des mentors certifi├®s, li├®es ├á de vrais projets artisanaux. Obtenez un certificat CraftLink reconnu.</p>
+  <form method="get" action="front.php" class="search-bar">
+    <input type="text" name="q" value="" placeholder="Rechercher une formation...">
+    <button type="submit">Rechercher</button>
+  </form>
+</section>
+
+<div class="stats-bar">
+  <div class="stat"><strong>6</strong><span>Formations dans la base</span></div>
+  <div class="stat"><strong>6</strong><span>Mentors</span></div>
+  <div class="stat"><strong>0+</strong><span>Inscriptions</span></div>
+  <div class="stat"><strong>6</strong><span>R├®sultats affich├®s</span></div>
+</div>
+
+<div class="filter-section">
+  <span class="filter-label">Filtrer la liste :</span>
+</div>
+<form method="get" action="front.php" class="filter-form">
+  <input type="hidden" name="q" value="">
+  <select name="niveau">
+    <option value="">Tous niveaux</option>
+    <option value="debutant" >D├®butant</option>
+    <option value="intermediaire" >Interm├®diaire</option>
+    <option value="avance" >Avanc├®</option>
+  </select>
+  <select name="certif">
+    <option value="">Certif ou non</option>
+    <option value="oui" >Avec certification</option>
+    <option value="non" >Sans certification</option>
+  </select>
+  <button type="submit" class="btn-inscrit">Appliquer</button>
+  <a href="front.php" class="btn-inscrit vert">R├®initialiser</a>
+  <div class="filter-actions-right">
+    <button type="button" class="btn-inscrit" id="btnAjouterFormationFrontPhp" onclick="ouvrirFormAjoutFront()">´╝ï Ajouter une formation</button>
+  </div>
+</form>
+
+
+
+
+
+
+<div class="section-title container">Formations disponibles</div>
+<div class="berber-divider container">Ôùå Ôùç Ôùå Ôùç Ôùå</div>
+
+<div id="formationsGridSection" class="cards-wrapper">
+  <div class="cards-grid" id="cardsGrid">
+                          <div class="card formation-card" tabindex="0" role="button" data-formation-id="21555570" aria-label="Voir les d├®tails de la formation llllllllllllll">
+          <div class="card-body">
+            <div class="card-meta">
+              <span class="tag tag-niveau">D├®butant</span>
+                              <span class="tag tag-certif">­ƒô£ Certifiant</span>
+                          </div>
+            <h3>llllllllllllll</h3>
+            <p>...........................</p>
+            <div class="card-info">
+              <span>­ƒòÉ 12h</span>
+              <span>­ƒæñ 0 inscrits</span>
+              <span>­ƒÄô 0 atelier(s) li├®(s)</span>
+            </div>
+          </div>
+          <div class="card-mentor">
+            <div class="mentor-avatar" style="background:var(--marron)">F</div>
+            <div class="mentor-info">
+              <strong>fgh</strong>
+              <small>Tunisie</small>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="price">500 TND
+              <small>Certificat inclus</small>
+            </div>
+            <button type="button" class="btn-inscrit formation-detail-btn" data-formation-id="21555570">Voir d├®tails</button>
+          </div>
+        </div>
+                      <div class="card formation-card" tabindex="0" role="button" data-formation-id="21555569" aria-label="Voir les d├®tails de la formation oiuytre">
+          <div class="card-body">
+            <div class="card-meta">
+              <span class="tag tag-niveau">D├®butant</span>
+                              <span class="tag tag-certif">­ƒô£ Certifiant</span>
+                          </div>
+            <h3>oiuytre</h3>
+            <p>Description bient├┤t disponible.</p>
+            <div class="card-info">
+              <span>­ƒòÉ 12h</span>
+              <span>­ƒæñ 0 inscrits</span>
+              <span>­ƒÄô 0 atelier(s) li├®(s)</span>
+            </div>
+          </div>
+          <div class="card-mentor">
+            <div class="mentor-avatar" style="background:var(--marron)">J</div>
+            <div class="mentor-info">
+              <strong>juytr</strong>
+              <small>Tunisie</small>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="price">250 TND
+              <small>Certificat inclus</small>
+            </div>
+            <button type="button" class="btn-inscrit formation-detail-btn" data-formation-id="21555569">Voir d├®tails</button>
+          </div>
+        </div>
+                      <div class="card formation-card" tabindex="0" role="button" data-formation-id="21555566" aria-label="Voir les d├®tails de la formation ikjhygt">
+          <div class="card-body">
+            <div class="card-meta">
+              <span class="tag tag-niveau">Interm├®diaire</span>
+                              <span class="tag tag-certif">­ƒô£ Certifiant</span>
+                          </div>
+            <h3>ikjhygt</h3>
+            <p>poiuytre</p>
+            <div class="card-info">
+              <span>­ƒòÉ 25h</span>
+              <span>­ƒæñ 0 inscrits</span>
+              <span>­ƒÄô 0 atelier(s) li├®(s)</span>
+            </div>
+          </div>
+          <div class="card-mentor">
+            <div class="mentor-avatar" style="background:var(--marron)">L</div>
+            <div class="mentor-info">
+              <strong>lkjhgfd</strong>
+              <small>Tunisie</small>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="price">562 TND
+              <small>Certificat inclus</small>
+            </div>
+            <button type="button" class="btn-inscrit formation-detail-btn" data-formation-id="21555566">Voir d├®tails</button>
+          </div>
+        </div>
+                      <div class="card formation-card" tabindex="0" role="button" data-formation-id="21555565" aria-label="Voir les d├®tails de la formation jehddik">
+          <div class="card-body">
+            <div class="card-meta">
+              <span class="tag tag-niveau">Interm├®diaire</span>
+                              <span class="tag tag-certif">­ƒô£ Certifiant</span>
+                          </div>
+            <h3>jehddik</h3>
+            <p>Description bient├┤t disponible.</p>
+            <div class="card-info">
+              <span>­ƒòÉ 1235h</span>
+              <span>­ƒæñ 0 inscrits</span>
+              <span>­ƒÄô 0 atelier(s) li├®(s)</span>
+            </div>
+          </div>
+          <div class="card-mentor">
+            <div class="mentor-avatar" style="background:var(--marron)">I</div>
+            <div class="mentor-info">
+              <strong>iuyehgtfrd</strong>
+              <small>Tunisie</small>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="price">152.50 TND
+              <small>Certificat inclus</small>
+            </div>
+            <button type="button" class="btn-inscrit formation-detail-btn" data-formation-id="21555565">Voir d├®tails</button>
+          </div>
+        </div>
+                      <div class="card formation-card" tabindex="0" role="button" data-formation-id="58999" aria-label="Voir les d├®tails de la formation yfqki">
+          <div class="card-body">
+            <div class="card-meta">
+              <span class="tag tag-niveau">D├®butant</span>
+                          </div>
+            <h3>yfqki</h3>
+            <p>Description bient├┤t disponible.</p>
+            <div class="card-info">
+              <span>­ƒòÉ 125h</span>
+              <span>­ƒæñ 0 inscrits</span>
+              <span>­ƒÄô 0 atelier(s) li├®(s)</span>
+            </div>
+          </div>
+          <div class="card-mentor">
+            <div class="mentor-avatar" style="background:var(--marron)">E</div>
+            <div class="mentor-info">
+              <strong>eytgvb</strong>
+              <small>Tunisie</small>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="price">650 TND
+              <small>Attestation de suivi</small>
+            </div>
+            <button type="button" class="btn-inscrit formation-detail-btn" data-formation-id="58999">Voir d├®tails</button>
+          </div>
+        </div>
+                      <div class="card formation-card" tabindex="0" role="button" data-formation-id="2145" aria-label="Voir les d├®tails de la formation oiuytrez">
+          <div class="card-body">
+            <div class="card-meta">
+              <span class="tag tag-niveau">Avanc├®</span>
+                              <span class="tag tag-certif">­ƒô£ Certifiant</span>
+                          </div>
+            <h3>oiuytrez</h3>
+            <p>Description bient├┤t disponible.</p>
+            <div class="card-info">
+              <span>­ƒòÉ 651h</span>
+              <span>­ƒæñ 0 inscrits</span>
+              <span>­ƒÄô 0 atelier(s) li├®(s)</span>
+            </div>
+          </div>
+          <div class="card-mentor">
+            <div class="mentor-avatar" style="background:var(--marron)">J</div>
+            <div class="mentor-info">
+              <strong>jhgfds</strong>
+              <small>Tunisie</small>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="price">520 TND
+              <small>Certificat inclus</small>
+            </div>
+            <button type="button" class="btn-inscrit formation-detail-btn" data-formation-id="2145">Voir d├®tails</button>
+          </div>
+        </div>
+            </div>
+</div>
+
+<div id="formationDetailView" class="formation-detail-view" aria-live="polite">
+          <article class="formation-detail-card" data-detail-id="21555570">
+      <div class="detail-actions-top">
+        <button type="button" class="btn-cancel" onclick="closeFormationDetails()">ÔåÉ Retour aux formations</button>
+              </div>
+
+      <div class="detail-head">
+        <h2>llllllllllllll</h2>
+        <div class="detail-chip-row">
+          <span class="detail-chip">­ƒôÜ D├®butant</span>
+                      <span class="detail-chip">­ƒô£ Formation certifiante</span>
+                    <span class="detail-chip">­ƒº¬ Quiz requis</span>
+          <span class="detail-chip">­ƒÄô 0 atelier(s) associ├®(s)</span>
+        </div>
+      </div>
+
+      <p class="detail-description">...........................</p>
+
+      <div class="detail-meta-grid">
+        <div class="detail-meta-item">
+          <span class="k">Mentor</span>
+          <span class="v">fgh</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Dur├®e</span>
+          <span class="v">12h</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Prix</span>
+          <span class="v">500 TND</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Niveau</span>
+          <span class="v">D├®butant</span>
+        </div>
+      </div>
+
+      <section class="detail-block">
+        <h3>Certification</h3>
+                  <p>Cette formation d├®livre un certificat CraftLink apr├¿s r├®ussite du quiz final.</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Vid├®os de la formation</h3>
+                  <p>Aucune vid├®o n'est encore configur├®e pour cette formation.</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Quiz de validation</h3>
+                  <div class="formation-quiz-meta">
+            <span>­ƒº¥ Titre: bbbbbbbbbbbb</span>
+            <span>­ƒÄ» Note de passage: 60%</span>
+            <span>­ƒöü Tentatives: 0/3</span>
+            <span>ÔÅ▒´©Å Dur├®e: 20 min</span>
+          </div>
+
+                      <p class="formation-quiz-hint">..........................</p>
+          
+          <div class="quiz-launch-row">
+            <button type="button" class="btn-inscrit quiz-launch-btn" data-formation-id="21555570" onclick="toggleQuizPanel(21555570)">Passer quizz</button>
+            <span class="form-note">Le score est calcul├® uniquement apr├¿s validation des r├®ponses.</span>
+          </div>
+
+          <div class="quiz-questions-panel" id="quizPanel21555570">
+                          <form method="post" action="front.php" class="quiz-submit-form">
+                <input type="hidden" name="action" value="submit_quiz">
+                <input type="hidden" name="formation_id" value="21555570">
+                <input type="hidden" name="q" value="">
+                <input type="hidden" name="niveau" value="">
+                <input type="hidden" name="certif" value="">
+
+                                                    <div class="quiz-question-item">
+                    <p class="quiz-question-title">Question 1: Which material is most commonly associated with traditional vannerie (basket weaving)?</p>
+
+                                                                                          <label class="quiz-answer-option">
+                          <input type="radio" name="answers[1]" value="1">
+                          <span>Copper wire</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[1]" value="2">
+                          <span>Rattan or willow</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[1]" value="3">
+                          <span>Linen thread</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[1]" value="4">
+                          <span>Leather strips</span>
+                        </label>
+                                                            </div>
+                                                    <div class="quiz-question-item">
+                    <p class="quiz-question-title">Question 2: In a traditional stained glass (vitrail) workshop, what is the purpose of the grisaille step?</p>
+
+                                                                                          <label class="quiz-answer-option">
+                          <input type="radio" name="answers[2]" value="5">
+                          <span>Cutting the glass into shapes</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[2]" value="6">
+                          <span>Painting details and shading on the glass</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[2]" value="7">
+                          <span>Joining glass pieces with lead</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[2]" value="8">
+                          <span>Polishing the finished window</span>
+                        </label>
+                                                            </div>
+                                                    <div class="quiz-question-item">
+                    <p class="quiz-question-title">Question 3: Which tool is essential for traditional woodworking (menuiserie traditionnelle)?</p>
+
+                                                                                          <label class="quiz-answer-option">
+                          <input type="radio" name="answers[3]" value="9">
+                          <span>Potter&#039;s wheel</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[3]" value="10">
+                          <span>Varnishing brush</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[3]" value="11">
+                          <span>Rabbet plane (varlope)</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[3]" value="12">
+                          <span>Weaving shuttle</span>
+                        </label>
+                                                            </div>
+                                                    <div class="quiz-question-item">
+                    <p class="quiz-question-title">Question 4: True or False: Batik - a traditional dyeing technique - uses melted wax to resist color on fabric.</p>
+
+                                                                                          <label class="quiz-answer-option">
+                          <input type="radio" name="answers[4]" value="13">
+                          <span>True</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[4]" value="14">
+                          <span>False</span>
+                        </label>
+                                                            </div>
+                                                    <div class="quiz-question-item">
+                    <p class="quiz-question-title">Question 5: What is the main characteristic of vegetable tanning (tannage vegetal) in leather workshops?</p>
+
+                                                                                          <label class="quiz-answer-option">
+                          <input type="radio" name="answers[5]" value="15">
+                          <span>It uses chrome salts for rapid tanning</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[5]" value="16">
+                          <span>It uses tree bark and natural tannins</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[5]" value="17">
+                          <span>It requires synthetic dyes only</span>
+                        </label>
+                                                                      <label class="quiz-answer-option">
+                          <input type="radio" name="answers[5]" value="18">
+                          <span>It is mainly used for clothing, not accessories</span>
+                        </label>
+                                                            </div>
+                
+                <div class="quiz-submit-actions">
+                  <button type="submit" class="btn-inscrit" >Valider mes r├®ponses</button>
+                </div>
+              </form>
+                      </div>
+
+          
+                        </section>
+
+      <section class="detail-block">
+        <div class="detail-block-head">
+          <h3>Ateliers associ├®s</h3>
+          <button type="button" class="btn-inscrit vert workshops-toggle-btn" data-formation-id="21555570" onclick="toggleAssociatedWorkshops(21555570)">Voir ateliers</button>
+        </div>
+
+        <div class="associated-workshops" id="associatedWorkshops21555570">
+                      <p>La liaison formation-atelier n'est pas encore disponible (table formations_workshops ou colonne workshops.id_formation manquante).</p>
+                  </div>
+      </section>
+    </article>
+          <article class="formation-detail-card" data-detail-id="21555569">
+      <div class="detail-actions-top">
+        <button type="button" class="btn-cancel" onclick="closeFormationDetails()">ÔåÉ Retour aux formations</button>
+              </div>
+
+      <div class="detail-head">
+        <h2>oiuytre</h2>
+        <div class="detail-chip-row">
+          <span class="detail-chip">­ƒôÜ D├®butant</span>
+                      <span class="detail-chip">­ƒô£ Formation certifiante</span>
+                    <span class="detail-chip">­ƒº¬ Quiz requis</span>
+          <span class="detail-chip">­ƒÄô 0 atelier(s) associ├®(s)</span>
+        </div>
+      </div>
+
+      <p class="detail-description">Description bient├┤t disponible.</p>
+
+      <div class="detail-meta-grid">
+        <div class="detail-meta-item">
+          <span class="k">Mentor</span>
+          <span class="v">juytr</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Dur├®e</span>
+          <span class="v">12h</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Prix</span>
+          <span class="v">250 TND</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Niveau</span>
+          <span class="v">D├®butant</span>
+        </div>
+      </div>
+
+      <section class="detail-block">
+        <h3>Certification</h3>
+                  <p>Cette formation d├®livre un certificat CraftLink apr├¿s r├®ussite du quiz final.</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Vid├®os de la formation</h3>
+                  <p>Aucune vid├®o n'est encore configur├®e pour cette formation.</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Quiz de validation</h3>
+                  <p>Aucun quiz n'est configur├® pour cette formation.</p>
+              </section>
+
+      <section class="detail-block">
+        <div class="detail-block-head">
+          <h3>Ateliers associ├®s</h3>
+          <button type="button" class="btn-inscrit vert workshops-toggle-btn" data-formation-id="21555569" onclick="toggleAssociatedWorkshops(21555569)">Voir ateliers</button>
+        </div>
+
+        <div class="associated-workshops" id="associatedWorkshops21555569">
+                      <p>La liaison formation-atelier n'est pas encore disponible (table formations_workshops ou colonne workshops.id_formation manquante).</p>
+                  </div>
+      </section>
+    </article>
+          <article class="formation-detail-card" data-detail-id="21555566">
+      <div class="detail-actions-top">
+        <button type="button" class="btn-cancel" onclick="closeFormationDetails()">ÔåÉ Retour aux formations</button>
+              </div>
+
+      <div class="detail-head">
+        <h2>ikjhygt</h2>
+        <div class="detail-chip-row">
+          <span class="detail-chip">­ƒôÜ Interm├®diaire</span>
+                      <span class="detail-chip">­ƒô£ Formation certifiante</span>
+                    <span class="detail-chip">­ƒº¬ Quiz requis</span>
+          <span class="detail-chip">­ƒÄô 0 atelier(s) associ├®(s)</span>
+        </div>
+      </div>
+
+      <p class="detail-description">poiuytre</p>
+
+      <div class="detail-meta-grid">
+        <div class="detail-meta-item">
+          <span class="k">Mentor</span>
+          <span class="v">lkjhgfd</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Dur├®e</span>
+          <span class="v">25h</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Prix</span>
+          <span class="v">562 TND</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Niveau</span>
+          <span class="v">Interm├®diaire</span>
+        </div>
+      </div>
+
+      <section class="detail-block">
+        <h3>Certification</h3>
+                  <p>Cette formation d├®livre un certificat CraftLink apr├¿s r├®ussite du quiz final.</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Vid├®os de la formation</h3>
+                  <p>Aucune vid├®o n'est encore configur├®e pour cette formation.</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Quiz de validation</h3>
+                  <p>Aucun quiz n'est configur├® pour cette formation.</p>
+              </section>
+
+      <section class="detail-block">
+        <div class="detail-block-head">
+          <h3>Ateliers associ├®s</h3>
+          <button type="button" class="btn-inscrit vert workshops-toggle-btn" data-formation-id="21555566" onclick="toggleAssociatedWorkshops(21555566)">Voir ateliers</button>
+        </div>
+
+        <div class="associated-workshops" id="associatedWorkshops21555566">
+                      <p>La liaison formation-atelier n'est pas encore disponible (table formations_workshops ou colonne workshops.id_formation manquante).</p>
+                  </div>
+      </section>
+    </article>
+          <article class="formation-detail-card" data-detail-id="21555565">
+      <div class="detail-actions-top">
+        <button type="button" class="btn-cancel" onclick="closeFormationDetails()">ÔåÉ Retour aux formations</button>
+              </div>
+
+      <div class="detail-head">
+        <h2>jehddik</h2>
+        <div class="detail-chip-row">
+          <span class="detail-chip">­ƒôÜ Interm├®diaire</span>
+                      <span class="detail-chip">­ƒô£ Formation certifiante</span>
+                    <span class="detail-chip">­ƒº¬ Quiz requis</span>
+          <span class="detail-chip">­ƒÄô 0 atelier(s) associ├®(s)</span>
+        </div>
+      </div>
+
+      <p class="detail-description">Description bient├┤t disponible.</p>
+
+      <div class="detail-meta-grid">
+        <div class="detail-meta-item">
+          <span class="k">Mentor</span>
+          <span class="v">iuyehgtfrd</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Dur├®e</span>
+          <span class="v">1235h</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Prix</span>
+          <span class="v">152.50 TND</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Niveau</span>
+          <span class="v">Interm├®diaire</span>
+        </div>
+      </div>
+
+      <section class="detail-block">
+        <h3>Certification</h3>
+                  <p>Cette formation d├®livre un certificat CraftLink apr├¿s r├®ussite du quiz final.</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Vid├®os de la formation</h3>
+                  <p>Aucune vid├®o n'est encore configur├®e pour cette formation.</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Quiz de validation</h3>
+                  <p>Aucun quiz n'est configur├® pour cette formation.</p>
+              </section>
+
+      <section class="detail-block">
+        <div class="detail-block-head">
+          <h3>Ateliers associ├®s</h3>
+          <button type="button" class="btn-inscrit vert workshops-toggle-btn" data-formation-id="21555565" onclick="toggleAssociatedWorkshops(21555565)">Voir ateliers</button>
+        </div>
+
+        <div class="associated-workshops" id="associatedWorkshops21555565">
+                      <p>La liaison formation-atelier n'est pas encore disponible (table formations_workshops ou colonne workshops.id_formation manquante).</p>
+                  </div>
+      </section>
+    </article>
+          <article class="formation-detail-card" data-detail-id="58999">
+      <div class="detail-actions-top">
+        <button type="button" class="btn-cancel" onclick="closeFormationDetails()">ÔåÉ Retour aux formations</button>
+              </div>
+
+      <div class="detail-head">
+        <h2>yfqki</h2>
+        <div class="detail-chip-row">
+          <span class="detail-chip">­ƒôÜ D├®butant</span>
+                      <span class="detail-chip">­ƒôØ Attestation de suivi</span>
+                    <span class="detail-chip">­ƒº¬ Quiz requis</span>
+          <span class="detail-chip">­ƒÄô 0 atelier(s) associ├®(s)</span>
+        </div>
+      </div>
+
+      <p class="detail-description">Description bient├┤t disponible.</p>
+
+      <div class="detail-meta-grid">
+        <div class="detail-meta-item">
+          <span class="k">Mentor</span>
+          <span class="v">eytgvb</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Dur├®e</span>
+          <span class="v">125h</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Prix</span>
+          <span class="v">650 TND</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Niveau</span>
+          <span class="v">D├®butant</span>
+        </div>
+      </div>
+
+      <section class="detail-block">
+        <h3>Certification</h3>
+                  <p>Cette formation propose une attestation de suivi (sans certification).</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Vid├®os de la formation</h3>
+                  <p>Aucune vid├®o n'est encore configur├®e pour cette formation.</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Quiz de validation</h3>
+                  <p>Aucun quiz n'est configur├® pour cette formation.</p>
+              </section>
+
+      <section class="detail-block">
+        <div class="detail-block-head">
+          <h3>Ateliers associ├®s</h3>
+          <button type="button" class="btn-inscrit vert workshops-toggle-btn" data-formation-id="58999" onclick="toggleAssociatedWorkshops(58999)">Voir ateliers</button>
+        </div>
+
+        <div class="associated-workshops" id="associatedWorkshops58999">
+                      <p>La liaison formation-atelier n'est pas encore disponible (table formations_workshops ou colonne workshops.id_formation manquante).</p>
+                  </div>
+      </section>
+    </article>
+          <article class="formation-detail-card" data-detail-id="2145">
+      <div class="detail-actions-top">
+        <button type="button" class="btn-cancel" onclick="closeFormationDetails()">ÔåÉ Retour aux formations</button>
+              </div>
+
+      <div class="detail-head">
+        <h2>oiuytrez</h2>
+        <div class="detail-chip-row">
+          <span class="detail-chip">­ƒôÜ Avanc├®</span>
+                      <span class="detail-chip">­ƒô£ Formation certifiante</span>
+                    <span class="detail-chip">­ƒº¬ Quiz requis</span>
+          <span class="detail-chip">­ƒÄô 0 atelier(s) associ├®(s)</span>
+        </div>
+      </div>
+
+      <p class="detail-description">Description bient├┤t disponible.</p>
+
+      <div class="detail-meta-grid">
+        <div class="detail-meta-item">
+          <span class="k">Mentor</span>
+          <span class="v">jhgfds</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Dur├®e</span>
+          <span class="v">651h</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Prix</span>
+          <span class="v">520 TND</span>
+        </div>
+        <div class="detail-meta-item">
+          <span class="k">Niveau</span>
+          <span class="v">Avanc├®</span>
+        </div>
+      </div>
+
+      <section class="detail-block">
+        <h3>Certification</h3>
+                  <p>Cette formation d├®livre un certificat CraftLink apr├¿s r├®ussite du quiz final.</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Vid├®os de la formation</h3>
+                  <p>Aucune vid├®o n'est encore configur├®e pour cette formation.</p>
+              </section>
+
+      <section class="detail-block">
+        <h3>Quiz de validation</h3>
+                  <p>Aucun quiz n'est configur├® pour cette formation.</p>
+              </section>
+
+      <section class="detail-block">
+        <div class="detail-block-head">
+          <h3>Ateliers associ├®s</h3>
+          <button type="button" class="btn-inscrit vert workshops-toggle-btn" data-formation-id="2145" onclick="toggleAssociatedWorkshops(2145)">Voir ateliers</button>
+        </div>
+
+        <div class="associated-workshops" id="associatedWorkshops2145">
+                      <p>La liaison formation-atelier n'est pas encore disponible (table formations_workshops ou colonne workshops.id_formation manquante).</p>
+                  </div>
+      </section>
+    </article>
+  </div>
+
+<div class="modal-overlay" id="modalAjoutFront" onclick="fermerFormFrontSiExterieur(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2>Ajouter une formation</h2>
+        <p>Les donn├®es seront enregistr├®es dans la base</p>
+      </div>
+      <button class="modal-close" type="button" onclick="fermerFormAjoutFront()">Ô£ò</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="front.php">
+        <input type="hidden" name="action" value="add_formation">
+
+        <div class="front-form-row-2">
+          <div class="form-group">
+            <label>Titre *</label>
+            <input type="text" name="titre" value="" placeholder="Ex: Initiation ├á la poterie">
+          </div>
+          <div class="form-group">
+            <label>Mentor *</label>
+            <input type="text" name="mentor" value="" placeholder="Ex: Fatma Ayari">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea name="description" rows="3" placeholder="Description de la formation"></textarea>
+        </div>
+
+        <div class="front-form-row-3">
+          <div class="form-group">
+            <label>Niveau *</label>
+            <select name="niveau">
+              <option value="debutant" selected>D├®butant</option>
+              <option value="intermediaire" >Interm├®diaire</option>
+              <option value="avance" >Avanc├®</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Dur├®e (heures) *</label>
+            <input type="text" name="duree" value="" placeholder="Ex: 24">
+          </div>
+          <div class="form-group">
+            <label>Prix (TND) *</label>
+            <input type="text" name="prix" value="" placeholder="Ex: 180">
+          </div>
+        </div>
+
+        <div class="front-form-row-3">
+          <div class="form-group">
+            <label>Certification</label>
+            <select name="certification">
+              <option value="oui" selected>Oui</option>
+              <option value="non" >Non</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Statut</label>
+            <select name="etat">
+              <option value="Actif" selected>Actif</option>
+              <option value="Inactif" >Inactif</option>
+              <option value="Brouillon" >Brouillon</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Date de r├®alisation</label>
+            <input type="date" name="date_realisation" value="">
+          </div>
+        </div>
+
+        <div class="front-form-row-2">
+          <div class="form-group">
+            <label>URL vid├®o (YouTube/Vimeo)</label>
+            <input type="url" name="video_url" value="" placeholder="Ex: https://www.youtube.com/watch?v=...">
+          </div>
+          <div class="form-group">
+            <label>Lien rencontre formateur (Meet/Zoom/booking)</label>
+            <input type="url" name="meet_link" value="" placeholder="Ex: https://calendly.com/...">
+          </div>
+        </div>
+
+                  <p class="form-note">Note: ex├®cutez les migrations SQL pour enregistrer video_url et booking_url/meet_link en base.</p>
+        
+        <div class="form-subtitle">Quiz obligatoire de la formation</div>
+
+        <div class="form-group">
+          <label>Titre du quiz *</label>
+          <input type="text" name="quiz_titre" value="" placeholder="Ex: Quiz final - Initiation ├á la poterie" required>
+        </div>
+
+        <div class="form-group">
+          <label>Description du quiz</label>
+          <textarea name="quiz_description" rows="3" placeholder="Description du quiz (optionnel)"></textarea>
+        </div>
+
+        <div class="front-form-row-3">
+          <div class="form-group">
+            <label>Note de passage (%) *</label>
+            <input type="number" min="0" max="100" step="1" name="quiz_note_passage" value="60" required>
+          </div>
+          <div class="form-group">
+            <label>Nombre de tentatives *</label>
+            <input type="number" min="1" step="1" name="quiz_nb_tentatives" value="3" required>
+          </div>
+          <div class="form-group">
+            <label>Dur├®e du quiz (minutes) *</label>
+            <input type="number" min="1" step="1" name="quiz_duree_minutes" value="20" required>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" onclick="fermerFormAjoutFront()">Annuler</button>
+          <button type="submit" class="btn-save">­ƒÆ¥ Enregistrer dans la base</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <strong>Ï¡ CraftLink Tunisie</strong> ┬À 
+</footer>
+<script>
+// Opens the related modal or panel.
+function ouvrirFormAjoutFront()
+{
+  var modal = document.getElementById('modalAjoutFront');
+  if (modal) {
+    modal.classList.add('open');
+  }
+}
+
+// Closes the related modal or panel.
+function fermerFormAjoutFront()
+{
+  var modal = document.getElementById('modalAjoutFront');
+  if (modal) {
+    modal.classList.remove('open');
+  }
+}
+
+// Closes the related modal or panel.
+function fermerFormFrontSiExterieur(event)
+{
+  if (event.target && event.target.id === 'modalAjoutFront') {
+    fermerFormAjoutFront();
+  }
+}
+
+// Opens the related modal or panel.
+function openFormationDetails(formationId)
+{
+  var sectionGrid = document.getElementById('formationsGridSection');
+  var sectionDetail = document.getElementById('formationDetailView');
+
+  if (!sectionGrid || !sectionDetail) {
+    return;
+  }
+
+  var panels = sectionDetail.querySelectorAll('.formation-detail-card');
+  var found = false;
+
+  for (var i = 0; i < panels.length; i++) {
+    var panel = panels[i];
+    var panelId = parseInt(panel.getAttribute('data-detail-id'), 10);
+
+    if (panelId === formationId) {
+      panel.style.display = 'block';
+      found = true;
+    } else {
+      panel.style.display = 'none';
+    }
+  }
+
+  if (!found) {
+    return;
+  }
+
+  sectionGrid.style.display = 'none';
+  sectionDetail.classList.add('open');
+  sectionDetail.setAttribute('data-active-id', String(formationId));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Closes the related modal or panel.
+function closeFormationDetails()
+{
+  var sectionGrid = document.getElementById('formationsGridSection');
+  var sectionDetail = document.getElementById('formationDetailView');
+
+  if (!sectionGrid || !sectionDetail) {
+    return;
+  }
+
+  sectionGrid.style.display = '';
+  sectionDetail.classList.remove('open');
+  sectionDetail.removeAttribute('data-active-id');
+
+  var panels = sectionDetail.querySelectorAll('.formation-detail-card');
+  for (var i = 0; i < panels.length; i++) {
+    panels[i].style.display = 'none';
+  }
+
+  var workshopSections = sectionDetail.querySelectorAll('.associated-workshops');
+  for (var j = 0; j < workshopSections.length; j++) {
+    workshopSections[j].classList.remove('open');
+  }
+
+  var workshopButtons = sectionDetail.querySelectorAll('.workshops-toggle-btn');
+  for (var k = 0; k < workshopButtons.length; k++) {
+    workshopButtons[k].textContent = 'Voir ateliers';
+  }
+
+  var quizPanels = sectionDetail.querySelectorAll('.quiz-questions-panel');
+  for (var l = 0; l < quizPanels.length; l++) {
+    quizPanels[l].classList.remove('open');
+  }
+
+  var quizButtons = sectionDetail.querySelectorAll('.quiz-launch-btn');
+  for (var m = 0; m < quizButtons.length; m++) {
+    quizButtons[m].textContent = 'Passer quizz';
+  }
+}
+
+// Toggles visibility for the requested section.
+function toggleAssociatedWorkshops(formationId)
+{
+  var container = document.getElementById('associatedWorkshops' + String(formationId));
+  if (!container) {
+    return;
+  }
+
+  var button = document.querySelector('.workshops-toggle-btn[data-formation-id="' + String(formationId) + '"]');
+  var isOpen = container.classList.contains('open');
+
+  if (isOpen) {
+    container.classList.remove('open');
+    if (button) {
+      button.textContent = 'Voir ateliers';
+    }
+  } else {
+    container.classList.add('open');
+    if (button) {
+      button.textContent = 'Masquer ateliers';
+    }
+  }
+}
+
+// Toggles visibility for the requested section.
+function toggleQuizPanel(formationId)
+{
+  var panel = document.getElementById('quizPanel' + String(formationId));
+  if (!panel) {
+    return;
+  }
+
+  var button = document.querySelector('.quiz-launch-btn[data-formation-id="' + String(formationId) + '"]');
+  var isOpen = panel.classList.contains('open');
+
+  if (isOpen) {
+    panel.classList.remove('open');
+    if (button) {
+      button.textContent = 'Passer quizz';
+    }
+  } else {
+    panel.classList.add('open');
+    if (button) {
+      button.textContent = 'Masquer quizz';
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function ()
+{
+  var boutonAjout = document.getElementById('btnAjouterFormationFrontPhp');
+  if (boutonAjout) {
+    boutonAjout.addEventListener('click', function (event) {
+      event.preventDefault();
+      ouvrirFormAjoutFront();
+    });
+  }
+
+  var cartesFormations = document.querySelectorAll('.formation-card');
+  for (var i = 0; i < cartesFormations.length; i++) {
+    (function (carte) {
+      var formationId = parseInt(carte.getAttribute('data-formation-id'), 10);
+
+      carte.addEventListener('click', function (event) {
+        if (event.target && event.target.closest('.formation-detail-btn')) {
+          return;
+        }
+
+        if (formationId > 0) {
+          openFormationDetails(formationId);
+        }
+      });
+
+      carte.addEventListener('keydown', function (event) {
+        if ((event.key === 'Enter' || event.key === ' ') && formationId > 0) {
+          event.preventDefault();
+          openFormationDetails(formationId);
+        }
+      });
+
+      var boutonDetail = carte.querySelector('.formation-detail-btn');
+      if (boutonDetail) {
+        boutonDetail.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+
+          if (formationId > 0) {
+            openFormationDetails(formationId);
+          }
+        });
+      }
+    })(cartesFormations[i]);
+  }
+
+  var autoOpenId = 0;
+  if (autoOpenId > 0) {
+    openFormationDetails(autoOpenId);
+  }
+});
+</script>
+</body>
+</html>

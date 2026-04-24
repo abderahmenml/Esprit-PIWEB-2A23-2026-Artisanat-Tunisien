@@ -70,6 +70,7 @@ let nextId = 7;
 let currentTab = 'formations'; // 'formations' or 'workshops'
 
 // ========== AFFICHER LES CARTES ==========
+// Displays content in the interface based on current data.
 function afficherCartes() {
   const grid = document.getElementById('cardsGrid');
   grid.innerHTML = '';
@@ -160,6 +161,7 @@ function afficherCartes() {
   mettreAJourStats();
 }
 
+// Returns data needed by the current workflow.
 function getNiveauText(niveau) {
   switch(niveau) {
     case 'debutant': return 'Débutant';
@@ -169,6 +171,7 @@ function getNiveauText(niveau) {
   }
 }
 
+// Refreshes derived UI values and labels.
 function mettreAJourStats() {
   const allItems = [];
   for (let i = 0; i < formationsData.length; i++) {
@@ -224,6 +227,7 @@ function mettreAJourStats() {
 }
 
 // ========== SWITCH BETWEEN TABS ==========
+// Switches the active view and refreshes displayed content.
 function switchToFormations() {
   currentTab = 'formations';
   document.getElementById('formationsTabLink').classList.add('active');
@@ -232,6 +236,7 @@ function switchToFormations() {
   resetFiltersAndSearch();
 }
 
+// Switches the active view and refreshes displayed content.
 function switchToWorkshops() {
   currentTab = 'workshops';
   document.getElementById('workshopsTabLink').classList.add('active');
@@ -240,6 +245,7 @@ function switchToWorkshops() {
   resetFiltersAndSearch();
 }
 
+// Resets filters and restores default display state.
 function resetFiltersAndSearch() {
   // Reset filter buttons
   const allFilterBtns = document.querySelectorAll('.filter-btn');
@@ -263,6 +269,7 @@ function resetFiltersAndSearch() {
 }
 
 // ========== FILTRER LES CARTES ==========
+// Filters displayed data based on selected criteria.
 function filtrer(btn, type) {
   const tousLesBoutons = document.querySelectorAll('.filter-btn');
   for (let i = 0; i < tousLesBoutons.length; i++) {
@@ -296,6 +303,7 @@ function filtrer(btn, type) {
 }
 
 // ========== RECHERCHER GLOBAL ==========
+// Searches displayed data using the current query.
 function rechercherGlobal() {
   const recherche = document.getElementById('searchInput').value.trim().toLowerCase();
   const toutesLesCartes = document.querySelectorAll('.card');
@@ -323,6 +331,7 @@ function rechercherGlobal() {
 }
 
 // ========== AJOUTER UNE FORMATION (FRONT HTML) ==========
+// Builds initials from a full name for avatar display.
 function getInitialesMentor(nomMentor) {
   const nom = nomMentor.trim();
   if (nom === '') {
@@ -353,6 +362,7 @@ function getInitialesMentor(nomMentor) {
   return initiales;
 }
 
+// Opens the related modal or panel.
 function ouvrirModalAjoutFormation() {
   const modal = document.getElementById('modalAjoutFormationFront');
   if (!modal) {
@@ -371,6 +381,7 @@ function ouvrirModalAjoutFormation() {
   modal.classList.add('open');
 }
 
+// Closes the related modal or panel.
 function fermerModalAjoutFormation() {
   const modal = document.getElementById('modalAjoutFormationFront');
   if (modal) {
@@ -378,6 +389,7 @@ function fermerModalAjoutFormation() {
   }
 }
 
+// Adds a new item to the current dataset or form.
 function ajouterFormationDepuisFront() {
   const titre = document.getElementById('aj_titre').value.trim();
   const mentor = document.getElementById('aj_mentor').value.trim();
@@ -435,6 +447,7 @@ if (modalAjoutFormation) {
 // ========== MODAL D'INSCRIPTION ==========
 let formationActuelle = '';
 
+// Opens the related modal or panel.
 function ouvrirModal(nomFormation) {
   formationActuelle = nomFormation;
   
@@ -467,6 +480,7 @@ function ouvrirModal(nomFormation) {
   if (modal) modal.classList.add('open');
 }
 
+// Closes the related modal or panel.
 function fermerModal() {
   const modal = document.getElementById('modalOverlay');
   if (modal) modal.classList.remove('open');
@@ -483,6 +497,7 @@ if (modalOverlay) {
 }
 
 // ========== VALIDATION ==========
+// Validates input values and returns whether they are valid.
 function estEmailValide(email) {
   if (email === "") return false;
   if (!email.includes('@')) return false;
@@ -490,6 +505,7 @@ function estEmailValide(email) {
   return true;
 }
 
+// Validates input values and returns whether they are valid.
 function estTelephoneValide(telephone) {
   let chiffres = '';
   for (let i = 0; i < telephone.length; i++) {
@@ -501,6 +517,7 @@ function estTelephoneValide(telephone) {
   return chiffres.length === 8;
 }
 
+// Displays content in the interface based on current data.
 function afficherErreur(champId, estErreur) {
   const messageErreur = document.getElementById(`err-${champId}`);
   const champ = document.getElementById(champId);
@@ -515,6 +532,7 @@ function afficherErreur(champId, estErreur) {
 }
 
 // ========== SOUMETTRE INSCRIPTION ==========
+// Validates and submits the current form data.
 function soumettreInscription() {
   let toutEstValide = true;
   

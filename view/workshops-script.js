@@ -1,4 +1,5 @@
 // FILTRAGE ATELIERS
+// Filters workshop cards based on the selected category.
 function filtrerAteliers(btn, type) {
   const boutons = document.querySelectorAll('.filter-btn');
   for (let i = 0; i < boutons.length; i++) {
@@ -53,6 +54,7 @@ function filtrerAteliers(btn, type) {
 }
 
 // RECHERCHE TEXTE
+// Filters workshop cards using the current free-text query.
 function rechercherAteliers() {
   const q = document.getElementById('searchWorkshop').value.trim().toLowerCase();
   const cards = document.querySelectorAll('#workshopsGrid .card');
@@ -94,6 +96,7 @@ function rechercherAteliers() {
 }
 
 // AJOUT WORKSHOP (FRONT)
+// Builds a two-letter avatar from the artisan name.
 function getInitialesWorkshop(nomArtisan) {
   const nom = nomArtisan.trim();
   if (nom === '') {
@@ -124,6 +127,7 @@ function getInitialesWorkshop(nomArtisan) {
   return initiales;
 }
 
+// Opens the related modal or panel.
 function ouvrirModalAjoutWorkshop() {
   const modal = document.getElementById('modalAjoutWorkshopFront');
   if (!modal) {
@@ -143,6 +147,7 @@ function ouvrirModalAjoutWorkshop() {
   modal.classList.add('open');
 }
 
+// Closes the related modal or panel.
 function fermerModalAjoutWorkshop() {
   const modal = document.getElementById('modalAjoutWorkshopFront');
   if (modal) {
@@ -150,6 +155,7 @@ function fermerModalAjoutWorkshop() {
   }
 }
 
+// Saves the provided data to persistent storage.
 async function enregistrerWorkshopDansBase(donneesWorkshop) {
   const corps = new URLSearchParams();
   corps.set('titre', donneesWorkshop.titre);
@@ -166,7 +172,7 @@ async function enregistrerWorkshopDansBase(donneesWorkshop) {
   let texteReponse = '';
 
   try {
-    reponse = await fetch('workshop_add.php', {
+    reponse = await fetch('../model/workshop_add.php', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
@@ -201,6 +207,7 @@ async function enregistrerWorkshopDansBase(donneesWorkshop) {
   return true;
 }
 
+// Adds a new item to the current dataset or form.
 async function ajouterWorkshopDepuisFront() {
   const titre = document.getElementById('ajw_titre').value.trim();
   const artisan = document.getElementById('ajw_artisan').value.trim();
@@ -344,6 +351,7 @@ if (modalAjoutWorkshop) {
 // MODAL WORKSHOP
 let currentAtelier = '';
 
+// Opens the related modal or panel.
 function ouvrirModalAtelier(nom) {
   currentAtelier = nom;
   document.getElementById('modalAtelierNom').textContent = nom;
@@ -375,6 +383,7 @@ function ouvrirModalAtelier(nom) {
   document.getElementById('modalWorkshopOverlay').classList.add('open');
 }
 
+// Closes the related modal or panel.
 function fermerModalAtelier() {
   document.getElementById('modalWorkshopOverlay').classList.remove('open');
   currentAtelier = '';
@@ -391,6 +400,7 @@ if (modalWorkshopOverlay) {
 }
 
 // VALIDATIONS
+// Validates the email format for workshop reservation.
 function validerEmail(email) {
   if (email === '') {
     return false;
@@ -407,6 +417,7 @@ function validerEmail(email) {
   return true;
 }
 
+// Validates input values and returns whether they are valid.
 function validerTelephone(tel) {
   let digits = '';
   for (let i = 0; i < tel.length; i++) {
@@ -423,6 +434,7 @@ function validerTelephone(tel) {
   return false;
 }
 
+// Displays content in the interface based on current data.
 function afficherErreurWorkshop(champId, estErreur) {
   let errorDivId = '';
   let inputField = null;
@@ -443,6 +455,7 @@ function afficherErreurWorkshop(champId, estErreur) {
   }
 }
 
+// Validates and submits the current form data.
 function soumettreReservation() {
   let valide = true;
   
