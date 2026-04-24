@@ -95,42 +95,6 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
                     </div>
                 </div>
             </div>
-            <!-- Compétences -->
-            <div class="card">
-                <div class="section-title">Compétences</div>
-                <?php if (count($competences) > 0): ?>
-                    <?php foreach ($competences as $skill): ?>
-                    <div class="skill-item">
-                        <div class="skill-name">
-                            <span><?= htmlspecialchars($skill['nom_competence']) ?></span>
-                            <span><?= $skill['niveau'] ?? 50 ?>%</span>
-                        </div>
-                        <div class="skill-bar">
-                            <div class="skill-fill" style="width: <?= $skill['niveau'] ?? 50 ?>%"></div>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <p class="text-muted" style="color: #888; font-size: 0.8rem;">Aucune compétence renseignée</p>
-                <?php endif; ?>
-            </div>
-            <!-- Certifications -->
-            <div class="card">
-                <div class="section-title">Certifications</div>
-                <?php if (count($certifications) > 0): ?>
-                    <?php foreach ($certifications as $cert): ?>
-                    <div class="cert-item">
-                        <div class="cert-icon">🏛️</div>
-                        <div>
-                            <div class="cert-name"><?= htmlspecialchars($cert['nom_certification'] ?? 'Certification') ?></div>
-                            <div class="cert-date">Niveau : <?= (int)($cert['niveau'] ?? 0) ?>%</div>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <p class="text-muted" style="color: #888; font-size: 0.8rem;">Aucune certification</p>
-                <?php endif; ?>
-            </div>
             <!-- Disponibilité -->
             <div class="card">
                 <div class="section-title">Disponibilité</div>
@@ -221,6 +185,318 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
                         </div>
                     </div>
                 </div>
+
+                <div class="card smart-insights-card" id="smart-insights-panel">
+                    <div class="section-title">Smart Insights Panel</div>
+                    <div class="smart-insights-grid">
+                        <div class="smart-kpi smart-kpi-score">
+                            <div class="smart-kpi-label">Score global du profil</div>
+                            <div class="smart-kpi-value"><?= (int)$profileScore ?>%</div>
+                            <div class="smart-progress">
+                                <div class="smart-progress-fill" style="width: <?= (int)$profileScore ?>%"></div>
+                            </div>
+                        </div>
+
+                        <div class="smart-kpi smart-kpi-trending">
+                            <div class="smart-kpi-label">Popularite</div>
+                            <div class="smart-kpi-value"><?= (int)$popularityScore ?>%</div>
+                            <div class="smart-trending-line">
+                                <?php if (!empty($isTrending)): ?>
+                                    <span class="smart-pill is-hot">🔥 Trending</span>
+                                <?php else: ?>
+                                    <span class="smart-pill">Stable</span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="smart-kpi smart-kpi-jobs">
+                            <div class="smart-kpi-label">Opportunites suggerees</div>
+                            <div class="smart-kpi-value">💼 <?= (int)$suggestedOpportunities ?> nouvelles</div>
+                            <div class="smart-kpi-hint">Base sur completude, competences et engagement.</div>
+                        </div>
+                    </div>
+
+                    <div class="smart-activity-card">
+                        <div class="smart-activity-header">
+                            <span>📈 Activite</span>
+                            <span class="smart-activity-sub">Indicateurs du profil</span>
+                        </div>
+                        <div class="smart-bars-wrap" aria-label="Graphique d'activite">
+                            <?php foreach ($activityBars as $bar): ?>
+                                <div class="smart-bar-item">
+                                    <div class="smart-bar-value"><?= (int)$bar['value'] ?></div>
+                                    <div class="smart-bar-track">
+                                        <div class="smart-bar-fill" style="height: <?= (int)$bar['height'] ?>%"></div>
+                                    </div>
+                                    <div class="smart-bar-label"><?= htmlspecialchars((string)$bar['label']) ?></div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top:1.5rem;">
+                    <div class="section-title">AI Career Intelligence</div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;">
+                        <div style="background:#f8f5f0;padding:1rem;border-radius:1rem;">
+                            <div style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--marron);font-weight:700;">Résumé professionnel</div>
+                            <div style="margin-top:.55rem;line-height:1.7;color:var(--brun);"><?= nl2br(htmlspecialchars((string)($professionalSummary ?? ''))) ?></div>
+                            <div style="margin-top:1rem;font-size:.9rem;color:#6d6254;"><strong>Headline LinkedIn:</strong> <?= htmlspecialchars((string)($linkedinHeadline ?? '')) ?></div>
+                            <div style="margin-top:.55rem;font-size:.9rem;color:#6d6254;"><strong>CV IA:</strong> <?= htmlspecialchars((string)($cvSummary ?? '')) ?></div>
+                            <div style="margin-top:.55rem;font-size:.85rem;color:#8c7a67;">
+                                <strong>Dernier calcul:</strong>
+                                <?= !empty($insightLastCalcAt) ? htmlspecialchars(date('d/m/Y H:i', strtotime((string)$insightLastCalcAt))) : 'En attente' ?>
+                            </div>
+                        </div>
+
+                        <div style="background:#f8f5f0;padding:1rem;border-radius:1rem;">
+                            <div style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--marron);font-weight:700;">Jobs suggérés</div>
+                            <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.7rem;">
+                                <?php foreach (($suggestedJobs ?? []) as $job): ?>
+                                    <span class="badge"><?= htmlspecialchars((string)$job) ?></span>
+                                <?php endforeach; ?>
+                                <?php if (empty($suggestedJobs ?? [])): ?>
+                                    <span class="badge">Aucune suggestion</span>
+                                <?php endif; ?>
+                            </div>
+
+                            <div style="margin-top:1rem;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--marron);font-weight:700;">Skill gaps</div>
+                            <ul style="margin:.55rem 0 0 1rem;padding:0;color:var(--brun);line-height:1.7;">
+                                <?php foreach (($skillGaps ?? []) as $gap): ?>
+                                    <li><?= htmlspecialchars((string)$gap) ?></li>
+                                <?php endforeach; ?>
+                                <?php if (empty($skillGaps ?? [])): ?>
+                                    <li>Aucun écart majeur détecté.</li>
+                                <?php endif; ?>
+                            </ul>
+
+                            <div style="margin-top:1rem;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--marron);font-weight:700;">Career paths</div>
+                            <ul style="margin:.55rem 0 0 1rem;padding:0;color:var(--brun);line-height:1.7;">
+                                <?php foreach (($careerPaths ?? []) as $path): ?>
+                                    <li><?= htmlspecialchars((string)$path) ?></li>
+                                <?php endforeach; ?>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:1rem;background:#fff;border:1px solid #ece1d3;border-radius:1rem;padding:1rem;">
+                        <div style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--marron);font-weight:700;margin-bottom:.35rem;">Lettre de motivation IA</div>
+                        <div style="white-space:pre-line;line-height:1.7;color:var(--brun);">
+                            <?= htmlspecialchars((string)($coverLetterTemplate ?? '')) ?>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==========================================
+                     MÉTIERS AVANCÉS AVEC IA (SLOT 1 & 2)
+                     Persisté dans la table `metiers_avances`
+                     ========================================== -->
+                <?php
+                // $metiersAvances est injecté par ProfilController::index()
+                $metiersAvances = $metiersAvances ?? [];
+                $metierBySlot = [];
+                foreach ($metiersAvances as $m) {
+                    $metierBySlot[(int)$m['slot']] = $m;
+                }
+                ?>
+                <div class="card" id="metiers-avances-section" style="margin-top:1.5rem;">
+                    <div class="section-title" style="display:flex;align-items:center;gap:.6rem;">
+                        🏆 Métiers Avancés
+                        <span style="font-size:.72rem;background:linear-gradient(135deg,#8b5a3a,#c8973f);color:#fff;padding:.2rem .6rem;border-radius:2rem;font-weight:700;letter-spacing:.06em;">IA</span>
+                    </div>
+                    <p style="color:#8c7a67;font-size:.85rem;margin-bottom:1.25rem;">
+                        Définissez vos 2 métiers clés. L'IA analyse votre profil et génère des recommandations, projections salariales et tendances marché.
+                    </p>
+
+                    <!-- GRILLE SLOTS 1 ET 2 -->
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:1.25rem;" id="metiers-grid">
+                    <?php for ($slot = 1; $slot <= 2; $slot++): ?>
+                    <?php $m = $metierBySlot[$slot] ?? null; ?>
+                    <div class="metier-avance-card" id="metier-slot-<?= $slot ?>" data-slot="<?= $slot ?>"
+                         style="background:#f8f5f0;border-radius:1rem;padding:1.1rem;border:1.5px solid #ece1d3;position:relative;">
+
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;">
+                            <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--marron);font-weight:700;">
+                                Métier <?= $slot ?>
+                            </div>
+                            <?php if ($m): ?>
+                            <div style="display:flex;gap:.4rem;">
+                                <button type="button"
+                                    onclick="openMetierForm(<?= $slot ?>, <?= (int)$m['id_metier'] ?>)"
+                                    style="background:none;border:1px solid var(--marron);color:var(--marron);padding:.2rem .55rem;border-radius:.4rem;font-size:.8rem;cursor:pointer;"
+                                    title="Modifier">✏️</button>
+                                <form action="<?= htmlspecialchars(app_url('/profil/analyseMetierAvance')) ?>" method="post" style="display:inline;"
+                                      data-ajax-metier-analyse="true" data-metier-id="<?= (int)$m['id_metier'] ?>">
+                                    <input type="hidden" name="id_metier" value="<?= (int)$m['id_metier'] ?>">
+                                    <button type="submit" title="Relancer analyse IA"
+                                        style="background:none;border:1px solid #c8973f;color:#c8973f;padding:.2rem .55rem;border-radius:.4rem;font-size:.8rem;cursor:pointer;">🤖 Analyser</button>
+                                </form>
+                                <form action="<?= htmlspecialchars(app_url('/profil/deleteMetierAvance')) ?>" method="post" style="display:inline;"
+                                      onsubmit="return confirm('Supprimer ce métier avancé ?');">
+                                    <input type="hidden" name="id_metier" value="<?= (int)$m['id_metier'] ?>">
+                                    <button type="submit" style="background:none;border:1px solid #dc3545;color:#dc3545;padding:.2rem .55rem;border-radius:.4rem;font-size:.8rem;cursor:pointer;">🗑️</button>
+                                </form>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php if ($m): ?>
+                        <!-- Métier renseigné -->
+                        <div class="metier-display" id="metier-display-<?= $slot ?>">
+                            <div style="font-size:1.05rem;font-weight:700;color:var(--brun);margin-bottom:.3rem;">
+                                <?= htmlspecialchars((string)$m['titre']) ?>
+                            </div>
+                            <?php if (!empty($m['description'])): ?>
+                            <div style="font-size:.83rem;color:#6d6254;margin-bottom:.65rem;line-height:1.55;">
+                                <?= nl2br(htmlspecialchars((string)$m['description'])) ?>
+                            </div>
+                            <?php endif; ?>
+
+                            <!-- Niveau de maîtrise -->
+                            <div style="margin-bottom:.7rem;">
+                                <div style="display:flex;justify-content:space-between;font-size:.75rem;color:#8c7a67;margin-bottom:.3rem;">
+                                    <span>Maîtrise</span>
+                                    <strong><?= (int)$m['niveau_maitrise'] ?>%</strong>
+                                </div>
+                                <div style="background:#e8ddd0;border-radius:2rem;height:7px;">
+                                    <div style="background:linear-gradient(90deg,var(--marron),#c8973f);border-radius:2rem;height:7px;width:<?= (int)$m['niveau_maitrise'] ?>%;transition:.4s;"></div>
+                                </div>
+                            </div>
+
+                            <!-- Technologies -->
+                            <?php if (!empty($m['technologies'])): ?>
+                            <div style="display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.75rem;">
+                                <?php foreach ((array)$m['technologies'] as $tech): ?>
+                                    <span style="background:#fff7ee;border:1px solid #e0d6c3;color:var(--marron);padding:.15rem .55rem;border-radius:2rem;font-size:.75rem;font-weight:600;">
+                                        <?= htmlspecialchars((string)$tech) ?>
+                                    </span>
+                                <?php endforeach; ?>
+                            </div>
+                            <?php endif; ?>
+
+                            <!-- Bloc IA -->
+                            <?php if (!empty($m['ia_tendance_marche']) || !empty($m['ia_projection_salaire']) || !empty($m['ia_recommandations'])): ?>
+                            <div style="background:#fff;border:1px solid #ece1d3;border-radius:.75rem;padding:.8rem;margin-top:.5rem;">
+                                <div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--marron);font-weight:700;margin-bottom:.5rem;">🤖 Analyse IA</div>
+
+                                <?php if ($m['ia_score_adequation'] !== null): ?>
+                                <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;">
+                                    <div style="font-size:.78rem;color:#6d6254;">Score adéquation</div>
+                                    <div style="background:linear-gradient(135deg,#8b5a3a,#c8973f);color:#fff;padding:.15rem .55rem;border-radius:2rem;font-size:.75rem;font-weight:700;">
+                                        <?= (int)$m['ia_score_adequation'] ?>%
+                                    </div>
+                                </div>
+                                <?php endif; ?>
+
+                                <?php if ($m['ia_tendance_marche']): ?>
+                                <div style="font-size:.8rem;color:#5a4a3a;margin-bottom:.3rem;">
+                                    <strong>Tendance :</strong> <?= htmlspecialchars((string)$m['ia_tendance_marche']) ?>
+                                </div>
+                                <?php endif; ?>
+
+                                <?php if ($m['ia_projection_salaire']): ?>
+                                <div style="font-size:.8rem;color:#5a4a3a;margin-bottom:.5rem;">
+                                    <strong>Projection :</strong> <?= htmlspecialchars((string)$m['ia_projection_salaire']) ?>
+                                </div>
+                                <?php endif; ?>
+
+                                <?php if (!empty($m['ia_recommandations'])): ?>
+                                <ul style="margin:.3rem 0 0 1rem;padding:0;font-size:.78rem;color:var(--brun);line-height:1.65;">
+                                    <?php foreach ((array)$m['ia_recommandations'] as $rec): ?>
+                                        <li><?= htmlspecialchars((string)$rec) ?></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                                <?php endif; ?>
+
+                                <?php if ($m['ia_derniere_analyse']): ?>
+                                <div style="font-size:.68rem;color:#aaa;margin-top:.5rem;text-align:right;">
+                                    Dernière analyse : <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string)$m['ia_derniere_analyse']))) ?>
+                                </div>
+                                <?php endif; ?>
+                            </div>
+                            <?php else: ?>
+                            <div style="font-size:.8rem;color:#aaa;font-style:italic;margin-top:.5rem;">
+                                Cliquez sur 🤖 Analyser pour générer l'analyse IA.
+                            </div>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php else: ?>
+                        <!-- Slot vide -->
+                        <div class="metier-empty" id="metier-empty-<?= $slot ?>">
+                            <div style="text-align:center;padding:1rem 0;color:#b0a090;">
+                                <div style="font-size:2rem;margin-bottom:.4rem;">🎯</div>
+                                <div style="font-size:.85rem;margin-bottom:.8rem;">Aucun métier défini</div>
+                                <button type="button"
+                                    onclick="openMetierForm(<?= $slot ?>, null)"
+                                    style="background:var(--marron);color:#fff;padding:.5rem 1.2rem;border:none;border-radius:.6rem;font-size:.85rem;font-weight:600;cursor:pointer;">
+                                    + Définir ce métier
+                                </button>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                    <?php endfor; ?>
+                    </div><!-- /metiers-grid -->
+                </div><!-- /metiers-avances-section -->
+
+                <!-- MODAL FORMULAIRE MÉTIER AVANCÉ -->
+                <div id="modal-metier-avance" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;">
+                    <div style="background:#fff;border-radius:1.25rem;padding:2rem;width:min(92vw,520px);max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px #0004;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
+                            <h3 style="color:var(--marron);margin:0;font-size:1.1rem;" id="modal-metier-title">Métier Avancé</h3>
+                            <button type="button" onclick="closeMetierModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#888;">✕</button>
+                        </div>
+                        <form id="form-metier-avance" action="<?= htmlspecialchars(app_url('/profil/upsertMetierAvance')) ?>" method="post" data-ajax-metier="true">
+                            <input type="hidden" name="slot" id="metier-slot-input" value="1">
+                            <input type="hidden" name="id_metier" id="metier-id-input" value="">
+
+                            <div style="margin-bottom:1rem;">
+                                <label style="font-weight:600;color:var(--marron);font-size:.88rem;display:block;margin-bottom:.35rem;">Titre du métier <span style="color:#dc3545;">*</span></label>
+                                <input type="text" name="titre" id="metier-titre" maxlength="150" required placeholder="ex : Développeur Full Stack, Artisan Céramiste..."
+                                    style="width:100%;padding:.6rem .8rem;border-radius:.65rem;border:1.5px solid #e0d6c3;background:#fff7ee;font-size:.9rem;">
+                            </div>
+
+                            <div style="margin-bottom:1rem;">
+                                <label style="font-weight:600;color:var(--marron);font-size:.88rem;display:block;margin-bottom:.35rem;">Description</label>
+                                <textarea name="description" id="metier-description" maxlength="1000" rows="3" placeholder="Décrivez votre positionnement dans ce métier..."
+                                    style="width:100%;padding:.6rem .8rem;border-radius:.65rem;border:1.5px solid #e0d6c3;background:#fff7ee;font-size:.88rem;resize:vertical;"></textarea>
+                            </div>
+
+                            <div style="margin-bottom:1rem;">
+                                <label style="font-weight:600;color:var(--marron);font-size:.88rem;display:block;margin-bottom:.35rem;">
+                                    Niveau de maîtrise : <span id="metier-niveau-display">50</span>%
+                                </label>
+                                <input type="range" name="niveau_maitrise" id="metier-niveau" min="0" max="100" value="50"
+                                    style="width:100%;accent-color:var(--marron);"
+                                    oninput="document.getElementById('metier-niveau-display').textContent=this.value">
+                            </div>
+
+                            <div style="margin-bottom:1.25rem;">
+                                <label style="font-weight:600;color:var(--marron);font-size:.88rem;display:block;margin-bottom:.35rem;">
+                                    Technologies / Compétences clés
+                                    <span style="font-weight:400;color:#aaa;">(séparées par des virgules)</span>
+                                </label>
+                                <input type="text" name="technologies" id="metier-technologies" maxlength="500"
+                                    placeholder="ex : PHP, Laravel, React, MySQL..."
+                                    style="width:100%;padding:.6rem .8rem;border-radius:.65rem;border:1.5px solid #e0d6c3;background:#fff7ee;font-size:.88rem;">
+                            </div>
+
+                            <div style="display:flex;gap:.7rem;justify-content:flex-end;">
+                                <button type="button" onclick="closeMetierModal()"
+                                    style="background:#f0ece5;color:var(--marron);border:none;padding:.65rem 1.3rem;border-radius:.65rem;font-weight:600;cursor:pointer;">
+                                    Annuler
+                                </button>
+                                <button type="submit"
+                                    style="background:linear-gradient(135deg,var(--marron),#c8973f);color:#fff;border:none;padding:.65rem 1.6rem;border-radius:.65rem;font-weight:700;cursor:pointer;">
+                                    💾 Sauvegarder + Analyse IA
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                <!-- /MODAL MÉTIER AVANCÉ -->
+
             </div>
             <!-- Panel Portfolio -->
             <div class="tab-panel" id="panel-portfolio">
@@ -421,6 +697,27 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
                 </div>
                                 <button type="submit" style="background:var(--marron);color:#fff;padding:.7rem 1.5rem;border:none;border-radius:.5rem;font-weight:600;font-size:1rem;box-shadow:0 2px 8px #8b5a3a22;transition:.2s;">+ Ajouter</button>
               </form>
+                            <div class="table-tools-row" data-cert-tools="true">
+                                <input
+                                    type="text"
+                                    class="table-search-input"
+                                    placeholder="Rechercher une certification..."
+                                    data-cert-search="true"
+                                >
+                                <select class="table-sort-select" data-cert-sort="true">
+                                    <option value="niveau-desc">Trier: Niveau (decroissant)</option>
+                                    <option value="niveau-asc">Trier: Niveau (croissant)</option>
+                                    <option value="nom-asc">Trier: Nom (A-Z)</option>
+                                    <option value="nom-desc">Trier: Nom (Z-A)</option>
+                                </select>
+                                <button type="button" class="stats-toggle-btn" data-cert-stats-toggle="true">📊 Statistiques</button>
+                            </div>
+                            <div class="table-stats-panel" data-cert-stats-panel="true" style="display:none;">
+                                <div class="stats-chip"><span>Total</span><strong data-cert-stat-total="true">0</strong></div>
+                                <div class="stats-chip"><span>Niveau moyen</span><strong data-cert-stat-average="true">0%</strong></div>
+                                <div class="stats-chip"><span>Avancees</span><strong data-cert-stat-advanced="true">0</strong></div>
+                                <div class="stats-chip"><span>Affichees</span><strong data-cert-stat-visible="true">0</strong></div>
+                            </div>
               <!-- Tableau certifications -->
               <table style="width:100%;border-collapse:separate;border-spacing:0 1rem;">
                 <thead>
@@ -500,6 +797,27 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
                                 </div>
                                 <button type="submit" style="background:var(--marron);color:#fff;padding:.7rem 1.5rem;border:none;border-radius:.5rem;font-weight:600;font-size:1rem;box-shadow:0 2px 8px #8b5a3a22;transition:.2s;">+ Ajouter</button>
                             </form>
+                            <div class="table-tools-row" data-exp-tools="true">
+                                <input
+                                    type="text"
+                                    class="table-search-input"
+                                    placeholder="Rechercher un poste, entreprise ou description..."
+                                    data-exp-search="true"
+                                >
+                                <select class="table-sort-select" data-exp-sort="true">
+                                    <option value="date-desc">Trier: Plus recentes</option>
+                                    <option value="date-asc">Trier: Plus anciennes</option>
+                                    <option value="poste-asc">Trier: Poste (A-Z)</option>
+                                    <option value="entreprise-asc">Trier: Entreprise (A-Z)</option>
+                                </select>
+                                <button type="button" class="stats-toggle-btn" data-exp-stats-toggle="true">📊 Statistiques</button>
+                            </div>
+                            <div class="table-stats-panel" data-exp-stats-panel="true" style="display:none;">
+                                <div class="stats-chip"><span>Total</span><strong data-exp-stat-total="true">0</strong></div>
+                                <div class="stats-chip"><span>En cours</span><strong data-exp-stat-active="true">0</strong></div>
+                                <div class="stats-chip"><span>Entreprises</span><strong data-exp-stat-companies="true">0</strong></div>
+                                <div class="stats-chip"><span>Affichees</span><strong data-exp-stat-visible="true">0</strong></div>
+                            </div>
                             <table style="width:100%;border-collapse:separate;border-spacing:0 1rem;">
                                 <thead>
                                     <tr style="color:var(--marron);font-size:.95rem;background:#f8f5f0;">
@@ -685,6 +1003,351 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
     .flash {margin-bottom:1rem;padding:.8rem 1rem;border-radius:.8rem;}
     .flash-success {background:#e8f5e9;color:#2e7d32;}
     .flash-error {background:#ffebee;color:#b71c1c;}
+
+    .table-tools-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .7rem;
+        margin: .4rem 0 1rem;
+        align-items: center;
+    }
+
+    .table-search-input,
+    .table-sort-select {
+        border: 1px solid #e0d6c3;
+        background: #fff7ee;
+        border-radius: .55rem;
+        padding: .52rem .65rem;
+        font-size: .86rem;
+        color: var(--brun);
+    }
+
+    .table-search-input {
+        flex: 1;
+        min-width: 220px;
+    }
+
+    .table-sort-select {
+        min-width: 220px;
+    }
+
+    .stats-toggle-btn {
+        border: 1px solid #d8c8b0;
+        background: #f5ecdd;
+        color: var(--marron);
+        border-radius: .55rem;
+        padding: .5rem .8rem;
+        font-size: .82rem;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .stats-toggle-btn:hover {
+        background: #f0e3d1;
+    }
+
+    .table-stats-panel {
+        border: 1px solid #eadfcd;
+        background: #fff;
+        border-radius: .8rem;
+        padding: .8rem;
+        margin: 0 0 1rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: .55rem;
+    }
+
+    .stats-chip {
+        border: 1px solid #eadfcd;
+        background: #f8f5ef;
+        border-radius: .65rem;
+        padding: .45rem .65rem;
+        min-width: 130px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .5rem;
+    }
+
+    .stats-chip span {
+        color: #87745e;
+        font-size: .74rem;
+    }
+
+    .stats-chip strong {
+        color: var(--brun);
+        font-size: .86rem;
+    }
+
+    .table-empty-search {
+        text-align: center;
+        color: #888;
+        padding: .9rem;
+        font-size: .85rem;
+    }
+
+    @media (max-width: 900px) {
+        .table-search-input,
+        .table-sort-select {
+            min-width: 100%;
+        }
+
+        .stats-toggle-btn {
+            width: 100%;
+        }
+    }
+
+    .smart-insights-card {
+        border: 1px solid rgba(196, 154, 108, .25);
+        background: linear-gradient(165deg, #fff 0%, #fcf8f1 100%);
+    }
+
+    .smart-insights-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: .8rem;
+        margin-bottom: 1rem;
+    }
+
+    .smart-kpi {
+        background: #f8f5ef;
+        border: 1px solid #eadfcd;
+        border-radius: .95rem;
+        padding: .85rem;
+    }
+
+    .smart-kpi-label {
+        color: #8f7a61;
+        font-size: .75rem;
+        margin-bottom: .25rem;
+    }
+
+    .smart-kpi-value {
+        color: var(--brun);
+        font-size: 1.2rem;
+        font-weight: 700;
+        margin-bottom: .45rem;
+    }
+
+    .smart-progress {
+        height: 8px;
+        background: #eee5d8;
+        border-radius: 999px;
+        overflow: hidden;
+    }
+
+    .smart-progress-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--marron), var(--caramel));
+    }
+
+    .smart-trending-line {
+        display: flex;
+        align-items: center;
+        gap: .35rem;
+    }
+
+    .smart-pill {
+        font-size: .72rem;
+        border-radius: 999px;
+        padding: .2rem .6rem;
+        background: #efe6d8;
+        color: #78634b;
+    }
+
+    .smart-pill.is-hot {
+        background: #ffefe3;
+        color: #b85c16;
+    }
+
+    .smart-kpi-hint {
+        color: #98846b;
+        font-size: .73rem;
+        line-height: 1.35;
+    }
+
+    .smart-activity-card {
+        border: 1px solid #eadfcd;
+        border-radius: .95rem;
+        padding: .9rem;
+        background: #fff;
+    }
+
+    .smart-activity-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: var(--brun);
+        font-weight: 700;
+        margin-bottom: .75rem;
+    }
+
+    .smart-activity-sub {
+        color: #9a876e;
+        font-size: .72rem;
+        font-weight: 600;
+    }
+
+    .smart-bars-wrap {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: .55rem;
+        min-height: 140px;
+    }
+
+    .smart-bar-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        flex: 1;
+        min-width: 0;
+        gap: .25rem;
+    }
+
+    .smart-bar-value {
+        color: #8a7458;
+        font-size: .72rem;
+        font-weight: 700;
+    }
+
+    .smart-bar-track {
+        width: 18px;
+        height: 95px;
+        border-radius: 999px;
+        background: #f2e9db;
+        display: flex;
+        align-items: flex-end;
+        overflow: hidden;
+    }
+
+    .smart-bar-fill {
+        width: 100%;
+        border-radius: inherit;
+        background: linear-gradient(180deg, var(--caramel), var(--marron));
+    }
+
+    .smart-bar-label {
+        color: #8e7b63;
+        font-size: .68rem;
+        text-align: center;
+        line-height: 1.2;
+        word-break: break-word;
+    }
+
+    @media (max-width: 980px) {
+        .smart-insights-grid {
+            grid-template-columns: 1fr;
+        }
+    }
     </style>
+
+<script>
+// ============================================================
+// MÉTIERS AVANCÉS — JavaScript
+// ============================================================
+function openMetierForm(slot, idMetier) {
+    document.getElementById('modal-metier-title').textContent = 'Métier Avancé ' + slot;
+    document.getElementById('metier-slot-input').value = slot;
+    document.getElementById('metier-id-input').value = idMetier || '';
+
+    // Pré-remplir si édition
+    if (idMetier) {
+        var card = document.getElementById('metier-slot-' + slot);
+        var titreEl = card ? card.querySelector('[data-metier-titre]') : null;
+        // Lecture depuis le DOM affichage
+        var titleText = card ? (card.querySelector('.metier-display > div:first-child') || {}).textContent : '';
+        document.getElementById('metier-titre').value = titleText ? titleText.trim() : '';
+    } else {
+        document.getElementById('metier-titre').value = '';
+        document.getElementById('metier-description').value = '';
+        document.getElementById('metier-niveau').value = 50;
+        document.getElementById('metier-niveau-display').textContent = '50';
+        document.getElementById('metier-technologies').value = '';
+    }
+
+    var modal = document.getElementById('modal-metier-avance');
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeMetierModal() {
+    var modal = document.getElementById('modal-metier-avance');
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+// Fermer en cliquant à l'extérieur
+document.getElementById('modal-metier-avance').addEventListener('click', function(e) {
+    if (e.target === this) closeMetierModal();
+});
+
+// Soumission AJAX du formulaire métier
+var formMetier = document.getElementById('form-metier-avance');
+if (formMetier) {
+    formMetier.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var btn = this.querySelector('[type=submit]');
+        var origText = btn.textContent;
+        btn.textContent = '⏳ Analyse IA en cours...';
+        btn.disabled = true;
+
+        fetch(this.action, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: new FormData(this)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.textContent = origText;
+            btn.disabled = false;
+            if (data.success) {
+                closeMetierModal();
+                // Rafraîchir la page pour voir les données persistées
+                window.location.reload();
+            } else {
+                alert('Erreur : ' + (data.message || 'Impossible de sauvegarder.'));
+            }
+        })
+        .catch(function() {
+            btn.textContent = origText;
+            btn.disabled = false;
+            alert('Erreur réseau lors de la sauvegarde.');
+        });
+    });
+}
+
+// AJAX pour relancer l'analyse IA
+document.querySelectorAll('[data-ajax-metier-analyse="true"]').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var btn = this.querySelector('[type=submit]');
+        var origText = btn.textContent;
+        btn.textContent = '⏳ Analyse...';
+        btn.disabled = true;
+
+        fetch(this.action, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: new FormData(this)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.textContent = origText;
+            btn.disabled = false;
+            if (data.success) {
+                window.location.reload();
+            } else {
+                alert('Erreur analyse IA : ' + (data.message || ''));
+            }
+        })
+        .catch(function() {
+            btn.textContent = origText;
+            btn.disabled = false;
+        });
+    });
+});
+</script>
 </body>
 </html>

@@ -134,6 +134,36 @@ function getFormValue(form, name) {
     return String(field.value || '').trim();
 }
 
+function hasLetter(value) {
+    return /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(String(value || ''));
+}
+
+function isValidSkillName(value, minLength = 2, maxLength = 100) {
+    const text = String(value || '').trim();
+    if (textLength(text) < minLength || textLength(text) > maxLength) {
+        return false;
+    }
+
+    if (!hasLetter(text)) {
+        return false;
+    }
+
+    return /^[A-Za-zÀ-ÖØ-öø-ÿ0-9\s'’().,+&\/-]+$/.test(text);
+}
+
+function isValidSkillDescription(value, maxLength = 500) {
+    const text = String(value || '').trim();
+    if (textLength(text) > maxLength) {
+        return false;
+    }
+
+    if (!text) {
+        return true;
+    }
+
+    return /^[A-Za-zÀ-ÖØ-öø-ÿ0-9\s'’().,!?+&\/:-]+$/.test(text);
+}
+
 function validateProfilWriteForm(form) {
     if (!form || !form.action) {
         return '';
@@ -144,19 +174,25 @@ function validateProfilWriteForm(form) {
     if (action.includes('/profil/addCompetence')) {
         const nom = getFormValue(form, 'nom');
         const description = getFormValue(form, 'description');
-        if (textLength(nom) < 2 || textLength(nom) > 80) {
-            return 'Le nom de la competence doit contenir entre 2 et 80 caracteres.';
+        if (!nom) {
+            return 'Le champ Nom est obligatoire.';
         }
-        if (textLength(description) > 500) {
-            return 'La description de la competence ne doit pas depasser 500 caracteres.';
+        if (!isValidSkillName(nom, 2, 80)) {
+            return 'Nom de competence invalide. Utilisez uniquement lettres, chiffres et ponctuation simple.';
+        }
+        if (!isValidSkillDescription(description, 500)) {
+            return 'Description invalide. Caractere non autorise ou longueur depassee (500 max).';
         }
         return '';
     }
 
     if (action.includes('/profil/addCertification')) {
         const nom = getFormValue(form, 'nom');
-        if (textLength(nom) < 2 || textLength(nom) > 100) {
-            return 'Le nom de la certification doit contenir entre 2 et 100 caracteres.';
+        if (!nom) {
+            return 'Le champ Nom de la certification est obligatoire.';
+        }
+        if (!isValidSkillName(nom, 2, 100)) {
+            return 'Nom de certification invalide. Utilisez uniquement lettres, chiffres et ponctuation simple.';
         }
         return '';
     }
@@ -168,11 +204,17 @@ function validateProfilWriteForm(form) {
         const dateFin = getFormValue(form, 'date_fin');
         const description = getFormValue(form, 'description');
 
+        if (!poste) {
+            return 'Le champ Poste est obligatoire.';
+        }
         if (textLength(poste) < 2 || textLength(poste) > 100) {
             return 'Le poste doit contenir entre 2 et 100 caracteres.';
         }
         if (textLength(entreprise) > 120) {
             return 'Le nom de l\'entreprise ne doit pas depasser 120 caracteres.';
+        }
+        if (!dateDebut) {
+            return 'La date de debut est obligatoire.';
         }
         if (!isValidDateInput(dateDebut)) {
             return 'La date de debut est invalide.';
@@ -254,14 +296,17 @@ function validateProfilWriteForm(form) {
                 return 'La nouvelle realisation doit contenir entre 2 et 120 caracteres.';
             }
         }
-        if (fileInput && fileInput.files && fileInput.files[0]) {
-            const file = fileInput.files[0];
-            if (!/\.pdf$/i.test(file.name)) {
-                return 'Le fichier doit etre en PDF.';
-            }
-            if (file.size > 8 * 1024 * 1024) {
-                return 'Le fichier depasse 8 Mo.';
-            }
+
+        if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+            return 'Le fichier PDF est obligatoire.';
+        }
+
+        const file = fileInput.files[0];
+        if (!/\.pdf$/i.test(file.name)) {
+            return 'Le fichier doit etre en PDF.';
+        }
+        if (file.size > 8 * 1024 * 1024) {
+            return 'Le fichier depasse 8 Mo.';
         }
         return '';
     }
@@ -366,7 +411,7 @@ function togglePortfolioRealisationCustomInput(form) {
 
     const isCustom = select.value === '__custom__';
     customInput.style.display = isCustom ? 'block' : 'none';
-    customInput.required = isCustom;
+    customInput.required = false;
 
     if (!isCustom) {
         customInput.value = '';
@@ -520,6 +565,7 @@ function appendExperienceRow(experience) {
     tbody.prepend(row);
     syncExperienceEmptyState();
     bindAjaxExperienceDeleteForms(row);
+    applyExperienceTableTools();
 }
 
 function bindAjaxExperienceDeleteForms(scope = document) {
@@ -547,6 +593,7 @@ function bindAjaxExperienceDeleteForms(scope = document) {
                     row.remove();
                     syncExperienceEmptyState();
                 }
+                applyExperienceTableTools();
                 showAppNotification((result.payload && result.payload.message) || 'Experience supprimee', 'success');
                 return;
             }
@@ -598,6 +645,8 @@ function switchBioFormToUpdate(form) {
 function bindAjaxAddForms() {
     const forms = document.querySelectorAll('form[data-ajax-add="true"]');
     forms.forEach((form) => {
+        form.noValidate = true;
+
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
             const result = await submitAjaxAddForm(form);
@@ -643,6 +692,8 @@ function bindGeneralWriteFormValidation() {
         if (!action.includes('/profil/')) {
             return;
         }
+
+        form.noValidate = true;
 
         if (form.dataset.ajaxAdd === 'true') {
             return;
@@ -1322,7 +1373,7 @@ function editCompetence(id) {
         row.dataset.inlineEdit = '0';
     };
 
-    const saveEdit = () => {
+    const saveEdit = async () => {
         const nom = nomInput.value.trim();
         const description = descriptionInput.value.trim();
         const niveau = parseNiveau(niveauInput.value);
@@ -1331,12 +1382,12 @@ function editCompetence(id) {
             showAppNotification('Nom obligatoire', 'error');
             return;
         }
-        if (textLength(nom) < 2 || textLength(nom) > 80) {
-            showAppNotification('Le nom doit contenir entre 2 et 80 caracteres', 'error');
+        if (!isValidSkillName(nom, 2, 80)) {
+            showAppNotification('Nom invalide. Utilisez lettres/chiffres et ponctuation simple', 'error');
             return;
         }
-        if (textLength(description) > 500) {
-            showAppNotification('Description trop longue (500 max)', 'error');
+        if (!isValidSkillDescription(description, 500)) {
+            showAppNotification('Description invalide (caractere non autorise ou > 500)', 'error');
             return;
         }
         if (niveau === null) {
@@ -1347,7 +1398,30 @@ function editCompetence(id) {
         form.elements.nom.value = nom;
         form.elements.description.value = description;
         form.elements.niveau.value = String(niveau);
-        form.submit();
+
+        saveButton.disabled = true;
+        const result = await postFormAsJson(form);
+        saveButton.disabled = false;
+
+        if (!result.ok) {
+            const msg = result.error ? 'Erreur reseau, reessayez.' : ((result.payload && result.payload.message) || 'Modification impossible');
+            showAppNotification(msg, 'error');
+            return;
+        }
+
+        nomCell.textContent = nom;
+        descriptionCell.textContent = description;
+        niveauCell.textContent = niveau + '%';
+        if (progressFill) { progressFill.style.width = niveau + '%'; }
+        categorieCell.innerHTML = niveauCategoryBadge(niveau);
+
+        saveButton.remove();
+        cancelButton.remove();
+        if (editButton) { editButton.style.display = ''; }
+        if (deleteForm) { deleteForm.style.display = 'inline'; }
+        row.dataset.inlineEdit = '0';
+
+        showAppNotification('Competence modifiee', 'success');
     };
 
     const saveButton = createActionButton('💾', 'modif-btn', 'Enregistrer', saveEdit);
@@ -1443,7 +1517,7 @@ function editCertification(id) {
         row.dataset.inlineEdit = '0';
     };
 
-    const saveEdit = () => {
+    const saveEdit = async () => {
         const nom = nomInput.value.trim();
         const niveau = parseNiveau(niveauInput.value);
 
@@ -1451,8 +1525,8 @@ function editCertification(id) {
             showAppNotification('Nom obligatoire', 'error');
             return;
         }
-        if (textLength(nom) < 2 || textLength(nom) > 100) {
-            showAppNotification('Le nom doit contenir entre 2 et 100 caracteres', 'error');
+        if (!isValidSkillName(nom, 2, 100)) {
+            showAppNotification('Nom invalide. Utilisez lettres/chiffres et ponctuation simple', 'error');
             return;
         }
         if (niveau === null) {
@@ -1462,7 +1536,29 @@ function editCertification(id) {
 
         form.elements.nom.value = nom;
         form.elements.niveau.value = String(niveau);
-        form.submit();
+
+        saveButton.disabled = true;
+        const result = await postFormAsJson(form);
+        saveButton.disabled = false;
+
+        if (!result.ok) {
+            const msg = result.error ? 'Erreur reseau, reessayez.' : ((result.payload && result.payload.message) || 'Modification impossible');
+            showAppNotification(msg, 'error');
+            return;
+        }
+
+        nomCell.textContent = nom;
+        niveauCell.textContent = niveau + '%';
+        if (progressFill) { progressFill.style.width = niveau + '%'; }
+        categorieCell.innerHTML = niveauCategoryBadge(niveau);
+
+        saveButton.remove();
+        cancelButton.remove();
+        if (editButton) { editButton.style.display = ''; }
+        if (deleteForm) { deleteForm.style.display = 'inline'; }
+        row.dataset.inlineEdit = '0';
+
+        showAppNotification('Certification modifiee', 'success');
     };
 
     const saveButton = createActionButton('💾', 'modif-btn', 'Enregistrer', saveEdit);
@@ -1681,6 +1777,7 @@ function editExperience(id) {
         periodeCell.textContent = formatPeriode(updatedDateDebut, updatedDateFin);
 
         leaveInlineMode();
+        applyExperienceTableTools();
         showAppNotification((result.payload && result.payload.message) || 'Experience modifiee', 'success');
     };
 
@@ -1695,6 +1792,318 @@ function editExperience(id) {
         cancelEdit
     );
     posteInput.focus();
+}
+
+function parseDateToTimestamp(value) {
+    const raw = String(value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        return 0;
+    }
+
+    const date = new Date(`${raw}T00:00:00`);
+    if (Number.isNaN(date.getTime())) {
+        return 0;
+    }
+
+    return date.getTime();
+}
+
+function toggleNoResultsRow(tbody, rowClass, colSpan, message, shouldShow) {
+    if (!tbody) {
+        return;
+    }
+
+    let noResultRow = tbody.querySelector(`.${rowClass}`);
+
+    if (!shouldShow) {
+        if (noResultRow) {
+            noResultRow.remove();
+        }
+        return;
+    }
+
+    if (!noResultRow) {
+        noResultRow = document.createElement('tr');
+        noResultRow.className = `${rowClass} table-empty-search`;
+
+        const cell = document.createElement('td');
+        cell.colSpan = colSpan;
+        cell.className = 'table-empty-search';
+        cell.textContent = message;
+        noResultRow.appendChild(cell);
+    }
+
+    tbody.appendChild(noResultRow);
+}
+
+function applyCertificationTableTools() {
+    const tbody = document.getElementById('certifications-list');
+    const searchInput = document.querySelector('[data-cert-search="true"]');
+    const sortSelect = document.querySelector('[data-cert-sort="true"]');
+
+    if (!tbody || !searchInput || !sortSelect) {
+        return;
+    }
+
+    const rows = Array.from(tbody.querySelectorAll('tr[data-id]'));
+    const query = searchInput.value.trim().toLowerCase();
+    const sortValue = sortSelect.value;
+
+    const items = rows.map((row) => {
+        const nom = String((row.querySelector('.cert-nom')?.textContent || '')).trim();
+        const niveauText = String((row.querySelector('.cert-niveau')?.textContent || '')).replace('%', '');
+        const niveau = Number.parseInt(niveauText, 10);
+
+        return {
+            row,
+            nom,
+            nomLower: nom.toLowerCase(),
+            niveau: Number.isNaN(niveau) ? 0 : niveau
+        };
+    });
+
+    items.sort((a, b) => {
+        if (sortValue === 'niveau-asc') {
+            return a.niveau - b.niveau;
+        }
+        if (sortValue === 'nom-asc') {
+            return a.nomLower.localeCompare(b.nomLower, 'fr');
+        }
+        if (sortValue === 'nom-desc') {
+            return b.nomLower.localeCompare(a.nomLower, 'fr');
+        }
+        return b.niveau - a.niveau;
+    });
+
+    items.forEach((item) => {
+        tbody.appendChild(item.row);
+    });
+
+    let visibleCount = 0;
+    let visibleNiveauTotal = 0;
+    let visibleAdvanced = 0;
+
+    items.forEach((item) => {
+        const isVisible = query === '' || item.nomLower.includes(query);
+        item.row.style.display = isVisible ? '' : 'none';
+
+        if (!isVisible) {
+            return;
+        }
+
+        visibleCount++;
+        visibleNiveauTotal += item.niveau;
+        if (item.niveau >= 80) {
+            visibleAdvanced++;
+        }
+    });
+
+    const showNoResult = items.length > 0 && visibleCount === 0;
+    toggleNoResultsRow(
+        tbody,
+        'cert-empty-search-row',
+        6,
+        'Aucune certification ne correspond a votre recherche.',
+        showNoResult
+    );
+
+    const totalEl = document.querySelector('[data-cert-stat-total="true"]');
+    const avgEl = document.querySelector('[data-cert-stat-average="true"]');
+    const advancedEl = document.querySelector('[data-cert-stat-advanced="true"]');
+    const visibleEl = document.querySelector('[data-cert-stat-visible="true"]');
+
+    if (totalEl) {
+        totalEl.textContent = String(items.length);
+    }
+    if (avgEl) {
+        avgEl.textContent = `${visibleCount > 0 ? Math.round(visibleNiveauTotal / visibleCount) : 0}%`;
+    }
+    if (advancedEl) {
+        advancedEl.textContent = String(visibleAdvanced);
+    }
+    if (visibleEl) {
+        visibleEl.textContent = String(visibleCount);
+    }
+}
+
+function initCertificationTableTools() {
+    const tbody = document.getElementById('certifications-list');
+    const searchInput = document.querySelector('[data-cert-search="true"]');
+    const sortSelect = document.querySelector('[data-cert-sort="true"]');
+    const statsButton = document.querySelector('[data-cert-stats-toggle="true"]');
+    const statsPanel = document.querySelector('[data-cert-stats-panel="true"]');
+
+    if (!tbody || !searchInput || !sortSelect) {
+        return;
+    }
+
+    if (tbody.dataset.toolsBound === 'cert') {
+        applyCertificationTableTools();
+        return;
+    }
+
+    tbody.dataset.toolsBound = 'cert';
+    searchInput.addEventListener('input', applyCertificationTableTools);
+    sortSelect.addEventListener('change', applyCertificationTableTools);
+
+    if (statsButton && statsPanel) {
+        statsButton.addEventListener('click', () => {
+            statsPanel.style.display = statsPanel.style.display === 'none' ? 'flex' : 'none';
+        });
+    }
+
+    applyCertificationTableTools();
+}
+
+function buildExperienceRowMeta(row) {
+    const id = Number.parseInt(String(row.dataset.id || '0'), 10);
+    const poste = String((row.querySelector('.exp-poste')?.textContent || '')).trim();
+    const entreprise = String((row.querySelector('.exp-entreprise')?.textContent || '')).trim();
+    const description = String((row.querySelector('.exp-description')?.textContent || '')).trim();
+    const periodText = String((row.querySelector('.exp-periode')?.textContent || '')).trim();
+    const form = Number.isNaN(id) || id <= 0 ? null : document.getElementById(`edit-exp-${id}`);
+
+    let dateDebut = '';
+    let dateFin = '';
+
+    if (form && form.elements) {
+        dateDebut = String(form.elements.date_debut?.value || '').trim();
+        dateFin = String(form.elements.date_fin?.value || '').trim();
+    }
+
+    if (!dateDebut && periodText.includes(' - ')) {
+        const parts = periodText.split(' - ');
+        dateDebut = String(parts[0] || '').trim();
+
+        const periodFin = String(parts[1] || '').trim().toLowerCase();
+        if (!dateFin && periodFin !== '' && periodFin !== 'present' && periodFin !== 'présent') {
+            dateFin = String(parts[1] || '').trim();
+        }
+    }
+
+    return {
+        row,
+        poste,
+        entreprise,
+        description,
+        searchable: `${poste} ${entreprise} ${description}`.toLowerCase(),
+        posteLower: poste.toLowerCase(),
+        entrepriseLower: entreprise.toLowerCase(),
+        dateDebutTs: parseDateToTimestamp(dateDebut),
+        active: dateFin === ''
+    };
+}
+
+function applyExperienceTableTools() {
+    const tbody = document.getElementById('experiences-list');
+    const searchInput = document.querySelector('[data-exp-search="true"]');
+    const sortSelect = document.querySelector('[data-exp-sort="true"]');
+
+    if (!tbody || !searchInput || !sortSelect) {
+        return;
+    }
+
+    const rows = Array.from(tbody.querySelectorAll('tr[data-id]'));
+    const query = searchInput.value.trim().toLowerCase();
+    const sortValue = sortSelect.value;
+
+    const items = rows.map(buildExperienceRowMeta);
+
+    items.sort((a, b) => {
+        if (sortValue === 'date-asc') {
+            return a.dateDebutTs - b.dateDebutTs;
+        }
+        if (sortValue === 'poste-asc') {
+            return a.posteLower.localeCompare(b.posteLower, 'fr');
+        }
+        if (sortValue === 'entreprise-asc') {
+            return a.entrepriseLower.localeCompare(b.entrepriseLower, 'fr');
+        }
+        return b.dateDebutTs - a.dateDebutTs;
+    });
+
+    items.forEach((item) => {
+        tbody.appendChild(item.row);
+    });
+
+    let visibleCount = 0;
+    let activeCount = 0;
+    const visibleCompanies = new Set();
+
+    items.forEach((item) => {
+        const isVisible = query === '' || item.searchable.includes(query);
+        item.row.style.display = isVisible ? '' : 'none';
+
+        if (!isVisible) {
+            return;
+        }
+
+        visibleCount++;
+        if (item.active) {
+            activeCount++;
+        }
+
+        const company = item.entrepriseLower.trim();
+        if (company !== '') {
+            visibleCompanies.add(company);
+        }
+    });
+
+    const showNoResult = items.length > 0 && visibleCount === 0;
+    toggleNoResultsRow(
+        tbody,
+        'exp-empty-search-row',
+        5,
+        'Aucune experience ne correspond a votre recherche.',
+        showNoResult
+    );
+
+    const totalEl = document.querySelector('[data-exp-stat-total="true"]');
+    const activeEl = document.querySelector('[data-exp-stat-active="true"]');
+    const companyEl = document.querySelector('[data-exp-stat-companies="true"]');
+    const visibleEl = document.querySelector('[data-exp-stat-visible="true"]');
+
+    if (totalEl) {
+        totalEl.textContent = String(items.length);
+    }
+    if (activeEl) {
+        activeEl.textContent = String(activeCount);
+    }
+    if (companyEl) {
+        companyEl.textContent = String(visibleCompanies.size);
+    }
+    if (visibleEl) {
+        visibleEl.textContent = String(visibleCount);
+    }
+}
+
+function initExperienceTableTools() {
+    const tbody = document.getElementById('experiences-list');
+    const searchInput = document.querySelector('[data-exp-search="true"]');
+    const sortSelect = document.querySelector('[data-exp-sort="true"]');
+    const statsButton = document.querySelector('[data-exp-stats-toggle="true"]');
+    const statsPanel = document.querySelector('[data-exp-stats-panel="true"]');
+
+    if (!tbody || !searchInput || !sortSelect) {
+        return;
+    }
+
+    if (tbody.dataset.toolsBound === 'exp') {
+        applyExperienceTableTools();
+        return;
+    }
+
+    tbody.dataset.toolsBound = 'exp';
+    searchInput.addEventListener('input', applyExperienceTableTools);
+    sortSelect.addEventListener('change', applyExperienceTableTools);
+
+    if (statsButton && statsPanel) {
+        statsButton.addEventListener('click', () => {
+            statsPanel.style.display = statsPanel.style.display === 'none' ? 'flex' : 'none';
+        });
+    }
+
+    applyExperienceTableTools();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1712,7 +2121,10 @@ document.addEventListener('DOMContentLoaded', () => {
     initAvailabilityDesigner();
     bindAjaxExperienceDeleteForms();
     syncExperienceEmptyState();
+    initCertificationTableTools();
+    initExperienceTableTools();
 
+    bindEditProfilFormAjax();
     const activeTab = document.querySelector('.tab.active');
     let activeTabName = 'bio';
     if (activeTab) {
@@ -1724,3 +2136,56 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     togglePortfolioManagementSections(activeTabName);
 });
+function bindEditProfilFormAjax() {
+    const modal = document.getElementById('modal-edit');
+    if (!modal) return;
+
+    const form = modal.querySelector('form[action*="/profil/update"]');
+    if (!form || form.dataset.editAjaxBound === '1') return;
+    form.dataset.editAjaxBound = '1';
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const error = validateProfilWriteForm(form);
+        if (error) {
+            showAppNotification(error, 'error');
+            return;
+        }
+
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn ? submitBtn.textContent : '';
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Enregistrement...';
+        }
+
+        const result = await postFormAsJson(form);
+
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText;
+        }
+
+        if (result.ok) {
+            const data = result.payload || {};
+            const nameEl = document.querySelector('.profile-name');
+            if (nameEl && data.prenom && data.nom) {
+                nameEl.textContent = data.prenom + ' ' + data.nom;
+            }
+            const titleEl = document.querySelector('.profile-title');
+            if (titleEl && data.specialite !== undefined) {
+                titleEl.textContent = data.specialite || '';
+            }
+            const locationEl = document.querySelector('.profile-location');
+            if (locationEl && data.ville !== undefined) {
+                locationEl.textContent = '\uD83D\uDCCD ' + (data.ville || '');
+            }
+            showAppNotification((data && data.message) || 'Profil mis à jour !', 'success');
+            closeModal('edit');
+        } else {
+            const msg = (result.payload && result.payload.message) || 'Erreur lors de la mise à jour.';
+            showAppNotification(msg, 'error');
+        }
+    });
+}

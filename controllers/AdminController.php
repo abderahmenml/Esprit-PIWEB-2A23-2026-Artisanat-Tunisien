@@ -3,7 +3,7 @@
 
 require_once 'config/config.php';
 
-class AdminController
+class AdminController   
 {
     private function redirect(string $path): void
     {
@@ -18,14 +18,14 @@ class AdminController
         }
 
         $flashAdmin = null;
-        $flashAdminClass = '#F5ECD7';
-        $flashAdminText = '#3B2314';
+        $flashAdminClass = '#ffebee';
+        $flashAdminText = '#b71c1c';
         if (isset($_SESSION['flash_admin'])) {
             $flashAdmin = $_SESSION['flash_admin'];
             unset($_SESSION['flash_admin']);
             if (isset($flashAdmin['type']) && $flashAdmin['type'] === 'success') {
-                $flashAdminClass = '#F0E4CC';
-                $flashAdminText = '#5C3320';
+                $flashAdminClass = '#e8f5e9';
+                $flashAdminText = '#2e7d32';
             }
         }
 

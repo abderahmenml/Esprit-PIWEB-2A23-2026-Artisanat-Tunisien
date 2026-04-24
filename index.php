@@ -212,6 +212,30 @@ switch ($uriPath) {
         }
         break;
 
+    case '/profil/upsertMetierAvance':
+        if ($method === 'POST') {
+            $profilController->upsertMetierAvance();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
+    case '/profil/deleteMetierAvance':
+        if ($method === 'POST') {
+            $profilController->deleteMetierAvance();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
+    case '/profil/analyseMetierAvance':
+        if ($method === 'POST') {
+            $profilController->analyseMetierAvance();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
     case '/admin':
         if ($method === 'GET') {
             $adminController->index();
