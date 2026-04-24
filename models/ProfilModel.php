@@ -272,29 +272,119 @@ class ProfilModel
             return [];
         }
 
+        $hasCatalog = $this->hasTable('competence_catalog') && $this->hasColumn('competences', 'id_competence_catalog');
+        $catalogSelect = $hasCatalog
+            ? "c.id_competence_catalog,
+                COALESCE(cc.nom_competence, c.nom_competence) AS nom_competence,
+                COALESCE(cc.description, c.description) AS description"
+            : "NULL AS id_competence_catalog,
+                c.nom_competence,
+                c.description";
+        $catalogJoin = $hasCatalog
+            ? "LEFT JOIN competence_catalog cc ON cc.id_competence_catalog = c.id_competence_catalog"
+            : "";
+
         $stmt = $this->pdo->prepare("
-            SELECT id_competence, nom_competence, description, niveau, ordre
-            FROM competences
-            WHERE id_user = ?
-            ORDER BY ordre ASC, id_competence ASC
+            SELECT
+                c.id_competence,
+                $catalogSelect,
+                c.niveau,
+                c.ordre
+            FROM competences c
+            $catalogJoin
+            WHERE c.id_user = ?
+            ORDER BY c.ordre ASC, c.id_competence ASC
         ");
         $stmt->execute([$userId]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
-    public function addCompetence(int $userId, string $nom, string $desc, int $niveau): int
+    public function getCompetenceCatalog(): array
     {
+        if ($this->hasTable('competence_catalog')) {
+            $stmt = $this->pdo->query("
+                SELECT id_competence_catalog, nom_competence, description
+                FROM competence_catalog
+                ORDER BY nom_competence ASC, id_competence_catalog ASC
+            ");
+
+            return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        }
+
+        if (!$this->hasTable('competences')) {
+            return [];
+        }
+
+        $stmt = $this->pdo->query("
+            SELECT DISTINCT nom_competence AS nom_competence, description
+            FROM competences
+            WHERE nom_competence IS NOT NULL AND nom_competence <> ''
+            ORDER BY nom_competence ASC
+        ");
+
+        return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+    }
+
+    public function getCompetenceCatalogById(int $id): array|false
+    {
+        if (!$this->hasTable('competence_catalog')) {
+            return false;
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT id_competence_catalog, nom_competence, description
+            FROM competence_catalog
+            WHERE id_competence_catalog = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$id]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: false;
+    }
+
+    public function addCompetence(int $userId, string $nom, string $desc, int $niveau, ?int $catalogId = null): int
+    {
+        if (!$this->hasTable('competences')) {
+            return 0;
+        }
+
+        $catalogId = $catalogId !== null && $catalogId > 0 ? $catalogId : null;
+        $hasCatalog = $this->hasTable('competence_catalog');
+        $hasLinkColumn = $this->hasColumn('competences', 'id_competence_catalog');
+
+        if ($hasCatalog && $catalogId === null) {
+            $catalogId = $this->findOrCreateCompetenceCatalog($nom, $desc);
+        }
+
+        if ($hasCatalog && $catalogId !== null) {
+            $catalog = $this->getCompetenceCatalogById($catalogId);
+            if (is_array($catalog)) {
+                $nom = trim((string)($catalog['nom_competence'] ?? $nom));
+                if ($desc === '') {
+                    $desc = trim((string)($catalog['description'] ?? ''));
+                }
+            }
+        }
+
         $stmt = $this->pdo->prepare(
             "SELECT COALESCE(MAX(ordre), 0) + 1 FROM competences WHERE id_user = ?"
         );
         $stmt->execute([$userId]);
         $ordre = (int)$stmt->fetchColumn();
 
-        $stmt = $this->pdo->prepare("
-            INSERT INTO competences (id_user, nom_competence, description, niveau, ordre)
-            VALUES (?, ?, ?, ?, ?)
-        ");
-        $stmt->execute([$userId, $nom, $desc, $niveau, $ordre]);
+        $columns = ['id_user', 'nom_competence', 'description', 'niveau', 'ordre'];
+        $values = ['?', '?', '?', '?', '?'];
+        $params = [$userId, $nom, $desc, $niveau, $ordre];
+
+        if ($hasLinkColumn) {
+            $columns[] = 'id_competence_catalog';
+            $values[] = '?';
+            $params[] = $catalogId;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO competences (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $values) . ')'
+        );
+        $stmt->execute($params);
         return (int)$this->pdo->lastInsertId();
     }
 
@@ -309,6 +399,10 @@ class ProfilModel
 
     public function updateCompetence(int $id, int $userId, string $nom, string $desc, int $niveau): bool
     {
+        if (!$this->hasTable('competences')) {
+            return false;
+        }
+
         $stmt = $this->pdo->prepare("
             UPDATE competences
             SET nom_competence = ?, description = ?, niveau = ?
@@ -316,6 +410,52 @@ class ProfilModel
         ");
         $stmt->execute([$nom, $desc, $niveau, $id, $userId]);
         return $stmt->rowCount() > 0;
+    }
+
+    private function findOrCreateCompetenceCatalog(string $nom, string $desc): ?int
+    {
+        if (!$this->hasTable('competence_catalog')) {
+            return null;
+        }
+
+        $normalizedNom = $this->lowerText($this->normalizeText($nom, 100));
+        if ($normalizedNom === '') {
+            return null;
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT id_competence_catalog
+            FROM competence_catalog
+            WHERE LOWER(nom_competence) = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$normalizedNom]);
+        $existing = $stmt->fetchColumn();
+        if ($existing) {
+            return (int)$existing;
+        }
+
+        $columns = ['nom_competence'];
+        $values = ['?'];
+        $params = [$this->normalizeText($nom, 100)];
+
+        if ($this->hasColumn('competence_catalog', 'description')) {
+            $columns[] = 'description';
+            $values[] = '?';
+            $params[] = $this->normalizeText($desc, 500);
+        }
+
+        if ($this->hasColumn('competence_catalog', 'date_creation')) {
+            $columns[] = 'date_creation';
+            $values[] = 'CURDATE()';
+        }
+
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO competence_catalog (' . implode(', ', $columns) . ') VALUES (' . implode(', ', $values) . ')'
+        );
+        $stmt->execute($params);
+
+        return (int)$this->pdo->lastInsertId();
     }
 
     // =========================================================
@@ -716,6 +856,28 @@ class ProfilModel
         }
         $decoded = json_decode($raw, true);
         return is_array($decoded) ? $decoded : [];
+    }
+
+    private function textLength(string $value): int
+    {
+        return function_exists('mb_strlen') ? (int)mb_strlen($value) : strlen($value);
+    }
+
+    private function normalizeText(?string $value, int $maxLength = 255): string
+    {
+        $text = trim((string)$value);
+        $text = preg_replace('/\s+/u', ' ', $text) ?? '';
+
+        if ($maxLength > 0 && $this->textLength($text) > $maxLength) {
+            $text = function_exists('mb_substr') ? (string)mb_substr($text, 0, $maxLength) : substr($text, 0, $maxLength);
+        }
+
+        return $text;
+    }
+
+    private function lowerText(string $value): string
+    {
+        return function_exists('mb_strtolower') ? (string)mb_strtolower($value, 'UTF-8') : strtolower($value);
     }
 
     private function profileSelectExpr(string $column, ?string $alias = null): string

@@ -2,6 +2,7 @@
 // controllers/AdminController.php
 
 require_once 'config/config.php';
+require_once __DIR__ . '/../models/ProfilModel.php';
 
 class AdminController   
 {
@@ -30,8 +31,11 @@ class AdminController
         }
 
         $pdo = getPDO();
+        $profilModel = new ProfilModel();
         $search = trim((string)($_GET['q'] ?? ''));
         $filter = trim((string)($_GET['statut'] ?? ''));
+        $competenceCatalog = $profilModel->getCompetenceCatalog();
+        $competenceCatalogCount = count($competenceCatalog);
 
         $rows = [];
         $errorMsg = '';

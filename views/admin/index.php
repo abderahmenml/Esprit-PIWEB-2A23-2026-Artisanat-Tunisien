@@ -882,6 +882,27 @@ $baseAdminUrl = app_url('/admin');
                 </div>
             </div>
 
+                <div class="table-card simple-panel" style="margin-bottom:1.2rem;">
+                    <div class="table-header">
+                        <div class="th-title form-subtitle">Catalogue des compétences</div>
+                        <div class="th-count form-note"><?= (int)($competenceCatalogCount ?? 0) ?> compétences disponibles</div>
+                    </div>
+                    <div style="padding:1rem 1.4rem;display:flex;flex-wrap:wrap;gap:.55rem;">
+                        <?php if (!empty($competenceCatalog)): ?>
+                            <?php foreach (array_slice($competenceCatalog, 0, 24) as $catalogItem): ?>
+                                <span class="mini-tag">
+                                    <?= htmlspecialchars((string)($catalogItem['nom_competence'] ?? '')) ?>
+                                </span>
+                            <?php endforeach; ?>
+                            <?php if (count($competenceCatalog) > 24): ?>
+                                <span class="mini-tag">+<?= count($competenceCatalog) - 24 ?></span>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <span class="mini-tag">Aucune compétence cataloguee</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
             <!-- TABLE -->
             <div class="table-card simple-panel">
                 <div class="table-header">

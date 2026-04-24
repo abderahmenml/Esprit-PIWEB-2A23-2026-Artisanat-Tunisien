@@ -577,6 +577,7 @@ class ProfilController
         }
 
         $stats = $this->model->getStats($user_id);
+        $competenceCatalog = $this->model->getCompetenceCatalog();
         $competences = $this->model->getCompetences($user_id);
         $certifications = $this->model->getCertifications($user_id);
         $experiences = $this->model->getExperiences($user_id);
@@ -682,6 +683,7 @@ class ProfilController
     public function gestion_competences()
     {
         $user_id = $this->requireAuth();
+        $competenceCatalog = $this->model->getCompetenceCatalog();
         $competences = $this->model->getCompetences($user_id);
 
         require_once 'views/profil/gestion_competences.php';
@@ -700,11 +702,40 @@ class ProfilController
         $user_id = $this->requireAuth();
         $isAjax = $this->isAjaxRequest();
 
+        $catalogChoice = trim((string)($_POST['competence_catalog_choice'] ?? ''));
+        $catalogId = null;
+        $catalogName = '';
+        if ($catalogChoice !== '') {
+            if (strncmp($catalogChoice, 'id:', 3) === 0) {
+                $catalogId = (int)substr($catalogChoice, 3);
+            } elseif (strncmp($catalogChoice, 'name:', 5) === 0) {
+                $catalogName = trim(substr($catalogChoice, 5));
+            }
+        }
+
         $nom = $this->normalizeText($_POST['nom'] ?? '', 80);
         $description = $this->normalizeText($_POST['description'] ?? '', 500);
         $niveau = filter_input(INPUT_POST, 'niveau', FILTER_VALIDATE_INT);
 
-        if (!$this->isValidSkillName($nom, 2, 80)) {
+        if ($catalogId) {
+            $catalog = $this->model->getCompetenceCatalogById($catalogId);
+            if (!$catalog) {
+                if ($isAjax) {
+                    $this->jsonResponse(false, 'Competence cataloguee introuvable.', 404);
+                }
+                $this->flash('error', 'Competence cataloguee introuvable.');
+                $this->redirect('/profil');
+            }
+
+            $nom = trim((string)($catalog['nom_competence'] ?? $nom));
+            if ($description === '') {
+                $description = trim((string)($catalog['description'] ?? ''));
+            }
+        } elseif ($catalogName !== '' && $nom === '') {
+            $nom = $catalogName;
+        }
+
+        if ($catalogId === null && $catalogName === '' && !$this->isValidSkillName($nom, 2, 80)) {
             if ($isAjax) {
                 $this->jsonResponse(false, 'Nom de competence invalide.', 422);
             }
@@ -729,7 +760,7 @@ class ProfilController
         }
 
         try {
-            $this->model->addCompetence($user_id, $nom, $description, $niveau);
+            $this->model->addCompetence($user_id, $nom, $description, $niveau, $catalogId);
             $this->refreshInsightCache($user_id);
             if ($isAjax) {
                 $this->jsonResponse(true, 'Competence ajoutee');

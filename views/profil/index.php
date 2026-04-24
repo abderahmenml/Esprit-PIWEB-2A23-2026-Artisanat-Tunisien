@@ -609,22 +609,37 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
             <!-- Section Compétences améliorée -->
             <div class="card portfolio-gestion" style="margin-bottom:2rem;display:none;">
               <h2 style="font-size:2rem;margin-bottom:.5rem;">Gestion des compétences</h2>
-              <div style="color:#888;margin-bottom:1.5rem;">Ajoutez, modifiez ou réorganisez les compétences affichées sur votre profil.</div>
+              <div style="color:#888;margin-bottom:1.5rem;">Choisissez une compétence existante du catalogue ou ajoutez-en une nouvelle si elle n'existe pas encore.</div>
               <!-- Formulaire d'ajout -->
-                                                        <form action="<?= htmlspecialchars(app_url('/profil/addCompetence')) ?>" method="post" data-ajax-add="true" style="display:flex;align-items:center;gap:1rem;background:#f8f5f0;padding:1.5rem 1rem;border-radius:1rem;margin-bottom:1.5rem;">
-                                <div style="flex:2;">
-                  <label style="font-weight:600;color:var(--marron);">Nom</label>
-                                    <input type="text" id="competence-nom" name="nom" minlength="2" maxlength="80" required placeholder="ex : Tournage, Raku, Émaillage…" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
-                </div>
-                                <div style="flex:3;">
-                                    <label style="font-weight:600;color:var(--marron);">Description</label>
-                                    <input type="text" name="description" maxlength="500" placeholder="ex : Techniques et matériaux" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
-                                </div>
-                <div style="flex:1;">
-                                    <label style="font-weight:600;color:var(--marron);">Niveau (0-100)</label>
-                                    <input type="range" min="0" max="100" value="50" id="competence-niveau" name="niveau" style="width:100%;accent-color:var(--marron);">
-                </div>
-                                <button type="submit" style="background:var(--marron);color:#fff;padding:.7rem 1.5rem;border:none;border-radius:.5rem;font-weight:600;font-size:1rem;box-shadow:0 2px 8px #8b5a3a22;transition:.2s;">+ Ajouter</button>
+                <form action="<?= htmlspecialchars(app_url('/profil/addCompetence')) ?>" method="post" data-ajax-add="true" style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:1rem;background:#f8f5f0;padding:1.5rem 1rem;border-radius:1rem;margin-bottom:1.5rem;">
+                    <div style="flex:2;min-width:220px;">
+                        <label style="font-weight:600;color:var(--marron);">Catalogue des compétences</label>
+                        <select name="competence_catalog_choice" style="width:100%;padding:.55rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                            <option value="">-- Choisir une compétence existante --</option>
+                            <?php foreach (($competenceCatalog ?? []) as $catalog): ?>
+                                <?php $catalogChoiceValue = !empty($catalog['id_competence_catalog']) ? 'id:' . (int)$catalog['id_competence_catalog'] : 'name:' . (string)($catalog['nom_competence'] ?? ''); ?>
+                                <option value="<?= htmlspecialchars($catalogChoiceValue, ENT_QUOTES, 'UTF-8') ?>">
+                                    <?= htmlspecialchars((string)($catalog['nom_competence'] ?? '')) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div style="flex:2;min-width:220px;">
+                        <label style="font-weight:600;color:var(--marron);">Ou nouvelle compétence</label>
+                        <input type="text" id="competence-nom" name="nom" maxlength="80" placeholder="ex : Tournage, Raku, Émaillage…" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                    </div>
+                    <div style="flex:3;min-width:260px;">
+                        <label style="font-weight:600;color:var(--marron);">Description</label>
+                        <input type="text" name="description" maxlength="500" placeholder="ex : Techniques et matériaux" style="width:100%;padding:.5rem;border-radius:.5rem;border:1px solid #e0d6c3;background:#fff7ee;">
+                    </div>
+                    <div style="flex:1;min-width:180px;">
+                        <label style="font-weight:600;color:var(--marron);">Niveau (0-100)</label>
+                        <input type="range" min="0" max="100" value="50" id="competence-niveau" name="niveau" style="width:100%;accent-color:var(--marron);">
+                    </div>
+                    <div style="flex-basis:100%;font-size:.85rem;color:#7b6a58;">
+                        Si vous choisissez une compétence du catalogue, le nom et la description peuvent être repris automatiquement.
+                    </div>
+                    <button type="submit" style="background:var(--marron);color:#fff;padding:.7rem 1.5rem;border:none;border-radius:.5rem;font-weight:600;font-size:1rem;box-shadow:0 2px 8px #8b5a3a22;transition:.2s;">+ Ajouter</button>
               </form>
               <!-- Tableau compétences -->
               <table style="width:100%;border-collapse:separate;border-spacing:0 1rem;">
