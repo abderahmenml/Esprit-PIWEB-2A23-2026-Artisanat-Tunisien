@@ -387,6 +387,10 @@ if ($hasProjects) {
           </div>
         </label>
 
+        <button class="cta-ghost wide" id="analyseAiBtn" type="button">Analyser avec IA</button>
+        <div class="feedback wide" id="aiFeedback" aria-live="polite"></div>
+        <section class="ai-result wide" id="aiResult" aria-live="polite"></section>
+
         <button class="cta-solid wide" type="submit"><?php echo e($formButton); ?></button>
       </form>
     </section>
