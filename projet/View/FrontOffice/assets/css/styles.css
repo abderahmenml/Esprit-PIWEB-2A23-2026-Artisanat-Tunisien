@@ -452,6 +452,71 @@ textarea:focus {
   color: #c03a3d;
 }
 
+.ai-result {
+  display: none;
+  border: 1px solid var(--line);
+  background: #fffaf1;
+  border-radius: var(--radius-md);
+  padding: 0.85rem;
+  color: #5e4a38;
+  margin-top: 0.35rem;
+}
+
+.ai-result.is-visible {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.ai-result-head {
+  display: grid;
+  gap: 0.28rem;
+  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 0.45rem;
+}
+
+.ai-score {
+  font-weight: 800;
+  color: var(--brun);
+}
+
+.ai-resume {
+  color: #6a5543;
+  line-height: 1.5;
+}
+
+.ai-block {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.ai-block h4 {
+  font-size: 0.86rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #7a5637;
+}
+
+.ai-block p {
+  color: #654f3d;
+  line-height: 1.55;
+}
+
+.ai-block ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.22rem;
+}
+
+.ai-block li {
+  line-height: 1.5;
+}
+
+.ai-block a {
+  color: var(--vert);
+  font-weight: 700;
+}
+
 .explore {
   display: grid;
   gap: 0.95rem;
