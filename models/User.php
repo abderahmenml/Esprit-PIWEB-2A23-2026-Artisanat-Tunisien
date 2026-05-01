@@ -42,14 +42,14 @@ class User
     public function create(array $data): int
     {
         $stmt = $this->pdo->prepare(
-            'INSERT INTO user (nom, prenom, email, password, role, date_inscription) 
+            'INSERT INTO user (nom, prenom, email, mot_de_passe, role, date_creation) 
              VALUES (?, ?, ?, ?, ?, NOW())'
         );
         $stmt->execute([
             $data['nom'] ?? '',
             $data['prenom'] ?? '',
             $data['email'] ?? '',
-            $data['password'] ?? '',
+            $data['mot_de_passe'] ?? $data['password'] ?? '',
             $data['role'] ?? 'artisan',
         ]);
         return (int)$this->pdo->lastInsertId();
@@ -84,7 +84,7 @@ class User
             return null;
         }
 
-        if (password_verify($password, $user['password'])) {
+        if (password_verify($password, $user['mot_de_passe'])) {
             return $user;
         }
 
@@ -108,7 +108,7 @@ class User
     public function resetPassword(int $userId, string $newPassword): bool
     {
         $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
-        $stmt = $this->pdo->prepare('UPDATE user SET password = ? WHERE id_user = ?');
+        $stmt = $this->pdo->prepare('UPDATE user SET mot_de_passe = ? WHERE id_user = ?');
         return $stmt->execute([$hashedPassword, $userId]);
     }
 
@@ -117,6 +117,11 @@ class User
      */
     public function markEmailVerified(int $userId): bool
     {
+        $hasEmailVerified = (bool)$this->pdo->query("SHOW COLUMNS FROM user LIKE 'email_verified'")->fetch();
+        if (!$hasEmailVerified) {
+            return true;
+        }
+
         $stmt = $this->pdo->prepare('UPDATE user SET email_verified = 1 WHERE id_user = ?');
         return $stmt->execute([$userId]);
     }

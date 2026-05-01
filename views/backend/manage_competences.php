@@ -8,7 +8,19 @@ require_auth();
 
 $userId = (int)$_SESSION['user_id'];
 
-$profileStmt = $pdo->prepare('SELECT id_profil FROM profil_profetionnel WHERE id_user = ? LIMIT 1');
+$profileTable = null;
+if ($pdo->query("SHOW TABLES LIKE 'profil_professionnel'")->fetchColumn() !== false) {
+    $profileTable = 'profil_professionnel';
+} elseif ($pdo->query("SHOW TABLES LIKE 'profil_profetionnel'")->fetchColumn() !== false) {
+    $profileTable = 'profil_profetionnel';
+}
+
+if ($profileTable === null) {
+    header('Location: edit_profile.php');
+    exit();
+}
+
+$profileStmt = $pdo->prepare("SELECT id_profil FROM {$profileTable} WHERE id_user = ? LIMIT 1");
 $profileStmt->execute([$userId]);
 $profile = $profileStmt->fetch();
 
@@ -47,7 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit();
 }
 
-$allComp = $pdo->query('SELECT id_competences, competence, description, nombre_projets FROM competences ORDER BY competence ASC')->fetchAll();
+$allComp = $pdo->query(
+    'SELECT id_competence AS id_competences, nom_competence AS competence, description, 0 AS nombre_projets FROM competences ORDER BY nom_competence ASC'
+)->fetchAll();
 $selectedStmt = $pdo->prepare('SELECT id_competences FROM profil_competences WHERE id_profil = ?');
 $selectedStmt->execute([$idProfil]);
 $selectedIds = array_map('intval', array_column($selectedStmt->fetchAll(), 'id_competences'));

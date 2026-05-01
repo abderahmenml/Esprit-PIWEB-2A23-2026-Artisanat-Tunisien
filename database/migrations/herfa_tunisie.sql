@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 24, 2026 at 03:51 PM
+-- Generation Time: May 01, 2026 at 06:45 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -69,6 +69,41 @@ CREATE TABLE `application_offre` (
   `id_application` int(11) NOT NULL,
   `id_offre` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `artisan_onboarding`
+--
+
+CREATE TABLE `artisan_onboarding` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `skills` text NOT NULL,
+  `interests` text NOT NULL,
+  `work_types` text DEFAULT NULL,
+  `completed_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `craft_focus` text DEFAULT NULL,
+  `project_interests` text DEFAULT NULL,
+  `job_interests` text DEFAULT NULL,
+  `formation_interests` text DEFAULT NULL,
+  `tools_materials` text DEFAULT NULL,
+  `experience_level` varchar(50) DEFAULT NULL,
+  `experience_years` varchar(50) DEFAULT NULL,
+  `collaboration_styles` text DEFAULT NULL,
+  `availability` text DEFAULT NULL,
+  `location_preferences` text DEFAULT NULL,
+  `market_channels` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `artisan_onboarding`
+--
+
+INSERT INTO `artisan_onboarding` (`id`, `user_id`, `skills`, `interests`, `work_types`, `completed_at`, `created_at`, `updated_at`, `craft_focus`, `project_interests`, `job_interests`, `formation_interests`, `tools_materials`, `experience_level`, `experience_years`, `collaboration_styles`, `availability`, `location_preferences`, `market_channels`) VALUES
+(0, 5, '', '', NULL, NULL, '2026-05-01 17:18:02', '2026-05-01 17:18:02', '', NULL, NULL, NULL, NULL, '', '', NULL, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -147,25 +182,106 @@ CREATE TABLE `candidate_skills` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `certification`
+--
+
+CREATE TABLE `certification` (
+  `id_certification` int(11) NOT NULL,
+  `id_user` bigint(20) NOT NULL,
+  `nom_certification` varchar(150) NOT NULL,
+  `niveau` tinyint(3) UNSIGNED NOT NULL,
+  `ordre` int(11) NOT NULL DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `certification`
+--
+
+INSERT INTO `certification` (`id_certification`, `id_user`, `nom_certification`, `niveau`, `ordre`) VALUES
+(4, 5, 'Certification Automatisation No Code', 90, 1),
+(5, 5, 'Certification Marketing Digital', 82, 2),
+(6, 5, 'Certification Data Analytics', 78, 3),
+(7, 4, 'Front-End Web Development (HTML, CSS, JS)', 54, 1),
+(8, 4, 'JavaScript Algorithms and Data Structures', 88, 2),
+(9, 4, 'PHP & MySQL Development', 60, 3),
+(10, 4, 'UI/UX Design Fundamentals', 7, 4),
+(11, 4, 'REST API Development', 100, 5),
+(12, 4, 'Git & GitHub Version Control', 0, 6);
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `competences`
 --
 
 CREATE TABLE `competences` (
-  `id_competences` int(11) NOT NULL,
-  `competence` varchar(120) NOT NULL,
+  `id_competence` int(11) NOT NULL,
+  `nom_competence` varchar(150) NOT NULL,
   `description` text DEFAULT NULL,
+  `id_user` int(11) DEFAULT 0,
   `nombre_projets` int(11) NOT NULL DEFAULT 0,
-  `date_ajout` datetime NOT NULL DEFAULT current_timestamp()
+  `date_ajout` datetime NOT NULL DEFAULT current_timestamp(),
+  `niveau` tinyint(3) UNSIGNED NOT NULL DEFAULT 0,
+  `ordre` int(11) NOT NULL DEFAULT 0,
+  `id_competence_catalog` int(11) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `competences`
 --
 
-INSERT INTO `competences` (`id_competences`, `competence`, `description`, `nombre_projets`, `date_ajout`) VALUES
-(1, 'Poterie', 'Fabrication d’objets en céramique', 12, '2026-04-11 16:03:26'),
-(2, 'Broderie', 'Broderie traditionnelle tunisienne', 8, '2026-04-11 16:03:26'),
-(3, 'Bois sculpté', 'Travail artisanal du bois', 5, '2026-04-11 16:03:26');
+INSERT INTO `competences` (`id_competence`, `nom_competence`, `description`, `id_user`, `nombre_projets`, `date_ajout`, `niveau`, `ordre`, `id_competence_catalog`) VALUES
+(1, 'Poterie', 'Fabrication dobjet en cÚramique', 0, 12, '2026-05-01 15:38:26', 0, 0, NULL),
+(2, 'Broderie', 'Broderie traditionnelle tunisienne', 0, 8, '2026-05-01 15:38:26', 0, 0, NULL),
+(3, 'Bois sculptÚ', 'Travail artisanal du bois', 0, 5, '2026-05-01 15:38:26', 0, 0, NULL),
+(4, 'Orchestration Make', 'CrÚation de flux complexes multi-outils avec gestion derreurs.', 0, 0, '2026-05-01 15:38:26', 88, 2, NULL),
+(5, 'Prompt Engineering', 'Conception de prompts mÚtier pour assistants IA clients.', 0, 0, '2026-05-01 15:38:26', 84, 3, NULL),
+(6, 'SEO local', 'Optimisation de la visibilitÚ locale des ateliers et boutiques.', 0, 0, '2026-05-01 15:38:26', 76, 4, NULL),
+(7, 'Poterie traditionnelle', 'Artisanat de la poterie traditionnelle tunisienne', 0, 0, '2026-05-01 15:38:26', 100, 0, NULL),
+(8, 'Tressage traditionnel', 'Artisanat du tressage traditionnel', 0, 0, '2026-05-01 15:38:26', 90, 0, NULL),
+(9, 'Design artisanal moderne', 'Design appliquÚ Ó lartisanat', 0, 0, '2026-05-01 15:38:26', 75, 0, NULL),
+(10, 'Marketing des produits artisanaux', 'Marketing et vente de produits artisanaux', 0, 0, '2026-05-01 15:38:26', 70, 0, NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `competence_catalog`
+--
+
+CREATE TABLE `competence_catalog` (
+  `id_competence_catalog` int(11) NOT NULL,
+  `nom_competence` varchar(150) NOT NULL,
+  `description` text DEFAULT NULL,
+  `date_creation` datetime DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `experience`
+--
+
+CREATE TABLE `experience` (
+  `id_experience` int(11) NOT NULL,
+  `id_user` bigint(20) NOT NULL,
+  `poste` varchar(150) NOT NULL,
+  `entreprise` varchar(150) DEFAULT NULL,
+  `date_debut` date NOT NULL,
+  `date_fin` date DEFAULT NULL,
+  `description` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `experience`
+--
+
+INSERT INTO `experience` (`id_experience`, `id_user`, `poste`, `entreprise`, `date_debut`, `date_fin`, `description`) VALUES
+(4, 5, 'Consultant Automatisation', 'Herfa Studio', '2021-02-01', '2022-12-31', 'Automatisation des workflows de vente et support.'),
+(5, 5, 'Workflow Architect', 'Digital Atlas', '2023-01-01', NULL, 'Architecture de solutions IA et no-code pour PMEs.'),
+(6, 5, 'Mentor Productivit├®', 'Freelance', '2020-01-10', '2021-01-20', 'Accompagnement d\'├®quipes artisanales sur la transformation digitale.'),
+(7, 4, 'AI Workflow Architect', 'Freelance', '2023-01-01', NULL, 'Conception et automatisation de workflows IA pour des clients e-commerce et startups.'),
+(8, 4, 'Consultant en Automatisation', 'Herfa Studio', '2022-01-01', '2022-12-31', 'Mise en place de solutions no-code pour optimiser les processus m├®tiers.'),
+(9, 4, 'Digital Marketing Assistant', 'Startup Digital X', '2021-06-01', '2021-12-31', 'Gestion des campagnes marketing et analyse des performances.');
 
 -- --------------------------------------------------------
 
@@ -184,6 +300,45 @@ CREATE TABLE `formations` (
   `formateur` varchar(150) DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `materiel`
+--
+
+CREATE TABLE `materiel` (
+  `id_materiel` bigint(20) NOT NULL,
+  `nom_materiel` char(100) DEFAULT NULL,
+  `description` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `materiel`
+--
+
+INSERT INTO `materiel` (`id_materiel`, `nom_materiel`, `description`) VALUES
+(1, 'hnrter', NULL),
+(2, ',hgzefzef', NULL),
+(3, ',hgzefzef', NULL),
+(4, ',hgzefzef', NULL),
+(5, 'tissue', NULL),
+(6, 'hjklm', NULL),
+(7, 'gzegz', NULL),
+(8, 'htgf', NULL),
+(9, 'htgf', NULL),
+(10, 'jklm', NULL),
+(11, '^fghjklm', NULL),
+(12, 'klih', NULL),
+(13, 'klih', NULL),
+(14, 'klih', NULL),
+(15, 'klih', NULL),
+(16, 'Feuilles de palmier', NULL),
+(17, 'Teintures naturelles', NULL),
+(18, 'Fil de couture solide', NULL),
+(19, 'Outils artisanaux (ciseaux, aiguilles, presses)', NULL),
+(20, 'Emballage écologique', NULL),
+(21, 'Transport local', NULL);
 
 -- --------------------------------------------------------
 
@@ -275,6 +430,13 @@ CREATE TABLE `offre_emploi` (
   `applications_count` int(11) DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
+--
+-- Dumping data for table `offre_emploi`
+--
+
+INSERT INTO `offre_emploi` (`id_offer`, `titre`, `description`, `skills_needed`, `budget`, `duree`, `image_path`, `id_projet`, `id_recruteur`, `status`, `verification_status`, `verified_at`, `verified_by`, `moderation_note`, `created_at`, `location`, `contact_email`, `salary_min`, `salary_max`, `employment_type`, `experience_level`, `expires_at`, `views_count`, `applications_count`) VALUES
+(14, 'triza', 'adad', 'Design artisanal moderne, Prompt Engineering', 450.00, '50', 'uploads/offers/offer_69f4c881c7921.jpg', 4, 3, 'active', 'verified', '2026-05-01 17:42:01', 4, NULL, '2026-05-01 16:36:33', 'ariaana', 'emir.naasri@gmail.com', NULL, NULL, NULL, NULL, NULL, 5, 0);
+
 -- --------------------------------------------------------
 
 --
@@ -319,6 +481,100 @@ INSERT INTO `pending_users` (`id`, `nom`, `prenom`, `email`, `mot_de_passe`, `ro
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `portfolio_files`
+--
+
+CREATE TABLE `portfolio_files` (
+  `id_portfolio_file` int(11) NOT NULL,
+  `id_user` bigint(20) NOT NULL,
+  `titre` varchar(150) DEFAULT NULL,
+  `file_name` varchar(255) NOT NULL,
+  `file_path` varchar(255) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `realisation` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `portfolio_files`
+--
+
+INSERT INTO `portfolio_files` (`id_portfolio_file`, `id_user`, `titre`, `file_name`, `file_path`, `created_at`, `realisation`) VALUES
+(2, 5, 'Catalogue services IA 2026', 'catalogue_ia_2026.pdf', '/pyj_copy/public/uploads/portfolio/catalogue_ia_2026.pdf', '2026-04-23 19:11:00', 'Catalogue IA'),
+(3, 5, 'Etude cas Atelier Céramique', 'cas_atelier_ceramique.pdf', '/pyj_copy/public/uploads/portfolio/cas_atelier_ceramique.pdf', '2026-04-23 19:11:00', 'Etude de cas'),
+(4, 5, 'Guide automatisation CRM', 'guide_crm.pdf', '/pyj_copy/public/uploads/portfolio/guide_crm.pdf', '2026-04-23 19:11:00', 'Guide pratique'),
+(5, 4, 'Site e-commerce de vêtements', 'ecommerce_clothes.pdf', '/uploads/portfolio/4/ecommerce_clothes.pdf', '2025-09-12 10:15:00', 'Développement complet front-end + back-end avec panier et paiement'),
+(6, 4, 'Application mobile de gestion de tâches', 'task_app_mockup.png', '/uploads/portfolio/4/task_app_mockup.png', '2025-10-02 14:30:00', 'UI/UX design et prototype d’une app mobile de productivité'),
+(7, 4, 'Dashboard admin analytics', 'admin_dashboard.zip', '/uploads/portfolio/4/admin_dashboard.zip', '2025-10-18 09:45:00', 'Création d’un dashboard avec statistiques utilisateurs et graphiques'),
+(8, 4, 'Portfolio personnel en ligne', 'personal_portfolio.html', '/uploads/portfolio/4/personal_portfolio.html', '2025-11-01 18:20:00', 'Site portfolio responsive avec animations et présentation CV'),
+(9, 4, 'API REST gestion utilisateurs', 'api_users_doc.pdf', '/uploads/portfolio/4/api_users_doc.pdf', '2025-11-10 16:05:00', 'Conception et documentation d’une API REST sécurisée en PHP');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `portfolio_projects`
+--
+
+CREATE TABLE `portfolio_projects` (
+  `id_portfolio_project` bigint(20) NOT NULL,
+  `id_user` bigint(20) NOT NULL,
+  `titre` varchar(140) NOT NULL,
+  `categorie` varchar(80) NOT NULL,
+  `short_description` varchar(280) NOT NULL,
+  `detail_description` text DEFAULT NULL,
+  `image_path` varchar(255) DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `portfolio_project_competence`
+--
+
+CREATE TABLE `portfolio_project_competence` (
+  `id_portfolio_project` bigint(20) NOT NULL,
+  `id_competence` bigint(20) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `portfolio_project_documents`
+--
+
+CREATE TABLE `portfolio_project_documents` (
+  `id_portfolio_document` bigint(20) NOT NULL,
+  `id_portfolio_project` bigint(20) NOT NULL,
+  `file_name` varchar(255) NOT NULL,
+  `file_path` varchar(255) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `profil_competence`
+--
+
+CREATE TABLE `profil_competence` (
+  `id_profil` bigint(20) NOT NULL,
+  `id_competence` bigint(20) NOT NULL,
+  `date_ajout` datetime NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `profil_competence`
+--
+
+INSERT INTO `profil_competence` (`id_profil`, `id_competence`, `date_ajout`) VALUES
+(1, 10, '2026-04-25 07:45:05'),
+(1, 10, '2026-04-25 07:45:05');
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `profil_competences`
 --
 
@@ -326,6 +582,35 @@ CREATE TABLE `profil_competences` (
   `id_profil` int(11) NOT NULL,
   `id_competences` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `profil_professionnel`
+--
+
+CREATE TABLE `profil_professionnel` (
+  `id_profil` bigint(20) NOT NULL,
+  `id_user` bigint(20) DEFAULT NULL,
+  `specialite` text DEFAULT NULL,
+  `date_creation` date DEFAULT NULL,
+  `ville` varchar(100) DEFAULT NULL,
+  `telephone` varchar(50) DEFAULT NULL,
+  `statut` varchar(50) DEFAULT 'Disponible',
+  `horaires` varchar(100) DEFAULT NULL,
+  `insight_profile_score` tinyint(3) UNSIGNED DEFAULT NULL,
+  `insight_popularity_score` tinyint(3) UNSIGNED DEFAULT NULL,
+  `insight_suggested_jobs` tinyint(3) UNSIGNED DEFAULT NULL,
+  `insight_is_trending` tinyint(1) NOT NULL DEFAULT 0,
+  `insight_last_calc_at` datetime DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `profil_professionnel`
+--
+
+INSERT INTO `profil_professionnel` (`id_profil`, `id_user`, `specialite`, `date_creation`, `ville`, `telephone`, `statut`, `horaires`, `insight_profile_score`, `insight_popularity_score`, `insight_suggested_jobs`, `insight_is_trending`, `insight_last_calc_at`) VALUES
+(0, 4, 'entrepreneur', '2026-04-17', 'algerie', '00000000', 'Indisponible', 'Temporairement indisponible', 44, 74, 6, 0, NULL);
 
 -- --------------------------------------------------------
 
@@ -374,6 +659,139 @@ INSERT INTO `projet` (`id`, `titre`, `description`, `skills_needed`, `budget_min
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `quizz`
+--
+
+CREATE TABLE `quizz` (
+  `id_quizz` bigint(20) NOT NULL,
+  `domaine` char(100) DEFAULT NULL,
+  `description` text DEFAULT NULL,
+  `score` int(11) DEFAULT NULL,
+  `duree` bigint(20) DEFAULT NULL,
+  `logs` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `quizz_formations`
+--
+
+CREATE TABLE `quizz_formations` (
+  `id_formation` bigint(20) NOT NULL,
+  `id_quizz` bigint(20) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `required_mater`
+--
+
+CREATE TABLE `required_mater` (
+  `id_projet` bigint(20) NOT NULL,
+  `id_materiel` bigint(20) NOT NULL,
+  `quantite` int(11) DEFAULT NULL,
+  `prix_unitaire` decimal(10,2) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `required_mater`
+--
+
+INSERT INTO `required_mater` (`id_projet`, `id_materiel`, `quantite`, `prix_unitaire`) VALUES
+(1, 1, NULL, NULL),
+(8, 6, 85, 44.00),
+(9, 7, 852, 44.99),
+(14, 15, 15, 58.00),
+(15, 16, 100, 2.00),
+(15, 17, 10, 20.00),
+(15, 18, 20, 5.00),
+(15, 19, 1, 300.00),
+(15, 20, 100, 1.00),
+(15, 21, 1, 500.00),
+(1, 1, NULL, NULL),
+(8, 6, 85, 44.00),
+(9, 7, 852, 44.99),
+(14, 15, 15, 58.00),
+(15, 16, 100, 2.00),
+(15, 17, 10, 20.00),
+(15, 18, 20, 5.00),
+(15, 19, 1, 300.00),
+(15, 20, 100, 1.00),
+(15, 21, 1, 500.00);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `required_skills`
+--
+
+CREATE TABLE `required_skills` (
+  `id_projet` bigint(20) NOT NULL,
+  `id_skill` bigint(20) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `required_skills`
+--
+
+INSERT INTO `required_skills` (`id_projet`, `id_skill`) VALUES
+(1, 1),
+(8, 6),
+(9, 7),
+(14, 15),
+(15, 16),
+(15, 17),
+(15, 18),
+(15, 19),
+(15, 20),
+(1, 1),
+(8, 6),
+(9, 7),
+(14, 15),
+(15, 16),
+(15, 17),
+(15, 18),
+(15, 19),
+(15, 20);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `skills`
+--
+
+CREATE TABLE `skills` (
+  `id` bigint(20) NOT NULL,
+  `nom` varchar(255) DEFAULT NULL,
+  `level` varchar(50) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `skills`
+--
+
+INSERT INTO `skills` (`id`, `nom`, `level`) VALUES
+(1, 'gre', 'Debutant'),
+(2, 'fez', 'Avance'),
+(3, 'fez', 'Intermediaire'),
+(4, 'fez', 'Debutant'),
+(5, 'couture', 'Intermediaire'),
+(6, 'gzegz', 'Avance'),
+(7, 'egrfzed', 'Intermediaire'),
+(8, 'jklm¨', 'Intermediaire'),
+(9, 'bjkl', 'Intermediaire'),
+(10, 'ghjiop', 'Avance'),
+(11, 'Tressage traditionnel', 'Avance'),
+(12, 'Design artisanal moderne', 'Intermediaire'),
+(13, 'Marketing des produits artisanaux', 'Intermediaire'),
+(14, 'Gestion de production', 'Debutant'),
+(15, 'Vente (marchÚs / en ligne)', 'Intermediaire');
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `user`
 --
 
@@ -399,6 +817,33 @@ INSERT INTO `user` (`id_user`, `nom`, `prenom`, `email`, `mot_de_passe`, `role`,
 (3, 'amir', 'nasri', 'emir.naasri@gmail.com', '$2y$10$x.Ayq5kXo9hxTQx5F12UxOfZu9ydRme1smqD7R5r6CHRo0ft6KMpa', 'entrepreneur', '2026-04-11 00:00:00', 'actif', NULL, NULL, NULL),
 (4, 'Super', 'Admin', 'admin@herfa.tn', '$2y$10$Q.4wegbzXkx9b9fGA1ZhXuSniT34ZIVzGzNV4fb0/OidSFtKF11fu', 'admin', '2026-04-17 11:55:06', 'actif', NULL, NULL, NULL),
 (5, 'artis', 'rar', 'emir.nasri21@gmail.com', '$2y$10$VCefPgFRGmYrrKTbzJMSBOTXzH.T8zMjpPrA5NGY6gQpU1UZFZ26i', 'artisan', '2026-04-17 00:00:00', 'actif', NULL, NULL, NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `workshops`
+--
+
+CREATE TABLE `workshops` (
+  `id_workshop` bigint(20) NOT NULL,
+  `titre` char(200) DEFAULT NULL,
+  `description` text DEFAULT NULL,
+  `duree` int(11) DEFAULT NULL,
+  `date_publication` date DEFAULT NULL,
+  `prix` float DEFAULT NULL,
+  `certification` char(100) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `workshops_formation`
+--
+
+CREATE TABLE `workshops_formation` (
+  `id_formation` bigint(20) NOT NULL,
+  `id_workshop` bigint(20) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Indexes for dumped tables
@@ -429,6 +874,13 @@ ALTER TABLE `application_offre`
   ADD PRIMARY KEY (`id_application`,`id_offre`),
   ADD KEY `fk_ao_offer` (`id_offre`),
   ADD KEY `fk_ao_application` (`id_application`);
+
+--
+-- Indexes for table `artisan_onboarding`
+--
+ALTER TABLE `artisan_onboarding`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uq_artisan_onboarding_user` (`user_id`);
 
 --
 -- Indexes for table `candidate_education`
@@ -463,16 +915,42 @@ ALTER TABLE `candidate_skills`
   ADD KEY `idx_skill` (`skill_name`);
 
 --
+-- Indexes for table `certification`
+--
+ALTER TABLE `certification`
+  ADD PRIMARY KEY (`id_certification`),
+  ADD KEY `fk_cert_user` (`id_user`);
+
+--
 -- Indexes for table `competences`
 --
 ALTER TABLE `competences`
-  ADD PRIMARY KEY (`id_competences`);
+  ADD PRIMARY KEY (`id_competence`);
+
+--
+-- Indexes for table `competence_catalog`
+--
+ALTER TABLE `competence_catalog`
+  ADD PRIMARY KEY (`id_competence_catalog`);
+
+--
+-- Indexes for table `experience`
+--
+ALTER TABLE `experience`
+  ADD PRIMARY KEY (`id_experience`),
+  ADD KEY `fk_exp_user` (`id_user`);
 
 --
 -- Indexes for table `formations`
 --
 ALTER TABLE `formations`
   ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `materiel`
+--
+ALTER TABLE `materiel`
+  ADD PRIMARY KEY (`id_materiel`);
 
 --
 -- Indexes for table `notifications`
@@ -534,6 +1012,13 @@ ALTER TABLE `pending_users`
   ADD UNIQUE KEY `email` (`email`);
 
 --
+-- Indexes for table `portfolio_files`
+--
+ALTER TABLE `portfolio_files`
+  ADD PRIMARY KEY (`id_portfolio_file`),
+  ADD KEY `fk_portfolio_user` (`id_user`);
+
+--
 -- Indexes for table `profil_competences`
 --
 ALTER TABLE `profil_competences`
@@ -553,6 +1038,12 @@ ALTER TABLE `profil_profetionnel`
 ALTER TABLE `projet`
   ADD PRIMARY KEY (`id`),
   ADD KEY `fk_projet_createur` (`id_createur`);
+
+--
+-- Indexes for table `skills`
+--
+ALTER TABLE `skills`
+  ADD PRIMARY KEY (`id`);
 
 --
 -- Indexes for table `user`
@@ -605,7 +1096,13 @@ ALTER TABLE `candidate_skills`
 -- AUTO_INCREMENT for table `competences`
 --
 ALTER TABLE `competences`
-  MODIFY `id_competences` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id_competence` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
+
+--
+-- AUTO_INCREMENT for table `competence_catalog`
+--
+ALTER TABLE `competence_catalog`
+  MODIFY `id_competence_catalog` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `formations`
@@ -641,7 +1138,7 @@ ALTER TABLE `offer_views`
 -- AUTO_INCREMENT for table `offre_emploi`
 --
 ALTER TABLE `offre_emploi`
-  MODIFY `id_offer` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=14;
+  MODIFY `id_offer` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=15;
 
 --
 -- AUTO_INCREMENT for table `password_resets`
@@ -653,7 +1150,7 @@ ALTER TABLE `password_resets`
 -- AUTO_INCREMENT for table `pending_users`
 --
 ALTER TABLE `pending_users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `profil_profetionnel`
@@ -665,13 +1162,19 @@ ALTER TABLE `profil_profetionnel`
 -- AUTO_INCREMENT for table `projet`
 --
 ALTER TABLE `projet`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
+
+--
+-- AUTO_INCREMENT for table `skills`
+--
+ALTER TABLE `skills`
+  MODIFY `id` bigint(20) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
 
 --
 -- AUTO_INCREMENT for table `user`
 --
 ALTER TABLE `user`
-  MODIFY `id_user` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id_user` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- Constraints for dumped tables
@@ -762,7 +1265,7 @@ ALTER TABLE `offre_emploi`
 -- Constraints for table `profil_competences`
 --
 ALTER TABLE `profil_competences`
-  ADD CONSTRAINT `fk_pc_comp` FOREIGN KEY (`id_competences`) REFERENCES `competences` (`id_competences`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_pc_comp` FOREIGN KEY (`id_competences`) REFERENCES `competences` (`id_competence`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_pc_profil` FOREIGN KEY (`id_profil`) REFERENCES `profil_profetionnel` (`id_profil`) ON DELETE CASCADE;
 
 --

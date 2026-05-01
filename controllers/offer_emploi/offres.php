@@ -30,7 +30,7 @@ $perPage = 12;
 $projectsStmt = $pdo->prepare('SELECT id, titre, budget_min, status, id_createur FROM projet ORDER BY (id_createur = ?) DESC, titre ASC');
 $projectsStmt->execute([$userId]);
 $projects = $projectsStmt->fetchAll();
-$competences = $pdo->query('SELECT competence FROM competences ORDER BY competence ASC')->fetchAll();
+$competences = $pdo->query('SELECT nom_competence AS competence FROM competences ORDER BY nom_competence ASC')->fetchAll();
 $hasImageColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'image_path'")->fetch();
 $hasSkillsColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'skills_needed'")->fetch();
 $hasLocationColumn = (bool)$pdo->query("SHOW COLUMNS FROM offre_emploi LIKE 'location'")->fetch();

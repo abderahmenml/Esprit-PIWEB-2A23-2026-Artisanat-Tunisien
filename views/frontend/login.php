@@ -197,7 +197,7 @@
 
       const data = await res.json();
 
-      if (data.success) {
+        if (data.success) {
         btn.textContent = '✓ Connecté !';
         btn.style.background = '#2E6B3E';
 
@@ -209,11 +209,17 @@
         showAlert('✅ Bienvenue ' + data.prenom + ' ' + data.nom + ' ! Redirection…', 'success');
 
         setTimeout(() => {
+          // If onboarding is required for artisan, send user to onboarding first
+          if (data.onboarding === true && data.role === 'artisan') {
+            window.location.href = '../../controllers/onboarding.php';
+            return;
+          }
+
           const nextUrl = data.role === 'admin'
             ? '../../controllers/admin/dashboard.php'
             : '../../controllers/home.php';
           window.location.href = nextUrl;
-        }, 1500);
+        }, 800);
       } else {
         btn.textContent = 'Se connecter →';
         btn.disabled = false;

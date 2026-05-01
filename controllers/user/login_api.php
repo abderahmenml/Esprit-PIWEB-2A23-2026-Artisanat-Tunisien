@@ -73,13 +73,38 @@ if ($user['etat_compte'] !== 'actif') {
 $_SESSION['user_id'] = $user['id_user'];
 $_SESSION['nom']     = $user['nom'];
 $_SESSION['prenom']  = $user['prenom'];
-$_SESSION['role']    = $user['role'];
+// Normalize role to lowercase for consistent checks in PHP and JS
+$normalizedRole = mb_strtolower((string)$user['role'], 'UTF-8');
+$_SESSION['role']    = $normalizedRole;
 $_SESSION['email']   = $user['email'];
+// Determine if onboarding should be shown for artisan role
+$onboardingRequired = false;
+if (mb_strtolower((string)$user['role'], 'UTF-8') === 'artisan') {
+    try {
+        $stmt = $pdo->prepare('SELECT completed_at FROM artisan_onboarding WHERE user_id = ? LIMIT 1');
+        $stmt->execute([$user['id_user']]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        // If no row or completed_at is null -> onboarding needed
+        // NOTE: ignore any session skip flag here so users with incomplete onboarding always see it
+        if (!$row || empty($row['completed_at'])) {
+            $onboardingRequired = true;
+        }
+    } catch (Throwable $e) {
+        // Fail silently — do not block login
+        $onboardingRequired = false;
+    }
+    // Debug helpers (helpful during local dev) — expose whether onboarding row exists and its completed_at
+    $onboardingRowExists = isset($row) && $row !== false;
+    $onboardingCompletedAt = $onboardingRowExists ? ($row['completed_at'] ?? null) : null;
+}
 
 echo json_encode([
     "success" => true,
     "nom"     => $user['nom'],
     "prenom"  => $user['prenom'],
-    "role"    => $user['role']
+    "role"    => $normalizedRole,
+    "onboarding" => $onboardingRequired
+    , "debug_onboarding_row_exists" => $onboardingRowExists ?? false
+    , "debug_onboarding_completed_at" => $onboardingCompletedAt ?? null
 ]);
 ?>

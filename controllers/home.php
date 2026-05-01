@@ -11,9 +11,26 @@ require_auth();
 $userId = (int)$_SESSION['user_id'];
 $userNom = trim($_SESSION['nom'] ?? 'Utilisateur');
 $userPrenom = trim($_SESSION['prenom'] ?? '');
-$userRole = $_SESSION['role'] ?? 'artisan';
+$userRole = mb_strtolower((string)($_SESSION['role'] ?? 'artisan'), 'UTF-8');
 $userEmail = $_SESSION['email'] ?? '';
 $baseUrl = rtrim(app_base_url(), '/');
+
+// Force onboarding for artisan users until completed
+if ($userRole === 'artisan') {
+    try {
+        $skip = $_SESSION['onboarding_skip_until_logout'] ?? false;
+        if (!$skip) {
+            $stmt = $pdo->prepare('SELECT completed_at FROM artisan_onboarding WHERE user_id = ? LIMIT 1');
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row || empty($row['completed_at'])) {
+                app_redirect('controllers/onboarding.php');
+            }
+        }
+    } catch (Throwable $e) {
+        // Do not block dashboard if onboarding check fails
+    }
+}
 
 // Enhanced helper functions with better type safety
 function has_table(PDO $pdo, string $table): bool
@@ -85,10 +102,23 @@ $userHasStatus = cached_has_column($pdo, 'user', 'status');
 $userHasEtatCompte = cached_has_column($pdo, 'user', 'etat_compte');
 $userHasDateCreation = cached_has_column($pdo, 'user', 'date_creation');
 
-$hasProfileTable = cached_has_table($pdo, 'profil_profetionnel');
-$profileHasSpecialite = $hasProfileTable && cached_has_column($pdo, 'profil_profetionnel', 'specialité');
-$profileHasBio = $hasProfileTable && cached_has_column($pdo, 'profil_profetionnel', 'bio');
-$profileHasExperience = $hasProfileTable && cached_has_column($pdo, 'profil_profetionnel', 'experience');
+$profileTableName = null;
+if (cached_has_table($pdo, 'profil_professionnel')) {
+    $profileTableName = 'profil_professionnel';
+} elseif (cached_has_table($pdo, 'profil_profetionnel')) {
+    $profileTableName = 'profil_profetionnel';
+}
+
+$hasProfileTable = $profileTableName !== null;
+
+// detect available column names (handle accent/typo variants)
+$profileHasSpecialite = $hasProfileTable && (
+    cached_has_column($pdo, $profileTableName, 'specialite') || cached_has_column($pdo, $profileTableName, 'specialité')
+);
+$profileHasBio = $hasProfileTable && cached_has_column($pdo, $profileTableName, 'bio');
+$profileHasExperience = $hasProfileTable && (
+    cached_has_column($pdo, $profileTableName, 'experience') || cached_has_column($pdo, $profileTableName, 'experience')
+);
 
 $appHasMessage = cached_has_column($pdo, 'application', 'message');
 $hasNotificationsTable = cached_has_table($pdo, 'notifications');
@@ -226,7 +256,19 @@ $artisans = [];
 try {
     $artisanAvatarSql = $userHasAvatar ? 'u.avatar' : "'' AS avatar";
     $artisanVilleSql = $userHasVille ? 'u.ville' : "'' AS ville";
-    $artisanSpecialiteSql = $hasProfileTable && $profileHasSpecialite ? 'p.specialité' : "'' AS specialite";
+    if ($hasProfileTable) {
+        if (cached_has_column($pdo, $profileTableName, 'specialite')) {
+            $artisanSpecialiteSql = 'p.specialite AS specialite';
+        } elseif (cached_has_column($pdo, $profileTableName, 'specialité')) {
+            $artisanSpecialiteSql = 'p.`specialité` AS specialite';
+        } else {
+            $artisanSpecialiteSql = "'' AS specialite";
+        }
+        $profileJoinSql = "LEFT JOIN {$profileTableName} p ON u.id_user = p.id_user";
+    } else {
+        $artisanSpecialiteSql = "'' AS specialite";
+        $profileJoinSql = '';
+    }
     
     $artisanWhere = "u.role = 'artisan'";
     if ($userHasStatus) {
@@ -239,7 +281,7 @@ try {
     $artisansStmt = $pdo->query(
         "SELECT u.id_user, u.nom, u.prenom, {$artisanAvatarSql}, {$artisanVilleSql}, {$artisanSpecialiteSql}
          FROM `user` u
-         LEFT JOIN profil_profetionnel p ON u.id_user = p.id_user
+         {$profileJoinSql}
          WHERE {$artisanWhere}
          ORDER BY {$artisanOrderSql}
          LIMIT 4"
