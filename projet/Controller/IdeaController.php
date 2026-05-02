@@ -20,6 +20,111 @@ class IdeaController
         return $list;
     }
 
+    public function searchProjects($searchText = '', $category = '', $skill = '')
+    {
+        $db = config::getConnexion();
+
+        if ($searchText === '' && $category === '' && $skill === '') {
+            return $this->listProjects();
+        }
+
+        $sql = 'SELECT DISTINCT p.id_projet, p.titre, p.budget_min, p.status, p.date_creation, p.categorie, p.description, p.id_user, u.nom, u.prenom
+                FROM projet p
+                LEFT JOIN user u ON u.id_user = p.id_user
+                WHERE 1=1';
+
+        $params = [];
+
+        if ($searchText !== '') {
+            $sql .= ' AND (
+                        p.titre LIKE :search
+                        OR p.description LIKE :search
+                        OR p.categorie LIKE :search
+                        OR EXISTS (
+                            SELECT 1
+                            FROM required_skills rs_search
+                            JOIN skills s_search ON s_search.id = rs_search.id_skill
+                            WHERE rs_search.id_projet = p.id_projet
+                              AND s_search.nom LIKE :search
+                        )
+                    )';
+            $params['search'] = '%' . $searchText . '%';
+        }
+
+        if ($category !== '') {
+            $sql .= ' AND p.categorie = :category';
+            $params['category'] = $category;
+        }
+
+        if ($skill !== '') {
+                        $sql .= ' AND EXISTS (
+                                                SELECT 1
+                                                FROM required_skills rs_skill
+                                                JOIN skills s_skill ON s_skill.id = rs_skill.id_skill
+                                                WHERE rs_skill.id_projet = p.id_projet
+                                                    AND s_skill.nom = :skill
+                                        )';
+            $params['skill'] = $skill;
+        }
+
+        $sql .= ' ORDER BY p.id_projet DESC';
+
+        $rows = [];
+        try {
+            $query = $db->prepare($sql);
+            $query->execute($params);
+            $rows = $query->fetchAll();
+        } catch (Exception $e) {
+            $rows = [];
+        }
+
+        return $rows;
+    }
+
+    public function listProjectCategories()
+    {
+        $db = config::getConnexion();
+        $rows = [];
+        try {
+            $query = $db->query('SELECT DISTINCT categorie FROM projet WHERE categorie IS NOT NULL AND TRIM(categorie) <> "" ORDER BY categorie ASC');
+            if ($query) {
+                $rows = $query->fetchAll();
+            }
+        } catch (Exception $e) {
+            $rows = [];
+        }
+
+        $categories = [];
+        foreach ($rows as $row) {
+            if (isset($row['categorie'])) {
+                $categories[] = $row['categorie'];
+            }
+        }
+        return $categories;
+    }
+
+    public function listSkillsNames()
+    {
+        $db = config::getConnexion();
+        $rows = [];
+        try {
+            $query = $db->query('SELECT DISTINCT nom FROM skills WHERE nom IS NOT NULL AND TRIM(nom) <> "" ORDER BY nom ASC');
+            if ($query) {
+                $rows = $query->fetchAll();
+            }
+        } catch (Exception $e) {
+            $rows = [];
+        }
+
+        $skills = [];
+        foreach ($rows as $row) {
+            if (isset($row['nom'])) {
+                $skills[] = $row['nom'];
+            }
+        }
+        return $skills;
+    }
+
     public function showProject($id)
     {
         $sql = 'SELECT id_projet, titre, budget_min, status, categorie, description, id_user FROM projet WHERE id_projet = :id AND id_user = :id_user';
@@ -279,6 +384,21 @@ class IdeaController
         try {
             $this->updateProjectAny($db, $idea, $id);
         } catch (Exception $e) {
+        }
+    }
+
+    public function updateIdeaAnyWithDetails($idea, $id, $skillsNames, $skillsLevels, $materialsNames, $materialsQty, $materialsPrice)
+    {
+        $db = config::getConnexion();
+
+        try {
+            $db->beginTransaction();
+            $this->updateProjectAny($db, $idea, $id);
+            $this->replaceSkills($db, $id, $skillsNames, $skillsLevels);
+            $this->replaceMaterials($db, $id, $materialsNames, $materialsQty, $materialsPrice);
+            $db->commit();
+        } catch (Exception $e) {
+            $db->rollBack();
         }
     }
 

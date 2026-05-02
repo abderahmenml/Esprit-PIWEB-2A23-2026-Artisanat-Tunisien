@@ -10,13 +10,15 @@
   --marron: #8b5a3a;
   --vert: #2e6b3e;
   --caramel: #c49a6c;
-  --creme: #f5ecd7;
-  --creme-light: #faf5ec;
+  --creme: #f6efe6;
+  --creme-light: #fbf6ee;
   --brun: #3b2314;
   --brun-dark: #2a1a0e;
   --brun-mid: #5c3a1e;
   --ink: #4b3b2e;
   --muted: #7f6d5b;
+  --topbar: #2d1a0f;
+  --topbar-light: #3b2314;
   --line: rgba(196, 154, 108, 0.25);
   --line-soft: rgba(196, 154, 108, 0.16);
   --shadow-sm: 0 4px 14px rgba(59, 35, 20, 0.08);
@@ -32,9 +34,9 @@ body {
   font-family: "Lato", "Segoe UI", sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(1200px 500px at 0% -10%, rgba(196, 154, 108, 0.22), transparent 55%),
-    radial-gradient(900px 420px at 100% 0%, rgba(46, 107, 62, 0.14), transparent 60%),
-    linear-gradient(180deg, #fdf8f1 0%, var(--creme-light) 45%, #f7f1e8 100%);
+    radial-gradient(1200px 500px at 0% -10%, rgba(196, 154, 108, 0.2), transparent 55%),
+    radial-gradient(900px 420px at 100% 0%, rgba(46, 107, 62, 0.12), transparent 60%),
+    linear-gradient(180deg, #fbf4ea 0%, var(--creme-light) 55%, #f4ebdf 100%);
 }
 
 .grain {
@@ -59,17 +61,27 @@ body {
 .topbar {
   margin-top: 1rem;
   padding: 0.9rem 1.1rem;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(10px);
-  box-shadow: var(--shadow-sm);
+  background: linear-gradient(90deg, var(--topbar), var(--topbar-light));
+  box-shadow: 0 18px 40px rgba(32, 18, 10, 0.35);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   position: sticky;
   top: 0.8rem;
+}
+
+.topbar::after {
+  content: "";
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(196, 154, 108, 0.8), rgba(46, 107, 62, 0.5), transparent);
+  opacity: 0.65;
 }
 
 .brand-block {
@@ -83,8 +95,8 @@ body {
   height: 52px;
   border-radius: 14px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
   display: grid;
   place-items: center;
 }
@@ -99,13 +111,13 @@ body {
   font-family: "Playfair Display", Georgia, serif;
   font-size: 1.15rem;
   font-weight: 700;
-  color: var(--brun);
+  color: #f7efe4;
 }
 
 .brand-tagline {
   margin-top: 0.15rem;
   font-size: 0.75rem;
-  color: var(--muted);
+  color: rgba(247, 239, 228, 0.75);
 }
 
 .top-menu {
@@ -119,7 +131,7 @@ body {
 .menu-link {
   border: 1px solid transparent;
   background: transparent;
-  color: var(--muted);
+  color: rgba(245, 236, 215, 0.78);
   padding: 0.5rem 0.78rem;
   border-radius: 999px;
   font-size: 0.82rem;
@@ -130,9 +142,9 @@ body {
 
 .menu-link:hover,
 .menu-link.active {
-  color: var(--brun);
-  border-color: var(--line);
-  background: rgba(196, 154, 108, 0.12);
+  color: #fff4df;
+  border-color: rgba(196, 154, 108, 0.5);
+  background: rgba(196, 154, 108, 0.22);
 }
 
 .cta-outline,
@@ -147,9 +159,9 @@ body {
 }
 
 .cta-outline {
-  border: 1px solid rgba(59, 35, 20, 0.25);
-  background: rgba(255, 255, 255, 0.75);
-  color: var(--brun);
+  border: 1px solid rgba(255, 245, 230, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff5e5;
   padding: 0.58rem 0.92rem;
   font-size: 0.82rem;
   font-weight: 700;
@@ -172,11 +184,23 @@ body {
 }
 
 .card-surface {
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(196, 154, 108, 0.22);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  backdrop-filter: blur(5px);
+  position: relative;
+  overflow: hidden;
+}
+
+.card-surface::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--marron), var(--vert));
+  opacity: 0.85;
 }
 
 .hero {
@@ -531,6 +555,31 @@ textarea:focus {
   color: #6c5a49;
 }
 
+.explore-head {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.explore-tools {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr auto auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.explore-tools input,
+.explore-tools select {
+  background: #fff;
+}
+
+.explore-tools .mini-btn {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: 1fr 330px;
@@ -754,6 +803,10 @@ textarea:focus {
 
   .builder-row,
   .builder-row.material-row {
+    grid-template-columns: 1fr;
+  }
+
+  .explore-tools {
     grid-template-columns: 1fr;
   }
 }
