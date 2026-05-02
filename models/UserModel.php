@@ -183,6 +183,24 @@ class UserModel extends Model {
         return $result ?: null;
     }
 
+    public function findByFaceId(string $faceId): ?array {
+        $stmt = $this->pdo->prepare("SELECT * FROM user WHERE face_id = :face_id LIMIT 1");
+        $stmt->execute([':face_id' => $faceId]);
+        $result = $stmt->fetch();
+        return $result ?: null;
+    }
+
+    public function findAllWithFaceDescriptor(): array {
+        $stmt = $this->pdo->prepare(
+            "SELECT *
+             FROM user
+             WHERE face_descriptor IS NOT NULL
+               AND TRIM(face_descriptor) != ''"
+        );
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
     public function updateFaceDescriptor(int $id, string $faceDescriptor): bool {
         $stmt = $this->pdo->prepare(
             "UPDATE user SET face_descriptor = :face_descriptor WHERE id_user = :id"

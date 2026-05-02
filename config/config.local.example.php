@@ -17,6 +17,8 @@ $_ENV['MAIL_FROM_NAME'] = 'CraftLink Tunisie';
 
 $_ENV['FACE_MATCH_THRESHOLD'] = '0.52';
 $_ENV['FACE_API_MODEL_URL'] = 'https://justadudewhohacks.github.io/face-api.js/models';
+$_ENV['RECAPTCHA_V2_SITE_KEY'] = 'your-recaptcha-v2-site-key';
+$_ENV['RECAPTCHA_V2_SECRET_KEY'] = 'your-recaptcha-v2-secret-key';
 
 $_ENV['SUPABASE_URL'] = 'https://your-project.supabase.co';
 $_ENV['SUPABASE_ANON_KEY'] = 'your-anon-key';

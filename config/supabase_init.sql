@@ -62,6 +62,34 @@ CREATE TABLE IF NOT EXISTS public.password_resets (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 6. Table Chat Conversations
+CREATE TABLE IF NOT EXISTS public.chat_conversations (
+    id_conversation SERIAL PRIMARY KEY,
+    type VARCHAR(20) NOT NULL DEFAULT 'direct',
+    created_by INT NOT NULL REFERENCES public.user(id_user) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 7. Table Chat Participants
+CREATE TABLE IF NOT EXISTS public.chat_participants (
+    id_participant SERIAL PRIMARY KEY,
+    id_conversation INT NOT NULL REFERENCES public.chat_conversations(id_conversation) ON DELETE CASCADE,
+    id_user INT NOT NULL REFERENCES public.user(id_user) ON DELETE CASCADE,
+    last_read_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (id_conversation, id_user)
+);
+
+-- 8. Table Chat Messages
+CREATE TABLE IF NOT EXISTS public.chat_messages (
+    id_message SERIAL PRIMARY KEY,
+    id_conversation INT NOT NULL REFERENCES public.chat_conversations(id_conversation) ON DELETE CASCADE,
+    id_sender INT NOT NULL REFERENCES public.user(id_user) ON DELETE CASCADE,
+    message_body TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- INDEX pour performance
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -71,6 +99,9 @@ CREATE INDEX IF NOT EXISTS idx_pending_users_email ON public.pending_users(email
 CREATE INDEX IF NOT EXISTS idx_pending_users_token ON public.pending_users(token);
 CREATE INDEX IF NOT EXISTS idx_password_resets_email ON public.password_resets(email);
 CREATE INDEX IF NOT EXISTS idx_projet_id_categorie ON public.projet(id_categorie);
+CREATE INDEX IF NOT EXISTS idx_chat_conversations_updated_at ON public.chat_conversations(updated_at);
+CREATE INDEX IF NOT EXISTS idx_chat_participants_user ON public.chat_participants(id_user);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation ON public.chat_messages(id_conversation, created_at);
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Données de test (optionnel)

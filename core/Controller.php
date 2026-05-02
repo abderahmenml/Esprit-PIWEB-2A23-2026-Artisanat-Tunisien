@@ -9,7 +9,11 @@ abstract class Controller {
         if (!file_exists($viewFile)) {
             die("Vue introuvable : " . htmlspecialchars($view));
         }
-        require_once $viewFile;
+        ob_start();
+        require $viewFile;
+        $output = ob_get_clean();
+
+        echo $output;
     }
 
     protected function redirect(string $url): void {

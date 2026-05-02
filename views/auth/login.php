@@ -78,8 +78,7 @@
       <div id="rf-login-status" class="helper-text" style="margin-top:.7rem;">Camera non activee.</div>
       <div id="rf-login-face-id-label" class="helper-text" style="margin-top:.35rem;">ID visage : non detecte.</div>
       <div style="display:flex;gap:.7rem;flex-wrap:wrap;margin-top:.9rem;">
-        <button type="button" class="btn-login" style="flex:1;min-width:180px;" onclick="startFaceLogin()">Activer reconnaissance faciale</button>
-        <button type="button" class="btn-login" style="flex:1;min-width:180px;" onclick="handleFaceLogin()">Connexion visage</button>
+        <button type="button" class="btn-login" style="flex:1;min-width:180px;" onclick="startFaceLogin()">Activer camera</button>
       </div>
     </div>
   </div>
@@ -90,6 +89,12 @@
     </label>
     <a href="index.php?page=forgot_password" class="forgot-link">Mot de passe oublie ?</a>
   </div>
+
+  <?php if (RecaptchaV2::isConfigured()): ?>
+    <div class="recaptcha-wrap">
+      <div class="g-recaptcha" data-sitekey="<?= htmlspecialchars(RecaptchaV2::siteKey(), ENT_QUOTES, 'UTF-8') ?>"></div>
+    </div>
+  <?php endif; ?>
 
   <button class="btn-login" id="btn-login" onclick="handleLogin()">Se connecter -></button>
 
@@ -107,6 +112,9 @@
 </div>
 
 <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-<script src="public/js/app.js"></script>
+<?php if (RecaptchaV2::isConfigured()): ?>
+<script defer src="https://www.google.com/recaptcha/api.js"></script>
+<?php endif; ?>
+<script src="public/js/app.js?v=recaptcha-v2-2"></script>
 </body>
 </html>

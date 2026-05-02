@@ -97,5 +97,4 @@ require_once __DIR__ . '/../partials/admin_header.php';
     </tbody>
   </table>
 </div>
-
 <?php require_once __DIR__ . '/../partials/admin_footer.php'; ?>

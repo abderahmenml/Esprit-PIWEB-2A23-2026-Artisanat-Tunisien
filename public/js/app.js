@@ -5,7 +5,7 @@
 const FACE_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 const faceState = {
   register: { stream: null, descriptor: null, loadingPromise: null, autoCaptureTimer: null, faceId: null },
-  login: { stream: null, descriptor: null, loadingPromise: null, autoCaptureTimer: null, faceId: null },
+  login: { stream: null, descriptor: null, loadingPromise: null, autoCaptureTimer: null, faceId: null, submitting: false },
 };
 
 function showAlert(msg, type) {
@@ -55,6 +55,20 @@ function validateMinLength(value, min) {
 
 function validateAlpha(value) {
   return /^[\u00C0-\u024F\u0600-\u06FFa-zA-Z\s\-]+$/.test(value.trim());
+}
+
+function getRecaptchaToken() {
+  if (!window.grecaptcha || typeof grecaptcha.getResponse !== 'function') {
+    return '';
+  }
+
+  return grecaptcha.getResponse();
+}
+
+function resetRecaptcha() {
+  if (window.grecaptcha && typeof grecaptcha.reset === 'function') {
+    grecaptcha.reset();
+  }
 }
 
 function togglePw(fieldId, btnId) {
@@ -123,6 +137,7 @@ async function startFaceCamera(mode) {
   if (faceState[mode].stream) {
     video.style.display = 'block';
     status.textContent = 'Camera deja activee. Placez votre visage dans le cadre.';
+    scheduleFaceAutoCapture(mode);
     return;
   }
 
@@ -185,6 +200,11 @@ function scheduleFaceAutoCapture(mode) {
   faceState[mode].autoCaptureTimer = setTimeout(async () => {
     try {
       const descriptor = await captureFaceDescriptor(mode, true);
+      if (descriptor && mode === 'login') {
+        await submitFaceLogin(descriptor);
+        return;
+      }
+
       if (!descriptor) {
         scheduleFaceAutoCapture(mode);
       }
@@ -222,6 +242,9 @@ async function captureFaceDescriptor(mode, silent) {
   hidden.value = JSON.stringify(descriptor);
   updateFaceIdentity(mode, descriptor);
   status.textContent = silent ? 'Visage detecte automatiquement.' : 'Visage capture avec succes.';
+  if (mode === 'login' && silent && !faceState.login.submitting) {
+    setTimeout(() => submitFaceLogin(descriptor), 0);
+  }
   return descriptor;
 }
 
@@ -248,6 +271,9 @@ async function captureFaceEnrollment() {
 
 async function startFaceLogin() {
   try {
+    clearAllErrors([['email', 'email-err'], ['password', 'pw-err']]);
+    clearRoleError();
+    hideAlert();
     await startFaceCamera('login');
   } catch (_) {
     showAlert('Impossible d activer la camera pour la connexion faciale.', 'error');
@@ -255,30 +281,37 @@ async function startFaceLogin() {
 }
 
 async function handleFaceLogin() {
-  const emailEl = document.getElementById('email');
-  let valid = true;
-
-  clearAllErrors([['email', 'email-err']]);
-  clearRoleError();
-  hideAlert();
-
-  if (!emailEl.value || !validateEmail(emailEl.value)) {
-    setFieldError('email', 'email-err', true);
-    valid = false;
-  }
-
-  if (!valid) return;
-
   const descriptor = await captureFaceDescriptor('login', false);
   if (!descriptor) {
     showAlert('Visage non detecte. Veuillez reessayer.', 'error');
     return;
   }
 
+  await submitFaceLogin(descriptor);
+}
+
+async function submitFaceLogin(descriptor) {
+  const emailEl = document.getElementById('email');
+  const status = document.getElementById('rf-login-status');
+
+  clearAllErrors([['email', 'email-err'], ['password', 'pw-err']]);
+  clearRoleError();
+  hideAlert();
+
+  if (faceState.login.submitting) return;
+
+  faceState.login.submitting = true;
+  if (status) status.textContent = 'Visage detecte. Connexion automatique...';
+
   try {
     const fd = new FormData();
-    fd.append('email', emailEl.value.trim());
+    if (emailEl && emailEl.value.trim()) {
+      fd.append('email', emailEl.value.trim());
+    }
     fd.append('role', currentRole);
+    if (faceState.login.faceId) {
+      fd.append('face_id', faceState.login.faceId);
+    }
     fd.append('face_descriptor', JSON.stringify(descriptor));
 
     const res = await fetch('index.php?page=login_face', { method: 'POST', body: fd });
@@ -296,10 +329,14 @@ async function handleFaceLogin() {
       return;
     }
 
+    faceState.login.submitting = false;
     showAlert(data.message, 'error');
+    if (status) status.textContent = 'Connexion faciale refusee. Corrigez les informations puis reactivez la camera.';
     if (data.field === 'email') setFieldError('email', 'email-err', true);
     if (data.field === 'role') markRoleError();
   } catch (_) {
+    faceState.login.submitting = false;
+    if (status) status.textContent = 'Erreur serveur pendant la connexion faciale.';
     showAlert('Erreur serveur pendant la connexion faciale.', 'error');
   }
 }
@@ -334,6 +371,7 @@ async function handleLogin() {
     fd.append('email', emailEl.value.trim());
     fd.append('password', pwEl.value);
     fd.append('role', currentRole);
+    fd.append('g-recaptcha-response', getRecaptchaToken());
 
     const res = await fetch('index.php?page=login', { method: 'POST', body: fd });
     const data = await res.json();
@@ -357,6 +395,7 @@ async function handleLogin() {
       btn.textContent = 'Se connecter ->';
       btn.disabled = false;
       btn.style.background = '';
+      resetRecaptcha();
       showAlert(data.message, 'error');
       if (data.field === 'email') setFieldError('email', 'email-err', true);
       if (data.field === 'password') setFieldError('password', 'pw-err', true);
@@ -365,6 +404,7 @@ async function handleLogin() {
   } catch (_) {
     btn.textContent = 'Se connecter ->';
     btn.disabled = false;
+    resetRecaptcha();
     showAlert('Erreur serveur. Verifiez que XAMPP est demarre.', 'error');
   }
 }
@@ -451,6 +491,7 @@ async function handleRegister() {
     fd.append('confirm', fields.conf.value);
     fd.append('role', currentRole);
     fd.append('face_descriptor', fields.face.value);
+    fd.append('g-recaptcha-response', getRecaptchaToken());
 
     const res = await fetch('index.php?page=register', { method: 'POST', body: fd });
     const data = await res.json();
@@ -466,12 +507,14 @@ async function handleRegister() {
     } else {
       btn.textContent = 'Creer mon profil ->';
       btn.disabled = false;
+      resetRecaptcha();
       showAlert(data.message, 'error');
       if (data.field) setFieldError(data.field, data.field + '-err', true);
     }
   } catch (_) {
     btn.textContent = 'Creer mon profil ->';
     btn.disabled = false;
+    resetRecaptcha();
     showAlert('Erreur serveur. Verifiez que XAMPP est demarre.', 'error');
   }
 }

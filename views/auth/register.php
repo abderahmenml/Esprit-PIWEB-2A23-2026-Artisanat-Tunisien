@@ -123,6 +123,12 @@
   </div>
   <div class="error-msg" id="terms-err" style="margin-top:-.6rem;margin-bottom:.8rem">Veuillez accepter les conditions.</div>
 
+  <?php if (RecaptchaV2::isConfigured()): ?>
+    <div class="recaptcha-wrap">
+      <div class="g-recaptcha" data-sitekey="<?= htmlspecialchars(RecaptchaV2::siteKey(), ENT_QUOTES, 'UTF-8') ?>"></div>
+    </div>
+  <?php endif; ?>
+
   <button type="button" class="btn-login" id="btn-register" onclick="handleRegister()">Créer mon profil →</button>
 
   <div class="or-divider"><span class="or-text">Déjà inscrit ?</span></div>
@@ -159,6 +165,9 @@
 </div>
 
 <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-<script src="public/js/app.js"></script>
+<?php if (RecaptchaV2::isConfigured()): ?>
+<script defer src="https://www.google.com/recaptcha/api.js"></script>
+<?php endif; ?>
+<script src="public/js/app.js?v=recaptcha-v2-2"></script>
 </body>
 </html>

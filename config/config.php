@@ -31,6 +31,8 @@ define('MAIL_FROM_NAME', craftlink_config('MAIL_FROM_NAME', 'CraftLink Tunisie')
 define('ROLES', ['entrepreneur', 'artisan', 'mentor', 'investisseur', 'admin']);
 define('FACE_MATCH_THRESHOLD', (float) craftlink_config('FACE_MATCH_THRESHOLD', 0.52));
 define('FACE_API_MODEL_URL', craftlink_config('FACE_API_MODEL_URL', 'https://justadudewhohacks.github.io/face-api.js/models'));
+define('RECAPTCHA_V2_SITE_KEY', craftlink_config('RECAPTCHA_V2_SITE_KEY', ''));
+define('RECAPTCHA_V2_SECRET_KEY', craftlink_config('RECAPTCHA_V2_SECRET_KEY', ''));
 
 define('SUPABASE_URL', craftlink_config('SUPABASE_URL', ''));
 define('SUPABASE_ANON_KEY', craftlink_config('SUPABASE_ANON_KEY', ''));

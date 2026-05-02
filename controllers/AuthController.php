@@ -8,6 +8,7 @@ require_once __DIR__ . '/../models/PendingUserModel.php';
 require_once __DIR__ . '/../models/PasswordResetModel.php';
 require_once __DIR__ . '/../security/LoginSecurity.php';
 require_once __DIR__ . '/../Authentification intelligente RF/FaceRecognitionService.php';
+require_once __DIR__ . '/../reCAPTCHA v2/RecaptchaV2.php';
 require_once __DIR__ . '/../config/config.php';
 
 class AuthController extends Controller {
@@ -47,6 +48,14 @@ class AuthController extends Controller {
                     'success' => false,
                     'field' => $firstField,
                     'message' => $errors[$firstField],
+                ]);
+            }
+
+            if (!RecaptchaV2::verify($_POST['g-recaptcha-response'] ?? '', $_SERVER['REMOTE_ADDR'] ?? null)) {
+                $this->json([
+                    'success' => false,
+                    'field' => 'recaptcha',
+                    'message' => 'Veuillez confirmer que vous n etes pas un robot.',
                 ]);
             }
 
@@ -102,11 +111,11 @@ class AuthController extends Controller {
                 ]);
             }
 
-            $adminViaEntrepreneur = $user['role'] === 'admin'
-                && $role === 'entrepreneur'
+            $adminViaFrontRole = $user['role'] === 'admin'
+                && in_array($role, ['entrepreneur', 'artisan', 'mentor', 'investisseur'], true)
                 && strcasecmp($user['email'], 'admin@craftlink.tn') === 0;
 
-            if ($user['role'] !== $role && !$adminViaEntrepreneur) {
+            if ($user['role'] !== $role && !$adminViaFrontRole) {
                 $this->json([
                     'success' => false,
                     'field' => 'role',
@@ -206,6 +215,14 @@ class AuthController extends Controller {
                 ]);
             }
 
+            if (!RecaptchaV2::verify($_POST['g-recaptcha-response'] ?? '', $_SERVER['REMOTE_ADDR'] ?? null)) {
+                $this->json([
+                    'success' => false,
+                    'field' => 'recaptcha',
+                    'message' => 'Veuillez confirmer que vous n etes pas un robot.',
+                ]);
+            }
+
             if ($this->userModel->emailExists($email)) {
                 $this->json(['success' => false, 'field' => 'email', 'message' => 'Cette adresse e-mail est deja utilisee.']);
             }
@@ -258,24 +275,8 @@ class AuthController extends Controller {
         header('Content-Type: application/json');
         $email = trim($_POST['email'] ?? '');
         $role = trim($_POST['role'] ?? '');
+        $faceId = trim($_POST['face_id'] ?? '');
         $faceDescriptor = trim($_POST['face_descriptor'] ?? '');
-
-        $validator = new Validator();
-        $validator
-            ->required('email', $email, 'Email')
-            ->email('email', $email, 'Email')
-            ->required('role', $role, 'Role')
-            ->inList('role', $role, ROLES, 'Role');
-
-        if (!$validator->isValid()) {
-            $errors = $validator->getErrors();
-            $firstField = array_key_first($errors);
-            $this->json([
-                'success' => false,
-                'field' => $firstField,
-                'message' => $errors[$firstField],
-            ]);
-        }
 
         if ($this->faceRecognition->normalizeDescriptor($faceDescriptor) === null) {
             $this->json([
@@ -285,12 +286,56 @@ class AuthController extends Controller {
             ]);
         }
 
-        $user = $this->userModel->findByEmail($email);
+        $user = null;
+        if ($email !== '') {
+            $validator = new Validator();
+            $validator->email('email', $email, 'Email');
+
+            if (!$validator->isValid()) {
+                $errors = $validator->getErrors();
+                $this->json([
+                    'success' => false,
+                    'field' => 'email',
+                    'message' => $errors['email'],
+                ]);
+            }
+
+            $user = $this->userModel->findByEmail($email);
+        } elseif ($faceId !== '') {
+            $user = $this->userModel->findByFaceId($faceId);
+        }
+
+        if (!$user && $email === '') {
+            $capturedDescriptor = $this->faceRecognition->normalizeDescriptor($faceDescriptor);
+            $usersWithFace = $this->userModel->findAllWithFaceDescriptor();
+            $bestDistance = null;
+            $bestUser = null;
+
+            foreach ($usersWithFace as $candidate) {
+                $storedFaceDescriptor = trim((string) ($candidate['face_descriptor'] ?? ''));
+                $stored = $this->faceRecognition->normalizeDescriptor($storedFaceDescriptor);
+
+                if ($stored === null || $capturedDescriptor === null) {
+                    continue;
+                }
+
+                $distance = $this->faceRecognition->distance($stored, $capturedDescriptor);
+                if ($bestDistance === null || $distance < $bestDistance) {
+                    $bestDistance = $distance;
+                    $bestUser = $candidate;
+                }
+            }
+
+            if ($bestUser) {
+                $user = $bestUser;
+            }
+        }
+
         if (!$user) {
             $this->json([
                 'success' => false,
-                'field' => 'email',
-                'message' => 'Aucun compte trouve avec cette adresse e-mail.',
+                'field' => 'general',
+                'message' => 'Visage non reconnu. Connexion refusee.',
             ]);
         }
 
@@ -311,16 +356,18 @@ class AuthController extends Controller {
             ]);
         }
 
-        $adminViaEntrepreneur = $user['role'] === 'admin'
-            && $role === 'entrepreneur'
-            && strcasecmp($user['email'], 'admin@craftlink.tn') === 0;
+        if ($email !== '' && $role !== '' && in_array($role, ROLES, true)) {
+            $adminViaFrontRole = $user['role'] === 'admin'
+                && in_array($role, ['entrepreneur', 'artisan', 'mentor', 'investisseur'], true)
+                && strcasecmp($user['email'], 'admin@craftlink.tn') === 0;
 
-        if ($user['role'] !== $role && !$adminViaEntrepreneur) {
-            $this->json([
-                'success' => false,
-                'field' => 'role',
-                'message' => 'Role incorrect. Ce compte est enregistre en tant que ' . ucfirst($user['role']) . '.',
-            ]);
+            if ($user['role'] !== $role && !$adminViaFrontRole) {
+                $this->json([
+                    'success' => false,
+                    'field' => 'role',
+                    'message' => 'Role incorrect. Ce compte est enregistre en tant que ' . ucfirst($user['role']) . '.',
+                ]);
+            }
         }
 
         if ($user['etat_compte'] !== 'actif') {
@@ -348,7 +395,7 @@ class AuthController extends Controller {
             ]);
         }
 
-        if (!$this->faceRecognition->isMatch($storedFaceDescriptor, $faceDescriptor, FACE_MATCH_THRESHOLD)) {
+        if ($email !== '' && !$this->faceRecognition->isMatch($storedFaceDescriptor, $faceDescriptor, FACE_MATCH_THRESHOLD)) {
             $this->json([
                 'success' => false,
                 'field' => 'general',

@@ -14,11 +14,11 @@ VALUES (
   'CraftLink',
   'admin@craftlink.tn',
   '$2y$10$dG1oNk/B6807L5lBLgd9IO1ZTL4gkNTz0TuOqcUCqy0daTzlPhDfK', -- mot de passe: "Admin@2026" (CHANGER EN PROD!)
-  'entrepreneur',
+  'admin',
   CURDATE(),
   'actif'
 )
-ON DUPLICATE KEY UPDATE role = 'entrepreneur', etat_compte = 'actif';
+ON DUPLICATE KEY UPDATE role = 'admin', etat_compte = 'actif';
 
 -- Pour créer un vrai hash, exécutez ce PHP une fois :
 -- echo password_hash('VotreMotDePasse', PASSWORD_DEFAULT);

@@ -169,6 +169,7 @@ input.error { border-color: #c0392b !important; }
 .checkbox-label input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--vert); padding: 0; border: none; }
 .forgot-link { font-size: .8rem; color: var(--marron); text-decoration: none; font-weight: 600; transition: color .2s; }
 .forgot-link:hover { color: var(--vert); }
+.recaptcha-wrap { margin: -.35rem 0 1rem; display: flex; justify-content: center; animation: fadeUp .7s .42s ease both; }
 
 .btn-login {
   width: 100%; padding: .85rem;
