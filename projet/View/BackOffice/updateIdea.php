@@ -47,6 +47,31 @@ if (isset($_POST['description'])) {
     $description = trim($_POST['description']);
 }
 
+$skillsNames = [];
+if (isset($_POST['skills_name']) && is_array($_POST['skills_name'])) {
+    $skillsNames = $_POST['skills_name'];
+}
+
+$skillsLevels = [];
+if (isset($_POST['skills_level']) && is_array($_POST['skills_level'])) {
+    $skillsLevels = $_POST['skills_level'];
+}
+
+$materialsNames = [];
+if (isset($_POST['materials_name']) && is_array($_POST['materials_name'])) {
+    $materialsNames = $_POST['materials_name'];
+}
+
+$materialsQty = [];
+if (isset($_POST['materials_qty']) && is_array($_POST['materials_qty'])) {
+    $materialsQty = $_POST['materials_qty'];
+}
+
+$materialsPrice = [];
+if (isset($_POST['materials_price']) && is_array($_POST['materials_price'])) {
+    $materialsPrice = $_POST['materials_price'];
+}
+
 if ($id <= 0 || $title === '') {
     header('Location: index.php');
     exit;
@@ -54,7 +79,7 @@ if ($id <= 0 || $title === '') {
 
 $idea = new Idea($id, $title, $budget, $status, $category, $description, null);
 $ideaC = new IdeaController();
-$ideaC->updateIdeaAny($idea, $id);
+$ideaC->updateIdeaAnyWithDetails($idea, $id, $skillsNames, $skillsLevels, $materialsNames, $materialsQty, $materialsPrice);
 
 header('Location: index.php');
 exit;

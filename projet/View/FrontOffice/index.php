@@ -114,7 +114,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   exit;
 }
 
-$projects = $ideaC->listProjects();
+$searchQuery = '';
+if (isset($_GET['q'])) {
+  $searchQuery = trim((string)$_GET['q']);
+}
+
+$filterCategory = '';
+if (isset($_GET['filter_category'])) {
+  $filterCategory = trim((string)$_GET['filter_category']);
+}
+
+$filterSkill = '';
+if (isset($_GET['filter_skill'])) {
+  $filterSkill = trim((string)$_GET['filter_skill']);
+}
+
+$projects = $ideaC->searchProjects($searchQuery, $filterCategory, $filterSkill);
+$filterCategories = $ideaC->listProjectCategories();
+$filterSkills = $ideaC->listSkillsNames();
 
 $editId = 0;
 if (isset($_GET['edit'])) {
@@ -401,6 +418,23 @@ if ($hasProjects) {
           <h2>Idees recentes</h2>
           <p class="explore-subtitle">Vos publications apparaissent ici sous forme de cartes.</p>
         </div>
+        <form class="explore-tools" id="projectFilterForm" method="get" action="index.php#ideesProjet" aria-label="Recherche et filtres">
+          <input type="search" id="projectSearchInput" name="q" value="<?php echo e($searchQuery); ?>" placeholder="Rechercher une idee..." aria-label="Rechercher une idee">
+          <select id="projectCategoryFilter" name="filter_category" aria-label="Filtrer par categorie">
+            <option value="">Toutes les categories</option>
+            <?php foreach ($filterCategories as $categoryFilterOption): ?>
+              <option value="<?php echo e($categoryFilterOption); ?>" <?php if ($filterCategory === $categoryFilterOption) { echo 'selected'; } ?>><?php echo e($categoryFilterOption); ?></option>
+            <?php endforeach; ?>
+          </select>
+          <select id="projectSkillFilter" name="filter_skill" aria-label="Filtrer par competence">
+            <option value="">Toutes les competences</option>
+            <?php foreach ($filterSkills as $skillFilterOption): ?>
+              <option value="<?php echo e($skillFilterOption); ?>" <?php if ($filterSkill === $skillFilterOption) { echo 'selected'; } ?>><?php echo e($skillFilterOption); ?></option>
+            <?php endforeach; ?>
+          </select>
+          <button class="mini-btn" id="projectFilterBtn" type="submit">Filtrer</button>
+          <a class="mini-btn" href="index.php#ideesProjet">Reinitialiser</a>
+        </form>
       </div>
       <div class="content-grid">
         <div class="cards" id="projectCards">
@@ -419,12 +453,21 @@ if ($hasProjects) {
               }
 
               $skillText = 'Aucune competence';
+              $skillsFilterValues = [];
               if (count($skillsRows) > 0) {
                   $skillText = $skillsRows[0]['nom'];
                   if (!empty($skillsRows[0]['skill_level'])) {
                       $skillText .= ' (' . $skillsRows[0]['skill_level'] . ')';
                   }
+
+                  foreach ($skillsRows as $skillRow) {
+                    if (!empty($skillRow['nom'])) {
+                      $skillsFilterValues[] = trim((string)$skillRow['nom']);
+                    }
+                  }
               }
+
+              $skillsFilterValue = implode('|', $skillsFilterValues);
 
               $materialText = 'Aucun materiau';
               $qtyText = 'Quantite';
@@ -465,7 +508,7 @@ if ($hasProjects) {
                 $isOwner = true;
               }
             ?>
-            <article class="project-card card-surface">
+            <article class="project-card card-surface" data-title="<?php echo e($titleDisplay); ?>" data-desc="<?php echo e($descDisplay); ?>" data-category="<?php echo e($categoryDisplay); ?>" data-skills="<?php echo e($skillsFilterValue); ?>">
               <div class="card-top">
                 <p class="card-status <?php echo e(status_class($statusDisplay)); ?>"><?php echo e($statusDisplay); ?></p>
                 <p class="card-budget"><?php echo e($budgetDisplay); ?></p>

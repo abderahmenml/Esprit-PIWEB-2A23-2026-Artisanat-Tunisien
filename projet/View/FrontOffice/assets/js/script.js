@@ -10,6 +10,9 @@ const closeFormBtn = document.getElementById('closeFormBtn');
 const quickCreateSection = document.getElementById('quickCreateSection');
 const cards = document.getElementById('projectCards');
 const emptyState = document.getElementById('emptyState');
+const projectFilterForm = document.getElementById('projectFilterForm');
+const projectFilterBtn = document.getElementById('projectFilterBtn');
+const ideesProjetSection = document.getElementById('ideesProjet');
 const titleInput = document.getElementById('titleInput');
 const categorySelect = document.getElementById('categorySelect');
 const statusSelect = document.getElementById('statusSelect');
@@ -574,6 +577,15 @@ if (analyseAiBtn) {
   });
 }
 
+if (projectFilterForm) {
+  projectFilterForm.addEventListener('submit', function () {
+    if (projectFilterBtn instanceof HTMLButtonElement) {
+      projectFilterBtn.disabled = true;
+      projectFilterBtn.textContent = 'Filtrage...';
+    }
+  });
+}
+
 if (form) {
   form.addEventListener('submit', function (event) {
     const titleValue = titleInput ? titleInput.value.trim() : '';
@@ -602,3 +614,11 @@ if (form) {
 }
 
 toggleEmptyState();
+
+if (ideesProjetSection) {
+  const params = new URLSearchParams(window.location.search);
+  const hasFilters = params.has('q') || params.has('filter_category') || params.has('filter_skill');
+  if (hasFilters) {
+    ideesProjetSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
