@@ -70,4 +70,27 @@ $selectedOfferId = (int)($_GET['id_offer'] ?? 0);
 $offers = admin_fetch_offers($pdo, $search, $verificationFilter, $statusFilter, $sort, 200);
 $selectedOffer = $selectedOfferId > 0 ? admin_fetch_offer_by_id($pdo, $selectedOfferId) : null;
 
+$offerStats = [
+    'total' => count($offers),
+    'verified' => 0,
+    'not_verified' => 0,
+    'draft' => 0,
+    'published' => 0,
+    'paused' => 0,
+    'closed' => 0,
+];
+
+foreach ($offers as $offer) {
+    $verification = (string)($offer['verification_status'] ?? 'not_verified');
+    if (isset($offerStats[$verification])) {
+        $offerStats[$verification]++;
+    }
+    $status = (string)($offer['status'] ?? 'draft');
+    if (isset($offerStats[$status])) {
+        $offerStats[$status]++;
+    }
+}
+
+$offerTrend = admin_build_daily_trend($offers, 'created_at', 7);
+
 require dirname(__DIR__, 2) . '/views/backend/admin/offers.php';

@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>Verification des offres | Admin</title>
+    <title>Gestion des profils | Admin</title>
     <link href="<?php echo admin_h(admin_asset_url('vendor/fontawesome-free/css/all.min.css')); ?>" rel="stylesheet" type="text/css">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <link href="<?php echo admin_h(admin_asset_url('css/sb-admin-2.min.css')); ?>" rel="stylesheet">
@@ -140,42 +140,31 @@
             text-transform: uppercase;
             font-weight: 700;
         }
-        .admin-table td { border-color: rgba(148, 163, 184, 0.15); vertical-align: top; color: #e2e8f0; }
+        .admin-table td { border-color: rgba(148, 163, 184, 0.15); vertical-align: middle; color: #e2e8f0; }
         .table { color: #e2e8f0; }
         .table-hover tbody tr:hover { background: rgba(59, 130, 246, 0.08); }
         .text-muted { color: #94a3b8 !important; }
-        .offer-thumb {
-            width: 64px;
-            height: 64px;
-            border-radius: 12px;
-            object-fit: cover;
-            border: 1px solid rgba(148, 163, 184, 0.3);
+        .data-note { color: #94a3b8; font-size: 0.82rem; }
+        .pill-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.65rem;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #0f172a;
+            background: linear-gradient(135deg, #38bdf8, #22d3ee);
+            margin-right: 0.4rem;
+            margin-bottom: 0.4rem;
         }
-        .note-input { min-width: 150px; }
-        .details-card {
-            border-left: 4px solid var(--glow);
-            background: var(--panel-strong);
-        }
-        .details-line {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            border-bottom: 1px dashed rgba(148, 163, 184, 0.3);
-            padding: 0.45rem 0;
-            font-size: 0.86rem;
-        }
-        .details-label { color: #94a3b8; margin-right: 0.6rem; }
-        .details-value { color: #e2e8f0; font-weight: 600; text-align: right; word-break: break-word; }
-        .details-description {
-            margin-top: 0.9rem;
-            background: rgba(15, 23, 42, 0.7);
-            border: 1px solid rgba(148, 163, 184, 0.2);
-            border-radius: 12px;
-            padding: 0.9rem;
-            color: #dbeafe;
-            font-size: 0.88rem;
-            line-height: 1.5;
-        }
+        .progress-track { width: 100%; height: 8px; background: rgba(148, 163, 184, 0.2); border-radius: 999px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #22d3ee, #facc15); }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 0.35rem; }
+        .status-dot.ok { background: #22d3ee; }
+        .status-dot.warn { background: #f97316; }
+        .status-dot.bad { background: #ef4444; }
+        .action-btns .btn { margin-right: 0.35rem; margin-bottom: 0.35rem; }
+        .select-inline { min-width: 140px; }
         .analytics-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -236,8 +225,8 @@
         }
         .mini-bars {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 0.5rem;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.6rem;
             align-items: end;
             height: 90px;
         }
@@ -344,16 +333,16 @@
         .table { color: var(--dark-brown); }
         .table-hover tbody tr:hover { background: rgba(139, 90, 58, 0.06); }
         .text-muted { color: #7b6a58 !important; }
-        .offer-thumb { border: 1px solid rgba(197, 154, 108, 0.35); }
-        .details-card { border-left: 4px solid var(--primary-green); background: #fffdf7; }
-        .details-line { border-bottom: 1px dashed rgba(139, 90, 58, 0.2); }
-        .details-label { color: #7b6a58; }
-        .details-value { color: var(--dark-brown); }
-        .details-description {
-            background: #fff8ec;
-            border: 1px solid rgba(197, 154, 108, 0.2);
-            color: #564636;
+        .data-note { color: #7b6a58; }
+        .pill-chip {
+            background: linear-gradient(135deg, var(--primary-green), var(--sand));
+            color: var(--cream);
         }
+        .progress-track { background: rgba(139, 90, 58, 0.15); }
+        .progress-fill { background: linear-gradient(90deg, var(--primary-green), var(--primary-brown)); }
+        .status-dot.ok { background: var(--primary-green); }
+        .status-dot.warn { background: #d58b2a; }
+        .status-dot.bad { background: #c5544a; }
         .chart-card { background: #fffdf9; }
         .chart-card::after { background: radial-gradient(circle, rgba(197, 154, 108, 0.35), transparent 70%); }
         .chart-title { color: var(--dark-brown); }
@@ -379,8 +368,8 @@
         </a>
         <hr class="sidebar-divider my-0">
         <li class="nav-item"><a class="nav-link" href="<?php echo admin_h(admin_controller_url('dashboard.php')); ?>"><i class="fas fa-fw fa-tachometer-alt"></i><span>Dashboard</span></a></li>
-        <li class="nav-item"><a class="nav-link" href="<?php echo admin_h(admin_controller_url('profiles.php')); ?>"><i class="fas fa-fw fa-id-badge"></i><span>Profile manager</span></a></li>
-        <li class="nav-item active"><a class="nav-link" href="<?php echo admin_h(admin_controller_url('offers.php')); ?>"><i class="fas fa-fw fa-briefcase"></i><span>Offres a verifier</span></a></li>
+        <li class="nav-item active"><a class="nav-link" href="<?php echo admin_h(admin_controller_url('profiles.php')); ?>"><i class="fas fa-fw fa-id-badge"></i><span>Profile manager</span></a></li>
+        <li class="nav-item"><a class="nav-link" href="<?php echo admin_h(admin_controller_url('offers.php')); ?>"><i class="fas fa-fw fa-briefcase"></i><span>Offres a verifier</span></a></li>
         <li class="nav-item"><a class="nav-link" href="<?php echo admin_h(app_base_url() . 'controllers/home.php'); ?>"><i class="fas fa-fw fa-home"></i><span>Retour application</span></a></li>
     </ul>
 
@@ -405,8 +394,8 @@
             <div class="container-fluid">
                 <div class="page-header d-sm-flex align-items-start justify-content-between">
                     <div>
-                        <h1>Gestion et verification des offres</h1>
-                        <p class="page-subtitle">Controle qualite des offres publiees et suivi des decisions de moderation.</p>
+                        <h1>Profile manager</h1>
+                        <p class="page-subtitle">Recherche, suivi de completion et edition rapide des profils.</p>
                     </div>
                     <div class="d-flex flex-wrap gap-2 mt-2 mt-sm-0">
                         <a href="<?php echo admin_h(app_base_url() . 'controllers/session_status.php?action=logout'); ?>" class="btn btn-outline-info btn-sm">
@@ -422,22 +411,15 @@
                     </div>
                 <?php endif; ?>
 
-                <?php
-                    $offerTotal = max(1, (int)$offerStats['total']);
-                    $verifiedPct = (int)round(((int)$offerStats['verified'] / $offerTotal) * 100);
-                    $publishedPct = (int)round(((int)$offerStats['published'] / $offerTotal) * 100);
-                    $trendMax = (int)($offerTrend['max'] ?? 1);
-                ?>
-
                 <div class="row">
                     <div class="col-xl-3 col-md-6 mb-4">
                         <div class="card metric-card">
                             <div class="card-body d-flex justify-content-between align-items-start">
                                 <div>
-                                    <div class="metric-label">Total offres</div>
-                                    <div class="metric-value"><?php echo (int)$offerStats['total']; ?></div>
+                                    <div class="metric-label">Total profils</div>
+                                    <div class="metric-value"><?php echo (int)$stats['total']; ?></div>
                                 </div>
-                                <span class="metric-icon"><i class="fas fa-briefcase"></i></span>
+                                <span class="metric-icon"><i class="fas fa-users"></i></span>
                             </div>
                         </div>
                     </div>
@@ -445,10 +427,10 @@
                         <div class="card metric-card">
                             <div class="card-body d-flex justify-content-between align-items-start">
                                 <div>
-                                    <div class="metric-label">Verifiees</div>
-                                    <div class="metric-value"><?php echo (int)$offerStats['verified']; ?></div>
+                                    <div class="metric-label">Actifs</div>
+                                    <div class="metric-value"><?php echo (int)$stats['actif']; ?></div>
                                 </div>
-                                <span class="metric-icon"><i class="fas fa-check-circle"></i></span>
+                                <span class="metric-icon"><i class="fas fa-user-check"></i></span>
                             </div>
                         </div>
                     </div>
@@ -456,10 +438,10 @@
                         <div class="card metric-card">
                             <div class="card-body d-flex justify-content-between align-items-start">
                                 <div>
-                                    <div class="metric-label">Non verifiees</div>
-                                    <div class="metric-value"><?php echo (int)$offerStats['not_verified']; ?></div>
+                                    <div class="metric-label">Incomplets</div>
+                                    <div class="metric-value"><?php echo (int)$stats['incomplet']; ?></div>
                                 </div>
-                                <span class="metric-icon"><i class="fas fa-hourglass-half"></i></span>
+                                <span class="metric-icon"><i class="fas fa-user-times"></i></span>
                             </div>
                         </div>
                     </div>
@@ -467,24 +449,31 @@
                         <div class="card metric-card">
                             <div class="card-body d-flex justify-content-between align-items-start">
                                 <div>
-                                    <div class="metric-label">Publiees</div>
-                                    <div class="metric-value"><?php echo (int)$offerStats['published']; ?></div>
+                                    <div class="metric-label">Suspendus</div>
+                                    <div class="metric-value"><?php echo (int)$stats['suspendu']; ?></div>
                                 </div>
-                                <span class="metric-icon"><i class="fas fa-bullhorn"></i></span>
+                                <span class="metric-icon"><i class="fas fa-user-slash"></i></span>
                             </div>
                         </div>
                     </div>
                 </div>
 
+                <?php
+                    $profileTotal = max(1, (int)$stats['total']);
+                    $activePct = (int)round(((int)$stats['actif'] / $profileTotal) * 100);
+                    $incompletePct = (int)round(((int)$stats['incomplet'] / $profileTotal) * 100);
+                    $trendMax = (int)($profileTrend['max'] ?? 1);
+                ?>
+
                 <div class="analytics-grid">
                     <div class="card panel-card chart-card">
                         <div class="card-body">
                             <div class="chart-header">
-                                <div class="chart-title">Verification pulse</div>
-                                <span class="chart-badge">Offres</span>
+                                <div class="chart-title">Completion momentum</div>
+                                <span class="chart-badge">Profils</span>
                             </div>
                             <div class="d-flex align-items-center flex-wrap">
-                                <div class="ring-chart" data-value="<?php echo $verifiedPct; ?>">
+                                <div class="ring-chart" data-value="<?php echo $activePct; ?>">
                                     <svg width="120" height="120" viewBox="0 0 120 120">
                                         <defs>
                                             <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -495,12 +484,12 @@
                                         <circle class="ring-bg" cx="60" cy="60" r="52" stroke-width="12" fill="none" />
                                         <circle class="ring-progress" cx="60" cy="60" r="52" stroke-width="12" fill="none" />
                                     </svg>
-                                    <div class="ring-value"><?php echo $verifiedPct; ?>%</div>
+                                    <div class="ring-value"><?php echo $activePct; ?>%</div>
                                 </div>
                                 <div>
-                                    <div class="chart-meta">Verifiees: <?php echo (int)$offerStats['verified']; ?> / <?php echo (int)$offerStats['total']; ?></div>
-                                    <div class="chart-meta">Publiees: <?php echo (int)$offerStats['published']; ?> (<?php echo $publishedPct; ?>%)</div>
-                                    <div class="chart-meta">Brouillons: <?php echo (int)$offerStats['draft']; ?></div>
+                                    <div class="chart-meta">Profils actifs: <?php echo (int)$stats['actif']; ?></div>
+                                    <div class="chart-meta">Incomplets: <?php echo (int)$stats['incomplet']; ?> (<?php echo $incompletePct; ?>%)</div>
+                                    <div class="chart-meta">Suspendus: <?php echo (int)$stats['suspendu']; ?></div>
                                 </div>
                             </div>
                         </div>
@@ -508,17 +497,17 @@
                     <div class="card panel-card chart-card">
                         <div class="card-body">
                             <div class="chart-header">
-                                <div class="chart-title">Offres ajoutees (7 jours)</div>
+                                <div class="chart-title">Nouveaux profils (7 jours)</div>
                                 <span class="chart-badge">Tendance</span>
                             </div>
                             <div class="spark-bars">
-                                <?php foreach (($offerTrend['values'] ?? []) as $value): ?>
+                                <?php foreach (($profileTrend['values'] ?? []) as $value): ?>
                                     <?php $height = (int)round(((int)$value / $trendMax) * 100); ?>
                                     <div class="spark-bar" style="--value: <?php echo $height; ?>%;"></div>
                                 <?php endforeach; ?>
                             </div>
                             <div class="spark-labels">
-                                <?php foreach (($offerTrend['labels'] ?? []) as $label): ?>
+                                <?php foreach (($profileTrend['labels'] ?? []) as $label): ?>
                                     <span><?php echo admin_h((string)$label); ?></span>
                                 <?php endforeach; ?>
                             </div>
@@ -527,141 +516,166 @@
                     <div class="card panel-card chart-card">
                         <div class="card-body">
                             <div class="chart-header">
-                                <div class="chart-title">Cycle des offres</div>
-                                <span class="chart-badge">Statuts</span>
+                                <div class="chart-title">Onboarding</div>
+                                <span class="chart-badge">Artisans</span>
                             </div>
                             <?php
-                                $offerTotalCount = max(1, (int)$offerStats['total']);
-                                $draftPct = (int)round(((int)$offerStats['draft'] / $offerTotalCount) * 100);
-                                $publishedPct = (int)round(((int)$offerStats['published'] / $offerTotalCount) * 100);
-                                $pausedPct = (int)round(((int)$offerStats['paused'] / $offerTotalCount) * 100);
-                                $closedPct = (int)round(((int)$offerStats['closed'] / $offerTotalCount) * 100);
+                                $onboardingTotal = max(1, (int)($onboardingStats['done'] + $onboardingStats['pending']));
+                                $donePct = (int)round(((int)$onboardingStats['done'] / $onboardingTotal) * 100);
+                                $pendingPct = (int)round(((int)$onboardingStats['pending'] / $onboardingTotal) * 100);
                             ?>
                             <div class="mini-bars">
-                                <div class="mini-bar" style="--value: <?php echo $draftPct; ?>;"></div>
-                                <div class="mini-bar" style="--value: <?php echo $publishedPct; ?>;"></div>
-                                <div class="mini-bar" style="--value: <?php echo $pausedPct; ?>;"></div>
-                                <div class="mini-bar" style="--value: <?php echo $closedPct; ?>;"></div>
+                                <div class="mini-bar" style="--value: <?php echo $donePct; ?>;"></div>
+                                <div class="mini-bar" style="--value: <?php echo $pendingPct; ?>;"></div>
                             </div>
-                            <div class="chart-meta mt-3">Brouillon / Publiee / Pause / Cloturee</div>
+                            <div class="chart-meta mt-3">Complete / En attente</div>
                         </div>
                     </div>
                 </div>
 
-                <div class="row">
-                    <div class="col-lg-8 mb-4">
-                        <div class="card panel-card">
-                            <div class="card-header">
-                                <h6 class="panel-title"><i class="fas fa-list"></i>Liste complete des offres</h6>
+                <div class="card panel-card">
+                    <div class="card-header">
+                        <h6 class="panel-title"><i class="fas fa-filter"></i>Filtres & tri</h6>
+                    </div>
+                    <div class="card-body">
+                        <form method="get" class="filter-toolbar">
+                            <div class="row">
+                                <div class="col-lg-4 mb-2">
+                                    <input type="text" class="form-control" name="q" placeholder="Rechercher par nom, prenom, email ou specialite" value="<?php echo admin_h($search); ?>">
+                                </div>
+                                <div class="col-lg-3 mb-2">
+                                    <select class="form-control" name="statut">
+                                        <option value="">Tous les statuts</option>
+                                        <option value="actif" <?php echo $filter === 'actif' ? 'selected' : ''; ?>>Actif</option>
+                                        <option value="incomplet" <?php echo $filter === 'incomplet' ? 'selected' : ''; ?>>Incomplet</option>
+                                        <option value="suspendu" <?php echo $filter === 'suspendu' ? 'selected' : ''; ?>>Suspendu</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 mb-2">
+                                    <select class="form-control" name="sort">
+                                        <option value="latest" <?php echo $sort === 'latest' ? 'selected' : ''; ?>>Plus recents</option>
+                                        <option value="oldest" <?php echo $sort === 'oldest' ? 'selected' : ''; ?>>Plus anciens</option>
+                                        <option value="completion_desc" <?php echo $sort === 'completion_desc' ? 'selected' : ''; ?>>Completion (desc)</option>
+                                        <option value="completion_asc" <?php echo $sort === 'completion_asc' ? 'selected' : ''; ?>>Completion (asc)</option>
+                                        <option value="name_asc" <?php echo $sort === 'name_asc' ? 'selected' : ''; ?>>Nom (A-Z)</option>
+                                        <option value="name_desc" <?php echo $sort === 'name_desc' ? 'selected' : ''; ?>>Nom (Z-A)</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-2 mb-2">
+                                    <button class="btn btn-success btn-block" type="submit"><i class="fas fa-search mr-1"></i>Appliquer</button>
+                                </div>
                             </div>
-                            <div class="card-body">
-                                <form method="get" class="filter-toolbar">
-                                    <div class="row">
-                                        <div class="col-md-5 mb-2"><input type="text" class="form-control" name="q" value="<?php echo admin_h($search); ?>" placeholder="Recherche: titre, recruteur, email, projet"></div>
-                                        <div class="col-md-3 mb-2"><select class="form-control" name="verification"><option value="">Tous les statuts</option><option value="verified" <?php echo $verificationFilter === 'verified' ? 'selected' : ''; ?>>Verifiees</option><option value="not_verified" <?php echo $verificationFilter === 'not_verified' ? 'selected' : ''; ?>>Non verifiees</option></select></div>
-                                        <div class="col-md-2 mb-2"><select class="form-control" name="status"><option value="">Tous cycles</option><option value="draft" <?php echo $statusFilter === 'draft' ? 'selected' : ''; ?>>Brouillon</option><option value="published" <?php echo $statusFilter === 'published' ? 'selected' : ''; ?>>Publiee</option><option value="paused" <?php echo $statusFilter === 'paused' ? 'selected' : ''; ?>>En pause</option><option value="closed" <?php echo $statusFilter === 'closed' ? 'selected' : ''; ?>>Cloturee</option></select></div>
-                                        <div class="col-md-1 mb-2"><select class="form-control" name="sort"><option value="latest" <?php echo $sort === 'latest' ? 'selected' : ''; ?>>Rec</option><option value="oldest" <?php echo $sort === 'oldest' ? 'selected' : ''; ?>>Anc</option><option value="budget_high" <?php echo $sort === 'budget_high' ? 'selected' : ''; ?>>B+</option><option value="budget_low" <?php echo $sort === 'budget_low' ? 'selected' : ''; ?>>B-</option></select></div>
-                                        <div class="col-md-1 mb-2"><button class="btn btn-success btn-block" type="submit"><i class="fas fa-filter"></i></button></div>
-                                    </div>
-                                </form>
+                        </form>
+                    </div>
+                </div>
 
-                                <div class="table-responsive">
-                                    <table class="table table-hover admin-table" width="100%" cellspacing="0">
-                                        <thead><tr><th>#</th><th>Offre</th><th>Auteur</th><th>Cycle</th><th>Verification</th><th>Actions</th></tr></thead>
-                                        <tbody>
-                                        <?php foreach ($offers as $offer): ?>
-                                            <?php $img = admin_offer_image_url((string)($offer['image_path'] ?? '')); ?>
+                <div class="card panel-card">
+                    <div class="card-header">
+                        <h6 class="panel-title"><i class="fas fa-id-card"></i>Profils</h6>
+                    </div>
+                    <div class="card-body">
+                        <?php if (empty($filteredRows)): ?>
+                            <div class="text-center text-muted py-4">Aucun profil ne correspond aux filtres.</div>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table class="table table-hover admin-table" width="100%" cellspacing="0">
+                                    <thead>
+                                        <tr>
+                                            <th>Membre</th>
+                                            <th>Completion</th>
+                                            <th>Atouts</th>
+                                            <th>Onboarding</th>
+                                            <th>Etat</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($filteredRows as $row): ?>
+                                            <?php
+                                                $completion = (int)($row['completion'] ?? 0);
+                                                $dotClass = $completion >= 70 ? 'ok' : ($completion >= 40 ? 'warn' : 'bad');
+                                                $missing = $row['missing'] ?? [];
+                                                $missingLabel = empty($missing) ? 'Aucun manque' : implode(', ', array_slice($missing, 0, 4));
+                                                $onboardingDone = !empty($row['onboarding_done']);
+                                                $etatLabel = ucfirst($row['statut'] ?? '');
+                                            ?>
                                             <tr>
-                                                <td><?php echo (int)$offer['id_offer']; ?></td>
                                                 <td>
-                                                    <div class="d-flex align-items-start">
-                                                        <?php if ($img !== ''): ?><img src="<?php echo admin_h($img); ?>" class="offer-thumb mr-2" alt="offer"><?php endif; ?>
-                                                        <div>
-                                                            <div class="font-weight-bold"><?php echo admin_h((string)$offer['titre']); ?></div>
-                                                            <small class="text-muted">Budget: <?php echo admin_h((string)$offer['budget']); ?> TND | Duree: <?php echo admin_h((string)$offer['duree']); ?></small>
-                                                        </div>
-                                                    </div>
+                                                    <div class="font-weight-bold"><?php echo admin_h(trim((string)($row['prenom'] ?? '') . ' ' . (string)($row['nom'] ?? ''))); ?></div>
+                                                    <div class="data-note"><?php echo admin_h((string)($row['email'] ?? '')); ?></div>
+                                                    <div class="data-note">Role: <?php echo admin_h((string)($row['role'] ?? '')) ?: 'N/A'; ?></div>
                                                 </td>
-                                                <td><div><?php echo admin_h(trim(((string)$offer['prenom']) . ' ' . ((string)$offer['nom']))); ?></div><small class="text-muted"><?php echo admin_h((string)$offer['email']); ?></small></td>
-                                                <td><span class="badge <?php echo admin_h(admin_offer_status_badge_class((string)($offer['status'] ?? 'draft'))); ?>"><?php echo admin_h(admin_offer_status_label((string)($offer['status'] ?? 'draft'))); ?></span></td>
-                                                <td><span class="badge <?php echo admin_h(admin_verification_badge_class((string)$offer['verification_status'])); ?>"><?php echo (string)$offer['verification_status'] === 'verified' ? 'Verifiee' : 'Non verifiee'; ?></span></td>
+                                                <td style="min-width:170px;">
+                                                    <div class="d-flex align-items-center">
+                                                        <span class="status-dot <?php echo $dotClass; ?>"></span>
+                                                        <strong><?php echo $completion; ?>%</strong>
+                                                    </div>
+                                                    <div class="progress-track mt-1">
+                                                        <div class="progress-fill" style="width: <?php echo $completion; ?>%"></div>
+                                                    </div>
+                                                    <div class="data-note mt-1"><?php echo admin_h($missingLabel); ?></div>
+                                                </td>
                                                 <td>
-                                                    <a href="<?php echo admin_h(admin_controller_url('offers.php?id_offer=' . (int)$offer['id_offer'] . '&q=' . urlencode($search) . '&verification=' . urlencode($verificationFilter) . '&status=' . urlencode($statusFilter) . '&sort=' . urlencode($sort))); ?>" class="btn btn-sm btn-outline-info mb-1"><i class="fas fa-eye mr-1"></i>Details</a>
-                                                    <form method="post" class="d-inline">
-                                                        <input type="hidden" name="csrf" value="<?php echo admin_h($csrf); ?>">
-                                                        <input type="hidden" name="offer_id" value="<?php echo (int)$offer['id_offer']; ?>">
-                                                        <input type="hidden" name="target" value="<?php echo (string)$offer['verification_status'] === 'verified' ? 'not_verified' : 'verified'; ?>">
-                                                        <input type="text" name="moderation_note" class="form-control form-control-sm my-1 note-input" placeholder="Raison moderation / suppression">
-                                                        <button class="btn btn-sm <?php echo (string)$offer['verification_status'] === 'verified' ? 'btn-outline-warning' : 'btn-success'; ?>" type="submit" name="action" value="set_verification"><?php echo (string)$offer['verification_status'] === 'verified' ? 'Annuler' : 'Verifier'; ?></button>
-                                                        <button class="btn btn-sm btn-outline-danger ml-1" type="submit" name="action" value="delete_offer" onclick="return confirm('Supprimer cette offre ? Le recruteur recevra la raison saisie.');">Supprimer</button>
-                                                    </form>
+                                                    <span class="pill-chip">Comp: <?php echo (int)($row['competence_count'] ?? 0); ?></span>
+                                                    <span class="pill-chip">Cert: <?php echo (int)($row['certification_count'] ?? 0); ?></span>
+                                                    <span class="pill-chip">Exp: <?php echo (int)($row['experience_count'] ?? 0); ?></span>
+                                                    <span class="pill-chip">Portf: <?php echo (int)($row['portfolio_count'] ?? 0); ?></span>
+                                                </td>
+                                                <td>
+                                                    <?php if ($onboardingDone): ?>
+                                                        <span class="badge badge-success">OK</span>
+                                                    <?php else: ?>
+                                                        <span class="badge badge-warning">En attente</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <?php if (($row['statut'] ?? '') === 'suspendu'): ?>
+                                                        <span class="badge badge-danger">Suspendu</span>
+                                                    <?php elseif (($row['statut'] ?? '') === 'actif'): ?>
+                                                        <span class="badge badge-success">Actif</span>
+                                                    <?php else: ?>
+                                                        <span class="badge badge-warning">Incomplet</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <div class="action-btns">
+                                                        <a class="btn btn-sm btn-outline-info" href="<?php echo admin_h(app_base_url() . 'controllers/user/profile.php?user_id=' . (int)$row['id_user']); ?>" target="_blank"><i class="fas fa-eye mr-1"></i>Voir</a>
+                                                        <button class="btn btn-sm btn-outline-primary" type="button" data-toggle="collapse" data-target="#edit-<?php echo (int)$row['id_user']; ?>"><i class="fas fa-edit mr-1"></i>Editer</button>
+                                                    </div>
+                                                    <div class="collapse mt-2" id="edit-<?php echo (int)$row['id_user']; ?>">
+                                                        <form method="post" class="border rounded p-2 bg-light">
+                                                            <input type="hidden" name="csrf" value="<?php echo admin_h($csrf); ?>">
+                                                            <input type="hidden" name="action" value="update_user">
+                                                            <input type="hidden" name="user_id" value="<?php echo (int)$row['id_user']; ?>">
+                                                            <div class="form-row">
+                                                                <div class="col-md-6 mb-2">
+                                                                    <label class="data-note">Role</label>
+                                                                    <input class="form-control form-control-sm" name="role" value="<?php echo admin_h((string)($row['role'] ?? '')); ?>" <?php echo empty($row['role']) ? '' : ''; ?>>
+                                                                </div>
+                                                                <div class="col-md-6 mb-2">
+                                                                    <label class="data-note">Etat compte</label>
+                                                                    <select class="form-control form-control-sm select-inline" name="etat_compte">
+                                                                        <?php $etat = strtolower((string)($row['etat_compte'] ?? 'actif')); ?>
+                                                                        <option value="actif" <?php echo $etat === 'actif' || $etat === 'active' ? 'selected' : ''; ?>>Actif</option>
+                                                                        <option value="suspendu" <?php echo $etat === 'suspendu' ? 'selected' : ''; ?>>Suspendu</option>
+                                                                        <option value="bloque" <?php echo $etat === 'bloque' ? 'selected' : ''; ?>>Bloque</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            <button class="btn btn-sm btn-success" type="submit">Enregistrer</button>
+                                                        </form>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
+                                    </tbody>
+                                </table>
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="col-lg-4 mb-4">
-                        <div class="card panel-card details-card">
-                            <div class="card-header">
-                                <h6 class="panel-title"><i class="fas fa-search"></i>Details complets de l'offre</h6>
-                            </div>
-                            <div class="card-body">
-                                <?php if (!$selectedOffer): ?>
-                                    <p class="text-muted mb-0">Selectionnez une offre depuis la liste pour afficher ses details.</p>
-                                <?php else: ?>
-                                    <?php $selectedImg = admin_offer_image_url((string)($selectedOffer['image_path'] ?? '')); ?>
-                                    <?php if ($selectedImg !== ''): ?><img src="<?php echo admin_h($selectedImg); ?>" alt="offer image" class="img-fluid rounded mb-3"><?php endif; ?>
-                                    <h5 class="font-weight-bold mb-3"><?php echo admin_h((string)$selectedOffer['titre']); ?></h5>
-
-                                    <div class="details-line"><span class="details-label">Projet</span><span class="details-value"><?php echo admin_h((string)($selectedOffer['projet_titre'] ?? 'N/A')); ?></span></div>
-                                    <div class="details-line"><span class="details-label">Recruteur</span><span class="details-value"><?php echo admin_h(trim(((string)$selectedOffer['prenom']) . ' ' . ((string)$selectedOffer['nom']))); ?></span></div>
-                                    <div class="details-line"><span class="details-label">Email</span><span class="details-value"><?php echo admin_h((string)($selectedOffer['email'] ?? '')); ?></span></div>
-                                    <div class="details-line"><span class="details-label">Role</span><span class="details-value"><?php echo admin_h((string)($selectedOffer['role'] ?? '')); ?></span></div>
-                                    <div class="details-line"><span class="details-label">Budget</span><span class="details-value"><?php echo admin_h((string)($selectedOffer['budget'] ?? '0')); ?> TND</span></div>
-                                    <div class="details-line"><span class="details-label">Duree</span><span class="details-value"><?php echo admin_h((string)($selectedOffer['duree'] ?? '')); ?></span></div>
-                                    <div class="details-line"><span class="details-label">Localisation</span><span class="details-value"><?php echo admin_h((string)($selectedOffer['location'] ?? 'N/A')); ?></span></div>
-                                    <div class="details-line"><span class="details-label">Contact</span><span class="details-value"><?php echo admin_h((string)($selectedOffer['contact_email'] ?? 'N/A')); ?></span></div>
-                                    <div class="details-line"><span class="details-label">Publie le</span><span class="details-value"><?php echo admin_h((string)($selectedOffer['created_at'] ?? '')); ?></span></div>
-                                    <div class="details-line"><span class="details-label">Cycle</span><span class="details-value"><span class="badge <?php echo admin_h(admin_offer_status_badge_class((string)($selectedOffer['status'] ?? 'draft'))); ?>"><?php echo admin_h(admin_offer_status_label((string)($selectedOffer['status'] ?? 'draft'))); ?></span></span></div>
-                                    <div class="details-line"><span class="details-label">Verification</span><span class="details-value"><span class="badge <?php echo admin_h(admin_verification_badge_class((string)$selectedOffer['verification_status'])); ?>"><?php echo (string)$selectedOffer['verification_status'] === 'verified' ? 'Verifiee' : 'Non verifiee'; ?></span></span></div>
-
-                                    <?php if (!empty($selectedOffer['verified_at'])): ?>
-                                        <div class="details-line"><span class="details-label">Verifiee le</span><span class="details-value"><?php echo admin_h((string)$selectedOffer['verified_at']); ?></span></div>
-                                        <div class="details-line"><span class="details-label">Par</span><span class="details-value"><?php echo admin_h(trim(((string)$selectedOffer['verifier_prenom']) . ' ' . ((string)$selectedOffer['verifier_nom']))); ?></span></div>
-                                    <?php endif; ?>
-                                    <?php if (!empty($selectedOffer['moderation_note'])): ?>
-                                        <div class="details-line"><span class="details-label">Motif moderation</span><span class="details-value"><?php echo nl2br(admin_h((string)$selectedOffer['moderation_note'])); ?></span></div>
-                                    <?php endif; ?>
-
-                                    <div class="details-description">
-                                        <strong>Description</strong><br>
-                                        <?php echo nl2br(admin_h((string)($selectedOffer['description'] ?? ''))); ?>
-                                        <?php if (!empty($selectedOffer['skills_needed'])): ?><br><br><strong>Competences:</strong> <?php echo admin_h((string)$selectedOffer['skills_needed']); ?><?php endif; ?>
-                                    </div>
-                                    <hr>
-                                    <form method="post" class="mt-3">
-                                        <input type="hidden" name="csrf" value="<?php echo admin_h($csrf); ?>">
-                                        <input type="hidden" name="action" value="delete_offer">
-                                        <input type="hidden" name="offer_id" value="<?php echo (int)$selectedOffer['id_offer']; ?>">
-                                        <label class="small text-muted font-weight-bold">Raison de suppression (envoyee au recruteur)</label>
-                                        <textarea class="form-control form-control-sm mb-2" name="delete_reason" rows="3" placeholder="Exemple: Offre non conforme aux regles de publication." required></textarea>
-                                        <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Confirmer la suppression definitive de cette offre ?');">
-                                            <i class="fas fa-trash-alt mr-1"></i>Supprimer cette offre
-                                        </button>
-                                    </form>
-                                <?php endif; ?>
-                            </div>
-                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
         </div>
-
         <footer class="sticky-footer bg-white"><div class="container my-auto"><div class="copyright text-center my-auto"><span>&copy; <?php echo date('Y'); ?> Herfa Tunisie - Admin Panel</span></div></div></footer>
     </div>
 </div>

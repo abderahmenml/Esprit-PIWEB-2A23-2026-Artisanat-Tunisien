@@ -27,6 +27,259 @@ function admin_ensure_offer_verification_schema(PDO $pdo): void
     $pdo->exec("UPDATE offre_emploi SET verification_status = 'not_verified' WHERE verification_status IS NULL OR verification_status = ''");
 }
 
+function admin_table_exists(PDO $pdo, string $table): bool
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?'
+    );
+    $stmt->execute([$table]);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
+function admin_column_exists(PDO $pdo, string $table, string $column): bool
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+    );
+    $stmt->execute([$table, $column]);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
+function admin_get_profile_dashboard_stats(PDO $pdo): array
+{
+    $stats = [
+        'total_users' => 0,
+        'completed_profiles' => 0,
+        'completion_rate' => 0,
+        'with_competences' => 0,
+        'with_certifications' => 0,
+        'with_experiences' => 0,
+        'with_portfolio' => 0,
+        'onboarding_pending' => 0,
+        'avg_profile_score' => null,
+    ];
+
+    if (!admin_table_exists($pdo, 'user')) {
+        return $stats;
+    }
+
+    $stats['total_users'] = (int)$pdo->query('SELECT COUNT(*) FROM user')->fetchColumn();
+
+    if (admin_table_exists($pdo, 'competences') && admin_column_exists($pdo, 'competences', 'id_user')) {
+        $stats['with_competences'] = (int)$pdo->query('SELECT COUNT(DISTINCT id_user) FROM competences WHERE id_user > 0')->fetchColumn();
+    }
+
+    if (admin_table_exists($pdo, 'certification') && admin_column_exists($pdo, 'certification', 'id_user')) {
+        $stats['with_certifications'] = (int)$pdo->query('SELECT COUNT(DISTINCT id_user) FROM certification WHERE id_user > 0')->fetchColumn();
+    }
+
+    if (admin_table_exists($pdo, 'experience') && admin_column_exists($pdo, 'experience', 'id_user')) {
+        $stats['with_experiences'] = (int)$pdo->query('SELECT COUNT(DISTINCT id_user) FROM experience WHERE id_user > 0')->fetchColumn();
+    }
+
+    if (admin_table_exists($pdo, 'portfolio_files') && admin_column_exists($pdo, 'portfolio_files', 'id_user')) {
+        $stats['with_portfolio'] = (int)$pdo->query('SELECT COUNT(DISTINCT id_user) FROM portfolio_files WHERE id_user > 0')->fetchColumn();
+    }
+
+    if (admin_table_exists($pdo, 'artisan_onboarding')) {
+        $stats['onboarding_pending'] = (int)$pdo->query(
+            "SELECT COUNT(*) FROM artisan_onboarding WHERE completed_at IS NULL OR completed_at = ''"
+        )->fetchColumn();
+    }
+
+    if (admin_table_exists($pdo, 'profil_metrics') && admin_column_exists($pdo, 'profil_metrics', 'profile_score')) {
+        $avgScore = $pdo->query('SELECT AVG(profile_score) FROM profil_metrics')->fetchColumn();
+        $stats['avg_profile_score'] = $avgScore !== false ? (int)round((float)$avgScore) : null;
+    }
+
+    if (!admin_table_exists($pdo, 'profil_professionnel')) {
+        return $stats;
+    }
+
+    $conditions = [];
+    foreach (['specialite', 'bio', 'ville'] as $column) {
+        if (admin_column_exists($pdo, 'profil_professionnel', $column)) {
+            $conditions[] = "COALESCE(p.$column, '') <> ''";
+        }
+    }
+
+    if (admin_table_exists($pdo, 'competences') && admin_column_exists($pdo, 'competences', 'id_user')) {
+        $conditions[] = '(SELECT COUNT(*) FROM competences c WHERE c.id_user = u.id_user) > 0';
+    }
+
+    if (!empty($conditions)) {
+        $sql = 'SELECT COUNT(*) FROM user u LEFT JOIN profil_professionnel p ON p.id_user = u.id_user WHERE ' . implode(' AND ', $conditions);
+        $stats['completed_profiles'] = (int)$pdo->query($sql)->fetchColumn();
+        if ($stats['total_users'] > 0) {
+            $stats['completion_rate'] = (int)round(($stats['completed_profiles'] / $stats['total_users']) * 100);
+        }
+    }
+
+    return $stats;
+}
+
+function admin_fetch_profile_attention(PDO $pdo, int $limit = 8): array
+{
+    if (!admin_table_exists($pdo, 'user')) {
+        return [];
+    }
+
+    $hasProfile = admin_table_exists($pdo, 'profil_professionnel');
+    $profileFields = [];
+    foreach (['specialite', 'bio', 'ville'] as $column) {
+        if ($hasProfile && admin_column_exists($pdo, 'profil_professionnel', $column)) {
+            $profileFields[] = $column;
+        }
+    }
+
+    $hasCompetences = admin_table_exists($pdo, 'competences') && admin_column_exists($pdo, 'competences', 'id_user');
+    $hasCertifications = admin_table_exists($pdo, 'certification') && admin_column_exists($pdo, 'certification', 'id_user');
+    $hasExperiences = admin_table_exists($pdo, 'experience') && admin_column_exists($pdo, 'experience', 'id_user');
+    $hasPortfolio = admin_table_exists($pdo, 'portfolio_files') && admin_column_exists($pdo, 'portfolio_files', 'id_user');
+    $hasOnboarding = admin_table_exists($pdo, 'artisan_onboarding');
+
+    $select = [
+        'u.id_user',
+        'u.nom',
+        'u.prenom',
+        'u.email',
+        'u.date_creation'
+    ];
+
+    if ($hasProfile) {
+        foreach ($profileFields as $column) {
+            $select[] = 'p.' . $column;
+        }
+    }
+
+    if ($hasCompetences) {
+        $select[] = '(SELECT COUNT(*) FROM competences c WHERE c.id_user = u.id_user) AS competence_count';
+    } else {
+        $select[] = '0 AS competence_count';
+    }
+
+    if ($hasCertifications) {
+        $select[] = '(SELECT COUNT(*) FROM certification c WHERE c.id_user = u.id_user) AS certification_count';
+    } else {
+        $select[] = '0 AS certification_count';
+    }
+
+    if ($hasExperiences) {
+        $select[] = '(SELECT COUNT(*) FROM experience e WHERE e.id_user = u.id_user) AS experience_count';
+    } else {
+        $select[] = '0 AS experience_count';
+    }
+
+    if ($hasPortfolio) {
+        $select[] = '(SELECT COUNT(*) FROM portfolio_files f WHERE f.id_user = u.id_user) AS portfolio_count';
+    } else {
+        $select[] = '0 AS portfolio_count';
+    }
+
+    if ($hasOnboarding) {
+        $select[] = 'ao.completed_at AS onboarding_completed_at';
+    } else {
+        $select[] = 'NULL AS onboarding_completed_at';
+    }
+
+    $sql = 'SELECT ' . implode(', ', $select) . ' FROM user u';
+    if ($hasProfile) {
+        $sql .= ' LEFT JOIN profil_professionnel p ON p.id_user = u.id_user';
+    }
+    if ($hasOnboarding) {
+        $sql .= ' LEFT JOIN artisan_onboarding ao ON ao.user_id = u.id_user';
+    }
+    $sql .= ' ORDER BY u.date_creation DESC LIMIT 60';
+
+    $rows = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    $scorableBase = count($profileFields)
+        + ($hasCompetences ? 1 : 0)
+        + ($hasCertifications ? 1 : 0)
+        + ($hasExperiences ? 1 : 0)
+        + ($hasPortfolio ? 1 : 0)
+        + ($hasOnboarding ? 1 : 0);
+
+    $items = [];
+    foreach ($rows as $row) {
+        $filled = 0;
+        $missing = [];
+
+        foreach ($profileFields as $column) {
+            $value = trim((string)($row[$column] ?? ''));
+            if ($value !== '') {
+                $filled++;
+            } else {
+                $missing[] = ucfirst($column);
+            }
+        }
+
+        if ($hasCompetences) {
+            if ((int)$row['competence_count'] > 0) {
+                $filled++;
+            } else {
+                $missing[] = 'Competences';
+            }
+        }
+
+        if ($hasCertifications) {
+            if ((int)$row['certification_count'] > 0) {
+                $filled++;
+            } else {
+                $missing[] = 'Certifications';
+            }
+        }
+
+        if ($hasExperiences) {
+            if ((int)$row['experience_count'] > 0) {
+                $filled++;
+            } else {
+                $missing[] = 'Experiences';
+            }
+        }
+
+        if ($hasPortfolio) {
+            if ((int)$row['portfolio_count'] > 0) {
+                $filled++;
+            } else {
+                $missing[] = 'Portfolio';
+            }
+        }
+
+        $onboardingCompleted = true;
+        if ($hasOnboarding) {
+            $onboardingCompleted = !empty($row['onboarding_completed_at']);
+            if ($onboardingCompleted) {
+                $filled++;
+            } else {
+                $missing[] = 'Onboarding';
+            }
+        }
+
+        $completion = $scorableBase > 0 ? (int)round(($filled / $scorableBase) * 100) : 0;
+        $needsAttention = $completion < 70 || !$onboardingCompleted;
+
+        if (!$needsAttention) {
+            continue;
+        }
+
+        $row['completion'] = $completion;
+        $row['missing'] = $missing;
+        $row['onboarding_completed'] = $onboardingCompleted;
+        $items[] = $row;
+    }
+
+    usort($items, static function (array $a, array $b): int {
+        if ($a['completion'] === $b['completion']) {
+            return strcmp((string)($b['date_creation'] ?? ''), (string)($a['date_creation'] ?? ''));
+        }
+        return $a['completion'] <=> $b['completion'];
+    });
+
+    $limit = max(1, min(20, $limit));
+    return array_slice($items, 0, $limit);
+}
+
 function admin_get_offer_dashboard_stats(PDO $pdo): array
 {
     return [
@@ -158,6 +411,30 @@ function admin_fetch_offer_by_id(PDO $pdo, int $offerId): ?array
     return $row ?: null;
 }
 
+function admin_get_offer_status_counts(PDO $pdo): array
+{
+    $defaults = [
+        'draft' => 0,
+        'published' => 0,
+        'paused' => 0,
+        'closed' => 0,
+    ];
+
+    try {
+        $rows = $pdo->query("SELECT status, COUNT(*) AS total FROM offre_emploi GROUP BY status")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $row) {
+            $status = (string)($row['status'] ?? '');
+            if (array_key_exists($status, $defaults)) {
+                $defaults[$status] = (int)$row['total'];
+            }
+        }
+    } catch (Throwable $e) {
+        return $defaults;
+    }
+
+    return $defaults;
+}
+
 function admin_update_offer_verification(PDO $pdo, int $offerId, bool $verified, int $adminId, ?string $moderationNote = null): bool
 {
     $status = $verified ? 'verified' : 'not_verified';
@@ -285,4 +562,41 @@ function admin_offer_image_url(?string $path): string
         return app_base_url() . 'controllers/offer_emploi/' . $value;
     }
     return app_base_url() . ltrim($value, '/');
+}
+
+function admin_build_daily_trend(array $rows, string $dateKey, int $days = 7): array
+{
+    $days = max(1, min(30, $days));
+    $today = new DateTimeImmutable('today');
+    $start = $today->sub(new DateInterval('P' . ($days - 1) . 'D'));
+
+    $labels = [];
+    $values = array_fill(0, $days, 0);
+    $index = [];
+
+    for ($i = 0; $i < $days; $i++) {
+        $day = $start->add(new DateInterval('P' . $i . 'D'));
+        $key = $day->format('Y-m-d');
+        $labels[] = $day->format('D');
+        $index[$key] = $i;
+    }
+
+    foreach ($rows as $row) {
+        $value = trim((string)($row[$dateKey] ?? ''));
+        if ($value === '') {
+            continue;
+        }
+        $key = substr($value, 0, 10);
+        if (isset($index[$key])) {
+            $values[$index[$key]]++;
+        }
+    }
+
+    $max = max(1, max($values));
+
+    return [
+        'labels' => $labels,
+        'values' => $values,
+        'max' => $max,
+    ];
 }

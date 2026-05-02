@@ -54,5 +54,10 @@ $stats = $schemaReady
 
 $offers = $schemaReady ? admin_fetch_offers($pdo, $search, $verificationFilter, '', $sort, 12) : [];
 $latestApplications = $schemaReady ? admin_fetch_latest_applications($pdo, 8) : [];
+$applicationsTrendRows = $schemaReady ? admin_fetch_latest_applications($pdo, 60) : [];
+$applicationsTrend = admin_build_daily_trend($applicationsTrendRows, 'date_creation', 7);
+$offerStatusCounts = $schemaReady ? admin_get_offer_status_counts($pdo) : ['draft' => 0, 'published' => 0, 'paused' => 0, 'closed' => 0];
+$profileStats = admin_get_profile_dashboard_stats($pdo);
+$profileAttention = admin_fetch_profile_attention($pdo, 8);
 
 require dirname(__DIR__, 2) . '/views/backend/admin/dashboard.php';
