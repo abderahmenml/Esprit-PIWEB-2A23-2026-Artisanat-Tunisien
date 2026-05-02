@@ -156,6 +156,22 @@ switch ($uriPath) {
         }
         break;
 
+    case '/profil/saveCompetences':
+        if ($method === 'POST') {
+            $profilController->saveCompetences();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
+    case '/profil/recalculateCompletion':
+        if ($method === 'POST') {
+            $profilController->recalculateCompletion();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
     case '/profil/addCertification':
         if ($method === 'POST') {
             $profilController->addCertification();
@@ -236,9 +252,73 @@ switch ($uriPath) {
         }
         break;
 
+    case '/profil/generateCvAi':
+        if ($method === 'POST') {
+            $profilController->generateCvAi();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
+    case '/profil/optimizeCvAi':
+        if ($method === 'POST') {
+            $profilController->optimizeCvAi();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
     case '/admin':
         if ($method === 'GET') {
             $adminController->index();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
+    case '/admin/competences':
+        if ($method === 'GET') {
+            $adminController->competences();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
+    case '/admin/addUser':
+        if ($method === 'POST') {
+            $adminController->addUser();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
+    case '/admin/updateUser':
+        if ($method === 'POST') {
+            $adminController->updateUser();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
+    case '/admin/addCompetence':
+        if ($method === 'POST') {
+            $adminController->addCompetence();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
+    case '/admin/updateCompetence':
+        if ($method === 'POST') {
+            $adminController->updateCompetence();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
+    case '/admin/deleteCompetence':
+        if ($method === 'POST') {
+            $adminController->deleteCompetence();
         } else {
             $methodNotAllowed = true;
         }

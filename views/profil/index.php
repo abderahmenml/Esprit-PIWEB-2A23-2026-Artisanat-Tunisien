@@ -5,6 +5,56 @@
 $baseUrl = app_url();
 $profileCssVersion = (string)(@filemtime(__DIR__ . '/../../public/css/style.css') ?: time());
 $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?: time());
+$cvBuilderJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/cv-builder.js') ?: time());
+$chatbotJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/chatbot-widget.js') ?: time());
+$chatbotProfileId = (int)($user['id_user'] ?? ($_SESSION['user_id'] ?? 0));
+$cvSeedData = [
+    'personal' => [
+        'fullName' => trim((string)(($user['prenom'] ?? '') . ' ' . ($user['nom'] ?? ''))),
+        'title' => (string)($specialite ?? ''),
+        'email' => (string)($email ?? ''),
+        'phone' => (string)($telephone ?? ''),
+        'city' => (string)($ville ?? ''),
+        'summary' => (string)($cvSummary ?? '')
+    ],
+    'skills' => array_map(static function (array $item): array {
+        return [
+            'name' => (string)($item['nom_competence'] ?? ''),
+            'level' => (int)($item['niveau'] ?? 50)
+        ];
+    }, (array)($competences ?? [])),
+    'experiences' => array_map(static function (array $item): array {
+        return [
+            'role' => (string)($item['poste'] ?? ''),
+            'company' => (string)($item['entreprise'] ?? ''),
+            'start' => (string)($item['date_debut'] ?? ''),
+            'end' => (string)($item['date_fin'] ?? ''),
+            'description' => (string)($item['description'] ?? '')
+        ];
+    }, (array)($experiences ?? [])),
+    'education' => array_map(static function (array $item): array {
+        return [
+            'degree' => (string)($item['nom_certification'] ?? 'Certification'),
+            'school' => 'Certification professionnelle',
+            'start' => '',
+            'end' => '',
+            'description' => 'Niveau: ' . (int)($item['niveau'] ?? 0) . '%'
+        ];
+    }, (array)($certifications ?? [])),
+    'scores' => [
+        'ats' => (int)($profileScore ?? 0),
+        'impact' => (int)($popularityScore ?? 0),
+        'readability' => 78
+    ],
+    'tips' => [
+        'Ajoutez des resultats mesurables dans vos experiences.',
+        'Conservez uniquement les competences les plus pertinentes.',
+        'Gardez un resume de 4 a 6 lignes pour maximiser la lisibilite.'
+    ],
+    'language' => 'fr',
+    'template' => 'moderne',
+    'primaryColor' => '#2E6B3E'
+];
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -14,7 +64,22 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
     <title>Profil Professionnel — حرفة Tunisie</title>
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?= htmlspecialchars(app_url('/public/css/style.css?v=' . $profileCssVersion)) ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(app_url('/public/css/cv-studio.css?v=' . time())) ?>">
+    <link rel="stylesheet" href="<?= htmlspecialchars(app_url('/public/css/cv-print.css?v=' . time())) ?>" media="print, screen">
     <script src="<?= htmlspecialchars(app_url('/public/js/index.js?v=' . $profileJsVersion)) ?>" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
+    <script src="<?= htmlspecialchars(app_url('/public/js/cv-builder.js?v=' . $cvBuilderJsVersion)) ?>" defer></script>
+    <script>
+        window.ChatbotConfig = {
+            endpoint: <?= json_encode(app_url('/api/chatbot.php')) ?>,
+            profilId: <?= (int)$chatbotProfileId ?>,
+            provider: 'ollama'
+        };
+    </script>
+    <script src="<?= htmlspecialchars(app_url('/public/js/chatbot-widget.js?v=' . $chatbotJsVersion)) ?>" defer></script>
+    <script type="application/json" id="cv-ai-seed">
+<?= json_encode($cvSeedData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) ?>
+    </script>
 </head>
 <body>
     <!-- HEADER -->
@@ -188,12 +253,20 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
 
                 <div class="card smart-insights-card" id="smart-insights-panel">
                     <div class="section-title">Smart Insights Panel</div>
+                    <form method="post" action="<?= htmlspecialchars(app_url('/profil/recalculateCompletion')) ?>" data-completion-form="true" style="display:flex;justify-content:flex-end;margin:-.2rem 0 .85rem;">
+                        <button type="submit" class="btn-primary" data-completion-submit="true">Calculer ma progression</button>
+                    </form>
                     <div class="smart-insights-grid">
                         <div class="smart-kpi smart-kpi-score">
-                            <div class="smart-kpi-label">Score global du profil</div>
-                            <div class="smart-kpi-value"><?= (int)$profileScore ?>%</div>
+                            <div class="smart-kpi-label">Progression du profil</div>
+                            <div class="smart-kpi-value" data-completion-value="true"><?= (int)$completionScore ?>%</div>
                             <div class="smart-progress">
-                                <div class="smart-progress-fill" style="width: <?= (int)$profileScore ?>%"></div>
+                                <div class="smart-progress-fill" data-completion-fill="true" style="width: <?= (int)$completionScore ?>%"></div>
+                            </div>
+                            <div class="smart-kpi-hint" data-completion-detail="true">
+                                Description <?= !empty($completionBreakdown['description']['completed']) ? '✅' : '❌' ?> (+20%) ·
+                                Competences <?= !empty($completionBreakdown['competences']['completed']) ? '✅' : '❌' ?> (+30%) ·
+                                Portfolio <?= !empty($completionBreakdown['portfolio']['completed']) ? '✅' : '❌' ?> (+50%)
                             </div>
                         </div>
 
@@ -235,267 +308,145 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
                     </div>
                 </div>
 
-                <div class="card" style="margin-top:1.5rem;">
-                    <div class="section-title">AI Career Intelligence</div>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;">
-                        <div style="background:#f8f5f0;padding:1rem;border-radius:1rem;">
-                            <div style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--marron);font-weight:700;">Résumé professionnel</div>
-                            <div style="margin-top:.55rem;line-height:1.7;color:var(--brun);"><?= nl2br(htmlspecialchars((string)($professionalSummary ?? ''))) ?></div>
-                            <div style="margin-top:1rem;font-size:.9rem;color:#6d6254;"><strong>Headline LinkedIn:</strong> <?= htmlspecialchars((string)($linkedinHeadline ?? '')) ?></div>
-                            <div style="margin-top:.55rem;font-size:.9rem;color:#6d6254;"><strong>CV IA:</strong> <?= htmlspecialchars((string)($cvSummary ?? '')) ?></div>
-                            <div style="margin-top:.55rem;font-size:.85rem;color:#8c7a67;">
-                                <strong>Dernier calcul:</strong>
-                                <?= !empty($insightLastCalcAt) ? htmlspecialchars(date('d/m/Y H:i', strtotime((string)$insightLastCalcAt))) : 'En attente' ?>
-                            </div>
+                
+
+                <div class="card cv-ia-studio" id="cv-ia-studio" style="margin-top:1.5rem;">
+                    <div class="cv-ia-header-row">
+                        <div>
+                            <div class="section-title" style="margin-bottom:.3rem;">🦙 CV Studio Intelligent avec Ollama</div>
+                            <p class="cv-ia-subtitle">Générateur de CV intelligent alimenté par Ollama local. Personnalisez vos informations, générez avec IA, optimisez et téléchargez en PDF professionnel.</p>
                         </div>
-
-                        <div style="background:#f8f5f0;padding:1rem;border-radius:1rem;">
-                            <div style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--marron);font-weight:700;">Jobs suggérés</div>
-                            <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.7rem;">
-                                <?php foreach (($suggestedJobs ?? []) as $job): ?>
-                                    <span class="badge"><?= htmlspecialchars((string)$job) ?></span>
-                                <?php endforeach; ?>
-                                <?php if (empty($suggestedJobs ?? [])): ?>
-                                    <span class="badge">Aucune suggestion</span>
-                                <?php endif; ?>
-                            </div>
-
-                            <div style="margin-top:1rem;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--marron);font-weight:700;">Skill gaps</div>
-                            <ul style="margin:.55rem 0 0 1rem;padding:0;color:var(--brun);line-height:1.7;">
-                                <?php foreach (($skillGaps ?? []) as $gap): ?>
-                                    <li><?= htmlspecialchars((string)$gap) ?></li>
-                                <?php endforeach; ?>
-                                <?php if (empty($skillGaps ?? [])): ?>
-                                    <li>Aucun écart majeur détecté.</li>
-                                <?php endif; ?>
-                            </ul>
-
-                            <div style="margin-top:1rem;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--marron);font-weight:700;">Career paths</div>
-                            <ul style="margin:.55rem 0 0 1rem;padding:0;color:var(--brun);line-height:1.7;">
-                                <?php foreach (($careerPaths ?? []) as $path): ?>
-                                    <li><?= htmlspecialchars((string)$path) ?></li>
-                                <?php endforeach; ?>
-                            </ul>
+                        <div class="cv-ia-badges">
+                            <span class="cv-ia-badge" title="Powered by Ollama">🦙 Ollama</span>
+                            <span class="cv-ia-badge" title="ATS Optimized">✅ ATS</span>
+                            <span class="cv-ia-badge" title="PDF Export">📄 PDF</span>
+                            <span class="cv-ia-badge" title="Multi-Language">🌍 Multilingue</span>
                         </div>
                     </div>
 
-                    <div style="margin-top:1rem;background:#fff;border:1px solid #ece1d3;border-radius:1rem;padding:1rem;">
-                        <div style="font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--marron);font-weight:700;margin-bottom:.35rem;">Lettre de motivation IA</div>
-                        <div style="white-space:pre-line;line-height:1.7;color:var(--brun);">
-                            <?= htmlspecialchars((string)($coverLetterTemplate ?? '')) ?>
-                        </div>
+                    <div class="cv-ia-actions-row">
+                        <button type="button" class="cv-ia-btn cv-ia-btn-generate" id="cv-ia-generate">🚀 Générer avec Ollama</button>
+                        <button type="button" class="cv-ia-btn cv-ia-btn-optimize" id="cv-ia-optimize">⚡ Optimiser IA</button>
+                        <button type="button" class="cv-ia-btn cv-ia-btn-download" id="cv-ia-download">📥 Télécharger (PDF)</button>
+                        <span class="cv-ia-status" id="cv-ia-status"></span>
                     </div>
-                </div>
 
-                <!-- ==========================================
-                     MÉTIERS AVANCÉS AVEC IA (SLOT 1 & 2)
-                     Persisté dans la table `metiers_avances`
-                     ========================================== -->
-                <?php
-                // $metiersAvances est injecté par ProfilController::index()
-                $metiersAvances = $metiersAvances ?? [];
-                $metierBySlot = [];
-                foreach ($metiersAvances as $m) {
-                    $metierBySlot[(int)$m['slot']] = $m;
-                }
-                ?>
-                <div class="card" id="metiers-avances-section" style="margin-top:1.5rem;">
-                    <div class="section-title" style="display:flex;align-items:center;gap:.6rem;">
-                        🏆 Métiers Avancés
-                        <span style="font-size:.72rem;background:linear-gradient(135deg,#8b5a3a,#c8973f);color:#fff;padding:.2rem .6rem;border-radius:2rem;font-weight:700;letter-spacing:.06em;">IA</span>
-                    </div>
-                    <p style="color:#8c7a67;font-size:.85rem;margin-bottom:1.25rem;">
-                        Définissez vos 2 métiers clés. L'IA analyse votre profil et génère des recommandations, projections salariales et tendances marché.
-                    </p>
-
-                    <!-- GRILLE SLOTS 1 ET 2 -->
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:1.25rem;" id="metiers-grid">
-                    <?php for ($slot = 1; $slot <= 2; $slot++): ?>
-                    <?php $m = $metierBySlot[$slot] ?? null; ?>
-                    <div class="metier-avance-card" id="metier-slot-<?= $slot ?>" data-slot="<?= $slot ?>"
-                         style="background:#f8f5f0;border-radius:1rem;padding:1.1rem;border:1.5px solid #ece1d3;position:relative;">
-
-                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;">
-                            <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--marron);font-weight:700;">
-                                Métier <?= $slot ?>
-                            </div>
-                            <?php if ($m): ?>
-                            <div style="display:flex;gap:.4rem;">
-                                <button type="button"
-                                    onclick="openMetierForm(<?= $slot ?>, <?= (int)$m['id_metier'] ?>)"
-                                    style="background:none;border:1px solid var(--marron);color:var(--marron);padding:.2rem .55rem;border-radius:.4rem;font-size:.8rem;cursor:pointer;"
-                                    title="Modifier">✏️</button>
-                                <form action="<?= htmlspecialchars(app_url('/profil/analyseMetierAvance')) ?>" method="post" style="display:inline;"
-                                      data-ajax-metier-analyse="true" data-metier-id="<?= (int)$m['id_metier'] ?>">
-                                    <input type="hidden" name="id_metier" value="<?= (int)$m['id_metier'] ?>">
-                                    <button type="submit" title="Relancer analyse IA"
-                                        style="background:none;border:1px solid #c8973f;color:#c8973f;padding:.2rem .55rem;border-radius:.4rem;font-size:.8rem;cursor:pointer;">🤖 Analyser</button>
-                                </form>
-                                <form action="<?= htmlspecialchars(app_url('/profil/deleteMetierAvance')) ?>" method="post" style="display:inline;"
-                                      onsubmit="return confirm('Supprimer ce métier avancé ?');">
-                                    <input type="hidden" name="id_metier" value="<?= (int)$m['id_metier'] ?>">
-                                    <button type="submit" style="background:none;border:1px solid #dc3545;color:#dc3545;padding:.2rem .55rem;border-radius:.4rem;font-size:.8rem;cursor:pointer;">🗑️</button>
-                                </form>
-                            </div>
-                            <?php endif; ?>
-                        </div>
-
-                        <?php if ($m): ?>
-                        <!-- Métier renseigné -->
-                        <div class="metier-display" id="metier-display-<?= $slot ?>">
-                            <div style="font-size:1.05rem;font-weight:700;color:var(--brun);margin-bottom:.3rem;">
-                                <?= htmlspecialchars((string)$m['titre']) ?>
-                            </div>
-                            <?php if (!empty($m['description'])): ?>
-                            <div style="font-size:.83rem;color:#6d6254;margin-bottom:.65rem;line-height:1.55;">
-                                <?= nl2br(htmlspecialchars((string)$m['description'])) ?>
-                            </div>
-                            <?php endif; ?>
-
-                            <!-- Niveau de maîtrise -->
-                            <div style="margin-bottom:.7rem;">
-                                <div style="display:flex;justify-content:space-between;font-size:.75rem;color:#8c7a67;margin-bottom:.3rem;">
-                                    <span>Maîtrise</span>
-                                    <strong><?= (int)$m['niveau_maitrise'] ?>%</strong>
-                                </div>
-                                <div style="background:#e8ddd0;border-radius:2rem;height:7px;">
-                                    <div style="background:linear-gradient(90deg,var(--marron),#c8973f);border-radius:2rem;height:7px;width:<?= (int)$m['niveau_maitrise'] ?>%;transition:.4s;"></div>
-                                </div>
+                    <div class="cv-ia-layout">
+                        <div class="cv-ia-editor">
+                            <div class="cv-ia-tabs">
+                                <button type="button" class="cv-ia-tab is-active" data-cv-tab="infos">ℹ️ Infos</button>
+                                <button type="button" class="cv-ia-tab" data-cv-tab="skills">💡 Compétences</button>
+                                <button type="button" class="cv-ia-tab" data-cv-tab="exp">💼 Experiences</button>
+                                <button type="button" class="cv-ia-tab" data-cv-tab="design">🎨 Design & IA</button>
                             </div>
 
-                            <!-- Technologies -->
-                            <?php if (!empty($m['technologies'])): ?>
-                            <div style="display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.75rem;">
-                                <?php foreach ((array)$m['technologies'] as $tech): ?>
-                                    <span style="background:#fff7ee;border:1px solid #e0d6c3;color:var(--marron);padding:.15rem .55rem;border-radius:2rem;font-size:.75rem;font-weight:600;">
-                                        <?= htmlspecialchars((string)$tech) ?>
-                                    </span>
-                                <?php endforeach; ?>
-                            </div>
-                            <?php endif; ?>
-
-                            <!-- Bloc IA -->
-                            <?php if (!empty($m['ia_tendance_marche']) || !empty($m['ia_projection_salaire']) || !empty($m['ia_recommandations'])): ?>
-                            <div style="background:#fff;border:1px solid #ece1d3;border-radius:.75rem;padding:.8rem;margin-top:.5rem;">
-                                <div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--marron);font-weight:700;margin-bottom:.5rem;">🤖 Analyse IA</div>
-
-                                <?php if ($m['ia_score_adequation'] !== null): ?>
-                                <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem;">
-                                    <div style="font-size:.78rem;color:#6d6254;">Score adéquation</div>
-                                    <div style="background:linear-gradient(135deg,#8b5a3a,#c8973f);color:#fff;padding:.15rem .55rem;border-radius:2rem;font-size:.75rem;font-weight:700;">
-                                        <?= (int)$m['ia_score_adequation'] ?>%
+                            <div class="cv-ia-tab-panel is-active" data-cv-panel="infos">
+                                <div class="cv-ia-grid-two">
+                                    <div>
+                                        <label>Nom complet *</label>
+                                        <input type="text" id="cv-full-name" placeholder="Prénom Nom" required>
+                                    </div>
+                                    <div>
+                                        <label>Titre professionnel *</label>
+                                        <input type="text" id="cv-title" placeholder="Ex: Designer UX/UI" required>
+                                    </div>
+                                    <div>
+                                        <label>Email</label>
+                                        <input type="email" id="cv-email" placeholder="votremail@example.com">
+                                    </div>
+                                    <div>
+                                        <label>Téléphone</label>
+                                        <input type="tel" id="cv-phone" placeholder="+216...">
                                     </div>
                                 </div>
-                                <?php endif; ?>
-
-                                <?php if ($m['ia_tendance_marche']): ?>
-                                <div style="font-size:.8rem;color:#5a4a3a;margin-bottom:.3rem;">
-                                    <strong>Tendance :</strong> <?= htmlspecialchars((string)$m['ia_tendance_marche']) ?>
+                                <div style="margin-top:.75rem;">
+                                    <label>Ville</label>
+                                    <input type="text" id="cv-city" placeholder="Tunis">
                                 </div>
-                                <?php endif; ?>
-
-                                <?php if ($m['ia_projection_salaire']): ?>
-                                <div style="font-size:.8rem;color:#5a4a3a;margin-bottom:.5rem;">
-                                    <strong>Projection :</strong> <?= htmlspecialchars((string)$m['ia_projection_salaire']) ?>
+                                <div style="margin-top:.75rem;">
+                                    <label>Résumé professionnel</label>
+                                    <textarea id="cv-summary" rows="5" placeholder="Décrivez vos qualifications, expériences clés et aspirations professionnelles..."></textarea>
                                 </div>
-                                <?php endif; ?>
-
-                                <?php if (!empty($m['ia_recommandations'])): ?>
-                                <ul style="margin:.3rem 0 0 1rem;padding:0;font-size:.78rem;color:var(--brun);line-height:1.65;">
-                                    <?php foreach ((array)$m['ia_recommandations'] as $rec): ?>
-                                        <li><?= htmlspecialchars((string)$rec) ?></li>
-                                    <?php endforeach; ?>
-                                </ul>
-                                <?php endif; ?>
-
-                                <?php if ($m['ia_derniere_analyse']): ?>
-                                <div style="font-size:.68rem;color:#aaa;margin-top:.5rem;text-align:right;">
-                                    Dernière analyse : <?= htmlspecialchars(date('d/m/Y H:i', strtotime((string)$m['ia_derniere_analyse']))) ?>
-                                </div>
-                                <?php endif; ?>
                             </div>
-                            <?php else: ?>
-                            <div style="font-size:.8rem;color:#aaa;font-style:italic;margin-top:.5rem;">
-                                Cliquez sur 🤖 Analyser pour générer l'analyse IA.
+
+                            <div class="cv-ia-tab-panel" data-cv-panel="skills">
+                                <p style="font-size:.85rem;color:#666;margin-bottom:.75rem;">Ajoutez vos compétences professionnelles. Ollama les reformulera de manière plus impactante.</p>
+                                <div class="cv-ia-inline-tools">
+                                    <button type="button" class="cv-ia-mini-btn" id="cv-add-skill">➕ Ajouter compétence</button>
+                                </div>
+                                <div id="cv-skills-editor"></div>
                             </div>
-                            <?php endif; ?>
+
+                            <div class="cv-ia-tab-panel" data-cv-panel="exp">
+                                <p style="font-size:.85rem;color:#666;margin-bottom:.75rem;">Entrez vos expériences et formations. L'IA les optimisera pour les recruteurs.</p>
+                                <div class="cv-ia-inline-tools">
+                                    <button type="button" class="cv-ia-mini-btn" id="cv-add-exp">➕ Ajouter expérience</button>
+                                    <button type="button" class="cv-ia-mini-btn" id="cv-add-edu">➕ Ajouter certification</button>
+                                </div>
+                                <div class="cv-ia-subsection-title">Expériences professionnelles</div>
+                                <div id="cv-experiences-editor"></div>
+                                <div class="cv-ia-subsection-title" style="margin-top:1rem;">Formations & Certifications</div>
+                                <div id="cv-education-editor"></div>
+                            </div>
+
+                            <div class="cv-ia-tab-panel" data-cv-panel="design">
+                                <div class="cv-ia-grid-two">
+                                    <div>
+                                        <label>Template</label>
+                                        <select id="cv-template">
+                                            <option value="moderne">Moderne (recommandé)</option>
+                                            <option value="classique">Classique</option>
+                                            <option value="epure">Épuré</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label>Langue</label>
+                                        <select id="cv-language">
+                                            <option value="fr" selected>Français</option>
+                                            <option value="en">English</option>
+                                            <option value="ar">العربية</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="cv-ia-grid-two" style="margin-top:.75rem;">
+                                    <div>
+                                        <label>Modèle Ollama</label>
+                                        <select id="cv-model">
+                                            <option value="mistral" selected>Mistral (rapide)</option>
+                                            <option value="llama3">Llama 3 (précis)</option>
+                                            <option value="llama2">Llama 2</option>
+                                            <option value="neural-chat">Neural Chat</option>
+                                            <option value="starling-lm">Starling LM</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label>Couleur principale</label>
+                                        <input type="color" id="cv-primary-color" value="#2E6B3E">
+                                    </div>
+                                </div>
+                                <div style="margin-top:1rem;padding:.75rem;background:#f8f5f0;border-radius:.75rem;border-left:4px solid #2E6B3E;">
+                                    <p style="font-size:.85rem;color:#555;"><strong>💡 Conseil:</strong> Ollama doit être lancé sur <code>localhost:11434</code> pour que la génération fonctionne.</p>
+                                </div>
+                            </div>
                         </div>
 
-                        <?php else: ?>
-                        <!-- Slot vide -->
-                        <div class="metier-empty" id="metier-empty-<?= $slot ?>">
-                            <div style="text-align:center;padding:1rem 0;color:#b0a090;">
-                                <div style="font-size:2rem;margin-bottom:.4rem;">🎯</div>
-                                <div style="font-size:.85rem;margin-bottom:.8rem;">Aucun métier défini</div>
-                                <button type="button"
-                                    onclick="openMetierForm(<?= $slot ?>, null)"
-                                    style="background:var(--marron);color:#fff;padding:.5rem 1.2rem;border:none;border-radius:.6rem;font-size:.85rem;font-weight:600;cursor:pointer;">
-                                    + Définir ce métier
-                                </button>
+                        <div class="cv-ia-preview-wrap">
+                            <div class="cv-ia-score-row" id="cv-score-row">
+                                <div class="cv-score"><span class="cv-score-label">ATS</span> <strong>—</strong></div>
+                                <div class="cv-score"><span class="cv-score-label">Impact</span> <strong>—</strong></div>
+                                <div class="cv-score"><span class="cv-score-label">Lisibilité</span> <strong>—</strong></div>
+                            </div>
+                            <div class="cv-ia-tips" id="cv-ia-tips">
+                                <div class="cv-tip">💡 Remplissez vos informations pour voir les recommandations</div>
+                            </div>
+                            <div class="cv-ia-preview cv-template-moderne" id="cv-preview">
+                                <p style="padding:2rem;text-align:center;color:#999;">Aperçu du CV apparaîtra ici...</p>
                             </div>
                         </div>
-                        <?php endif; ?>
-                    </div>
-                    <?php endfor; ?>
-                    </div><!-- /metiers-grid -->
-                </div><!-- /metiers-avances-section -->
-
-                <!-- MODAL FORMULAIRE MÉTIER AVANCÉ -->
-                <div id="modal-metier-avance" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;">
-                    <div style="background:#fff;border-radius:1.25rem;padding:2rem;width:min(92vw,520px);max-height:90vh;overflow-y:auto;box-shadow:0 8px 40px #0004;">
-                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
-                            <h3 style="color:var(--marron);margin:0;font-size:1.1rem;" id="modal-metier-title">Métier Avancé</h3>
-                            <button type="button" onclick="closeMetierModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#888;">✕</button>
-                        </div>
-                        <form id="form-metier-avance" action="<?= htmlspecialchars(app_url('/profil/upsertMetierAvance')) ?>" method="post" data-ajax-metier="true">
-                            <input type="hidden" name="slot" id="metier-slot-input" value="1">
-                            <input type="hidden" name="id_metier" id="metier-id-input" value="">
-
-                            <div style="margin-bottom:1rem;">
-                                <label style="font-weight:600;color:var(--marron);font-size:.88rem;display:block;margin-bottom:.35rem;">Titre du métier <span style="color:#dc3545;">*</span></label>
-                                <input type="text" name="titre" id="metier-titre" maxlength="150" required placeholder="ex : Développeur Full Stack, Artisan Céramiste..."
-                                    style="width:100%;padding:.6rem .8rem;border-radius:.65rem;border:1.5px solid #e0d6c3;background:#fff7ee;font-size:.9rem;">
-                            </div>
-
-                            <div style="margin-bottom:1rem;">
-                                <label style="font-weight:600;color:var(--marron);font-size:.88rem;display:block;margin-bottom:.35rem;">Description</label>
-                                <textarea name="description" id="metier-description" maxlength="1000" rows="3" placeholder="Décrivez votre positionnement dans ce métier..."
-                                    style="width:100%;padding:.6rem .8rem;border-radius:.65rem;border:1.5px solid #e0d6c3;background:#fff7ee;font-size:.88rem;resize:vertical;"></textarea>
-                            </div>
-
-                            <div style="margin-bottom:1rem;">
-                                <label style="font-weight:600;color:var(--marron);font-size:.88rem;display:block;margin-bottom:.35rem;">
-                                    Niveau de maîtrise : <span id="metier-niveau-display">50</span>%
-                                </label>
-                                <input type="range" name="niveau_maitrise" id="metier-niveau" min="0" max="100" value="50"
-                                    style="width:100%;accent-color:var(--marron);"
-                                    oninput="document.getElementById('metier-niveau-display').textContent=this.value">
-                            </div>
-
-                            <div style="margin-bottom:1.25rem;">
-                                <label style="font-weight:600;color:var(--marron);font-size:.88rem;display:block;margin-bottom:.35rem;">
-                                    Technologies / Compétences clés
-                                    <span style="font-weight:400;color:#aaa;">(séparées par des virgules)</span>
-                                </label>
-                                <input type="text" name="technologies" id="metier-technologies" maxlength="500"
-                                    placeholder="ex : PHP, Laravel, React, MySQL..."
-                                    style="width:100%;padding:.6rem .8rem;border-radius:.65rem;border:1.5px solid #e0d6c3;background:#fff7ee;font-size:.88rem;">
-                            </div>
-
-                            <div style="display:flex;gap:.7rem;justify-content:flex-end;">
-                                <button type="button" onclick="closeMetierModal()"
-                                    style="background:#f0ece5;color:var(--marron);border:none;padding:.65rem 1.3rem;border-radius:.65rem;font-weight:600;cursor:pointer;">
-                                    Annuler
-                                </button>
-                                <button type="submit"
-                                    style="background:linear-gradient(135deg,var(--marron),#c8973f);color:#fff;border:none;padding:.65rem 1.6rem;border-radius:.65rem;font-weight:700;cursor:pointer;">
-                                    💾 Sauvegarder + Analyse IA
-                                </button>
-                            </div>
-                        </form>
                     </div>
                 </div>
-                <!-- /MODAL MÉTIER AVANCÉ -->
+
+                
 
             </div>
             <!-- Panel Portfolio -->
@@ -539,22 +490,43 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
                         </div>
                         <button type="submit" style="background:var(--marron);color:#fff;padding:.7rem 1.5rem;border:none;border-radius:.5rem;font-weight:600;font-size:1rem;box-shadow:0 2px 8px #8b5a3a22;transition:.2s;">+ Ajouter</button>
                     </form>
+                    <div class="table-tools-row" data-doc-tools="true">
+                        <input
+                            type="text"
+                            class="table-search-input"
+                            placeholder="Rechercher un document ou une realisation..."
+                            data-doc-search="true"
+                        >
+                        <select class="table-sort-select" data-doc-sort="true">
+                            <option value="date-desc">Trier: Plus recents</option>
+                            <option value="date-asc">Trier: Plus anciens</option>
+                            <option value="titre-asc">Trier: Titre (A-Z)</option>
+                            <option value="realisation-asc">Trier: Realisation (A-Z)</option>
+                        </select>
+                        <button type="button" class="stats-toggle-btn" data-doc-stats-toggle="true">📊 Statistiques</button>
+                    </div>
+                    <div class="table-stats-panel" data-doc-stats-panel="true" style="display:none;">
+                        <div class="stats-chip"><span>Total</span><strong data-doc-stat-total="true">0</strong></div>
+                        <div class="stats-chip"><span>Realisations</span><strong data-doc-stat-realisations="true">0</strong></div>
+                        <div class="stats-chip"><span>Ajoutes cette annee</span><strong data-doc-stat-year="true">0</strong></div>
+                        <div class="stats-chip"><span>Affiches</span><strong data-doc-stat-visible="true">0</strong></div>
+                    </div>
                     <table style="width:100%;border-collapse:separate;border-spacing:0 .75rem;">
                         <thead>
                             <tr style="color:var(--marron);font-size:.95rem;background:#f8f5f0;">
                                 <th>TITRE</th><th>REALISATION</th><th>FICHIER</th><th>DATE</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="portfolio-docs-list">
                             <?php if (!empty($portfolioFiles)): ?>
-                                <?php foreach ($portfolioFiles as $file): ?>
-                                    <tr>
-                                        <td><?= htmlspecialchars($file['titre'] ?: $file['file_name']) ?></td>
-                                        <td><?= htmlspecialchars((string)($file['realisation'] ?? '-')) ?></td>
-                                        <td>
+                                <?php foreach ($portfolioFiles as $index => $file): ?>
+                                    <tr data-id="<?= (int)$index + 1 ?>" data-created-at="<?= htmlspecialchars((string)($file['created_at'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                        <td class="doc-title"><?= htmlspecialchars($file['titre'] ?: $file['file_name']) ?></td>
+                                        <td class="doc-realisation"><?= htmlspecialchars((string)($file['realisation'] ?? '-')) ?></td>
+                                        <td class="doc-file">
                                             <a href="<?= htmlspecialchars($file['file_path']) ?>" target="_blank" style="color:var(--marron);text-decoration:none;">Voir</a>
                                         </td>
-                                        <td><?= htmlspecialchars(date('d/m/Y', strtotime($file['created_at'] ?? 'now'))) ?></td>
+                                        <td class="doc-date"><?= htmlspecialchars(date('d/m/Y', strtotime($file['created_at'] ?? 'now'))) ?></td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php else: ?>
@@ -641,6 +613,27 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
                     </div>
                     <button type="submit" style="background:var(--marron);color:#fff;padding:.7rem 1.5rem;border:none;border-radius:.5rem;font-weight:600;font-size:1rem;box-shadow:0 2px 8px #8b5a3a22;transition:.2s;">+ Ajouter</button>
               </form>
+                            <div class="table-tools-row" data-comp-tools="true">
+                                <input
+                                    type="text"
+                                    class="table-search-input"
+                                    placeholder="Rechercher une competence ou description..."
+                                    data-comp-search="true"
+                                >
+                                <select class="table-sort-select" data-comp-sort="true">
+                                    <option value="niveau-desc">Trier: Niveau (decroissant)</option>
+                                    <option value="niveau-asc">Trier: Niveau (croissant)</option>
+                                    <option value="nom-asc">Trier: Nom (A-Z)</option>
+                                    <option value="nom-desc">Trier: Nom (Z-A)</option>
+                                </select>
+                                <button type="button" class="stats-toggle-btn" data-comp-stats-toggle="true">📊 Statistiques</button>
+                            </div>
+                            <div class="table-stats-panel" data-comp-stats-panel="true" style="display:none;">
+                                <div class="stats-chip"><span>Total</span><strong data-comp-stat-total="true">0</strong></div>
+                                <div class="stats-chip"><span>Niveau moyen</span><strong data-comp-stat-average="true">0%</strong></div>
+                                <div class="stats-chip"><span>Avancees</span><strong data-comp-stat-advanced="true">0</strong></div>
+                                <div class="stats-chip"><span>Affichees</span><strong data-comp-stat-visible="true">0</strong></div>
+                            </div>
               <!-- Tableau compétences -->
               <table style="width:100%;border-collapse:separate;border-spacing:0 1rem;">
                 <thead>
@@ -873,6 +866,34 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
                         </div>
         </main>
     </div>
+
+    <div id="chatbot-widget" class="chatbot-widget" aria-live="polite">
+        <button type="button" id="chatbot-toggle" class="chatbot-toggle" aria-label="Ouvrir assistant">
+            💬
+        </button>
+
+        <section id="chatbot-panel" class="chatbot-panel" aria-hidden="true">
+            <header class="chatbot-header">
+                <div>
+                    <div class="chatbot-title">Assistant IA</div>
+                    <div class="chatbot-subtitle" id="chatbot-provider-label">Ollama</div>
+                </div>
+                <button type="button" id="chatbot-close" class="chatbot-close" aria-label="Fermer assistant">✕</button>
+            </header>
+
+            <div id="chatbot-suggestions" class="chatbot-suggestions"></div>
+
+            <div id="chatbot-messages" class="chatbot-messages">
+                <div class="chatbot-msg bot">Bonjour, je peux proposer des solutions concretes. Posez votre question.</div>
+            </div>
+
+            <form id="chatbot-form" class="chatbot-form">
+                <input type="text" id="chatbot-input" maxlength="400" placeholder="Posez votre question..." autocomplete="off">
+                <button type="submit">Envoyer</button>
+            </form>
+        </section>
+    </div>
+
     <!-- MODAL MODIFICATION -->
     <div class="modal-overlay" id="modal-edit" style="display:none">
         <div class="modal">
@@ -1258,111 +1279,5 @@ $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?
     }
     </style>
 
-<script>
-// ============================================================
-// MÉTIERS AVANCÉS — JavaScript
-// ============================================================
-function openMetierForm(slot, idMetier) {
-    document.getElementById('modal-metier-title').textContent = 'Métier Avancé ' + slot;
-    document.getElementById('metier-slot-input').value = slot;
-    document.getElementById('metier-id-input').value = idMetier || '';
-
-    // Pré-remplir si édition
-    if (idMetier) {
-        var card = document.getElementById('metier-slot-' + slot);
-        var titreEl = card ? card.querySelector('[data-metier-titre]') : null;
-        // Lecture depuis le DOM affichage
-        var titleText = card ? (card.querySelector('.metier-display > div:first-child') || {}).textContent : '';
-        document.getElementById('metier-titre').value = titleText ? titleText.trim() : '';
-    } else {
-        document.getElementById('metier-titre').value = '';
-        document.getElementById('metier-description').value = '';
-        document.getElementById('metier-niveau').value = 50;
-        document.getElementById('metier-niveau-display').textContent = '50';
-        document.getElementById('metier-technologies').value = '';
-    }
-
-    var modal = document.getElementById('modal-metier-avance');
-    modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-}
-
-function closeMetierModal() {
-    var modal = document.getElementById('modal-metier-avance');
-    modal.style.display = 'none';
-    document.body.style.overflow = '';
-}
-
-// Fermer en cliquant à l'extérieur
-document.getElementById('modal-metier-avance').addEventListener('click', function(e) {
-    if (e.target === this) closeMetierModal();
-});
-
-// Soumission AJAX du formulaire métier
-var formMetier = document.getElementById('form-metier-avance');
-if (formMetier) {
-    formMetier.addEventListener('submit', function(e) {
-        e.preventDefault();
-        var btn = this.querySelector('[type=submit]');
-        var origText = btn.textContent;
-        btn.textContent = '⏳ Analyse IA en cours...';
-        btn.disabled = true;
-
-        fetch(this.action, {
-            method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            body: new FormData(this)
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            btn.textContent = origText;
-            btn.disabled = false;
-            if (data.success) {
-                closeMetierModal();
-                // Rafraîchir la page pour voir les données persistées
-                window.location.reload();
-            } else {
-                alert('Erreur : ' + (data.message || 'Impossible de sauvegarder.'));
-            }
-        })
-        .catch(function() {
-            btn.textContent = origText;
-            btn.disabled = false;
-            alert('Erreur réseau lors de la sauvegarde.');
-        });
-    });
-}
-
-// AJAX pour relancer l'analyse IA
-document.querySelectorAll('[data-ajax-metier-analyse="true"]').forEach(function(form) {
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        var btn = this.querySelector('[type=submit]');
-        var origText = btn.textContent;
-        btn.textContent = '⏳ Analyse...';
-        btn.disabled = true;
-
-        fetch(this.action, {
-            method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            body: new FormData(this)
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            btn.textContent = origText;
-            btn.disabled = false;
-            if (data.success) {
-                window.location.reload();
-            } else {
-                alert('Erreur analyse IA : ' + (data.message || ''));
-            }
-        })
-        .catch(function() {
-            btn.textContent = origText;
-            btn.disabled = false;
-        });
-    });
-});
-</script>
 </body>
 </html>

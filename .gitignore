@@ -1,2 +1,9 @@
+# macOS
 .DS_Store
-.DS_Store
+
+# Clé API (ne jamais committer)
+config/config.php
+
+# Environnement
+.env
+.env.local

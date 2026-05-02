@@ -1,6 +1,6 @@
 <?php
 // views/admin/index.php
-// Variables: $flashAdmin, $flashAdminClass, $flashAdminText, $errorMsg, $stats, $activePercent, $incompletePercent, $searchQuery, $tousHref, $filteredRows
+// Variables: $flashAdmin, $errorMsg, $stats, $activePercent, $incompletePercent, $tousHref, $actifHref, $incompletHref, $suspenduHref, $filteredRows
 $baseAdminUrl = app_url('/admin');
 ?>
 <!DOCTYPE html>
@@ -737,6 +737,77 @@ $baseAdminUrl = app_url('/admin');
             margin: 0;
         }
 
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, .45);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            padding: 1rem;
+        }
+
+        .modal-box {
+            width: min(620px, 96vw);
+            background: #fff;
+            border: 1px solid rgba(196, 154, 108, 0.25);
+            border-radius: 14px;
+            box-shadow: 0 14px 40px rgba(0, 0, 0, .18);
+            overflow: hidden;
+        }
+
+        .modal-head {
+            padding: .9rem 1rem;
+            border-bottom: 1px solid rgba(196, 154, 108, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: #3b2314;
+            font-weight: 700;
+        }
+
+        .modal-body {
+            padding: 1rem;
+        }
+
+        .modal-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: .7rem;
+        }
+
+        .modal-field {
+            display: flex;
+            flex-direction: column;
+            gap: .3rem;
+        }
+
+        .modal-field input,
+        .modal-field select {
+            padding: .5rem .6rem;
+            border: 1px solid #dcc8ad;
+            border-radius: 8px;
+            background: #fffdf9;
+            color: #3b2314;
+        }
+
+        .modal-actions {
+            margin-top: .9rem;
+            display: flex;
+            justify-content: flex-end;
+            gap: .6rem;
+        }
+
+        .btn-ghost {
+            border: 1px solid #ccb79a;
+            background: #fff;
+            color: #6b4f36;
+            padding: .5rem .8rem;
+            border-radius: 7px;
+            cursor: pointer;
+        }
+
         @media (max-width: 800px) {
 
             .form-row-2,
@@ -785,7 +856,7 @@ $baseAdminUrl = app_url('/admin');
             <a class="nav-item" href="#"><span class="icon">📈</span><span class="nav-text">Investissements</span></a>
             <a class="nav-item" href="#"><span class="icon">📋</span><span class="nav-text">Offres d'emploi</span></a>
             <div class="nav-label">Système</div>
-            <a class="nav-item" href="#"><span class="icon">⚡</span><span class="nav-text">Compétences</span></a>
+            <a class="nav-item" href="<?= htmlspecialchars(app_url('/admin/competences')) ?>"><span class="icon">⚡</span><span class="nav-text">Compétences</span></a>
             <a class="nav-item" href="#"><span class="icon">⚙️</span><span class="nav-text">Paramètres</span></a>
             <a class="nav-item" href="#"><span class="icon">📝</span><span class="nav-text">Logs</span></a>
         </nav>
@@ -811,7 +882,7 @@ $baseAdminUrl = app_url('/admin');
             <div class="topbar-actions simple-actions">
                 <a class="btn-export btn-front btn-link" href="<?= htmlspecialchars(app_url('/dashboard')) ?>">🌐 Front Office</a>
                 <button class="btn-export" onclick="showToast('📥 Export CSV en cours...')">📥 Exporter</button>
-                <button class="btn-add" type="button" onclick="showToast('Fonction non disponible')">+ Nouveau profil</button>
+                <button class="btn-add" type="button" onclick="openCreateModal()">+ Nouveau profil</button>
             </div>
         </div>
 
@@ -852,33 +923,35 @@ $baseAdminUrl = app_url('/admin');
 
             <!-- FILTERS -->
             <div class="filters simple-panel form-row-3">
-                <form class="search-box" method="get">
-                    <span>🔍</span>
-                    <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Rechercher par nom, spécialité...">
+                <form method="get" style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;width:100%;">
+                    <div class="search-box">
+                        <span>🔍</span>
+                        <input type="text" name="q" value="<?= htmlspecialchars($search) ?>" placeholder="Rechercher par nom, spécialité...">
+                    </div>
+                    <select class="filter-select" name="sort">
+                        <option value="date_desc" <?= $sort === 'date_desc' ? 'selected' : '' ?>>Trier: Plus récents</option>
+                        <option value="date_asc" <?= $sort === 'date_asc' ? 'selected' : '' ?>>Trier: Plus anciens</option>
+                        <option value="nom_asc" <?= $sort === 'nom_asc' ? 'selected' : '' ?>>Trier: Nom (A-Z)</option>
+                        <option value="nom_desc" <?= $sort === 'nom_desc' ? 'selected' : '' ?>>Trier: Nom (Z-A)</option>
+                        <option value="completion_desc" <?= $sort === 'completion_desc' ? 'selected' : '' ?>>Trier: Complétion (desc)</option>
+                        <option value="completion_asc" <?= $sort === 'completion_asc' ? 'selected' : '' ?>>Trier: Complétion (asc)</option>
+                    </select>
+                    <select class="filter-select" name="specialite">
+                        <option value="">Toutes spécialités</option>
+                        <?php foreach (($availableSpecialites ?? []) as $spec): ?>
+                            <option value="<?= htmlspecialchars($spec) ?>" <?= ($specialiteFilter ?? '') === $spec ? 'selected' : '' ?>><?= htmlspecialchars($spec) ?></option>
+                        <?php endforeach; ?>
+                    </select>
                     <?php if ($filter !== ''): ?>
                         <input type="hidden" name="statut" value="<?= htmlspecialchars($filter) ?>">
                     <?php endif; ?>
+                    <button class="btn-export" type="submit">Appliquer</button>
                 </form>
-                <select class="filter-select" onchange="filterByRole(this.value)">
-        <option value="">Tous les rôles</option>
-        <option>Artisan</option>
-        <option>Mentor</option>
-        <option>Entrepreneur</option>
-        <option>Investisseur</option>
-      </select>
-                <select class="filter-select">
-        <option>Toutes spécialités</option>
-        <option>Céramique</option>
-        <option>Tissage</option>
-        <option>Broderie</option>
-        <option>Zellige</option>
-        <option>Cuir</option>
-      </select>
                 <div class="filter-tabs">
                     <a class="filter-tab<?= $filter === '' ? ' active' : '' ?>" href="<?= $tousHref ?>">Tous (<?= (int)$stats['total'] ?>)</a>
-                    <a class="filter-tab<?= $filter === 'actif' ? ' active' : '' ?>" href="<?= htmlspecialchars($baseAdminUrl) ?>?statut=actif<?= $searchQuery ?>">Actifs (<?= (int)$stats['actif'] ?>)</a>
-                    <a class="filter-tab<?= $filter === 'incomplet' ? ' active' : '' ?>" href="<?= htmlspecialchars($baseAdminUrl) ?>?statut=incomplet<?= $searchQuery ?>">Incomplets (<?= (int)$stats['incomplet'] ?>)</a>
-                    <a class="filter-tab<?= $filter === 'suspendu' ? ' active' : '' ?>" href="<?= htmlspecialchars($baseAdminUrl) ?>?statut=suspendu<?= $searchQuery ?>">Suspendus (<?= (int)$stats['suspendu'] ?>)</a>
+                    <a class="filter-tab<?= $filter === 'actif' ? ' active' : '' ?>" href="<?= htmlspecialchars($actifHref ?? $tousHref) ?>">Actifs (<?= (int)$stats['actif'] ?>)</a>
+                    <a class="filter-tab<?= $filter === 'incomplet' ? ' active' : '' ?>" href="<?= htmlspecialchars($incompletHref ?? $tousHref) ?>">Incomplets (<?= (int)$stats['incomplet'] ?>)</a>
+                    <a class="filter-tab<?= $filter === 'suspendu' ? ' active' : '' ?>" href="<?= htmlspecialchars($suspenduHref ?? $tousHref) ?>">Suspendus (<?= (int)$stats['suspendu'] ?>)</a>
                 </div>
             </div>
 
@@ -942,7 +1015,14 @@ $baseAdminUrl = app_url('/admin');
                                     $compList = $row['competence_list'] ?? [];
                                     $compCount = count($compList);
                                 ?>
-                                <tr>
+                                <tr
+                                    data-id="<?= (int)$row['id_user'] ?>"
+                                    data-nom="<?= htmlspecialchars((string)($row['nom'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                    data-prenom="<?= htmlspecialchars((string)($row['prenom'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                    data-email="<?= htmlspecialchars((string)($row['email'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                    data-specialite="<?= htmlspecialchars((string)($row['specialite'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                    data-ville="<?= htmlspecialchars((string)($row['ville'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                >
                                     <td><input type="checkbox"></td>
                                     <td>
                                         <div class="user-cell">
@@ -986,7 +1066,7 @@ $baseAdminUrl = app_url('/admin');
                                     <td>
                                         <div class="actions-cell action-cell">
                                             <a class="btn-icon btn-link" title="Voir" href="<?= htmlspecialchars(app_url('/profil')) ?>">👁</a>
-                                            <button class="btn-icon" type="button" onclick="showToast('Edition non disponible')">✏️</button>
+                                            <button class="btn-icon" type="button" onclick="openEditModal(this)">✏️</button>
                                             <button class="btn-icon success" type="button" onclick="showToast('Profil valide')">✅</button>
                                             <form action="<?= htmlspecialchars(app_url('/admin/deleteUser')) ?>" method="post" style="display:inline;" onsubmit="return confirm('Supprimer cet utilisateur ?');">
                                                 <input type="hidden" name="id" value="<?= (int)$row['id_user'] ?>">
@@ -1026,6 +1106,87 @@ $baseAdminUrl = app_url('/admin');
     <!-- TOAST -->
     <div class="toast" id="toast">✅ Action effectuée</div>
 
+    <div class="modal-overlay" id="create-modal" onclick="closeModalOutside(event, 'create-modal')">
+        <div class="modal-box">
+            <div class="modal-head">
+                <span>Nouveau profil</span>
+                <button class="btn-ghost" type="button" onclick="closeModal('create-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="<?= htmlspecialchars(app_url('/admin/addUser')) ?>">
+                    <div class="modal-grid">
+                        <label class="modal-field">Nom
+                            <input type="text" name="nom" maxlength="60">
+                        </label>
+                        <label class="modal-field">Prénom
+                            <input type="text" name="prenom" maxlength="60">
+                        </label>
+                        <label class="modal-field">Email
+                            <input type="email" name="email" maxlength="120">
+                        </label>
+                        <label class="modal-field">Mot de passe
+                            <input type="password" name="password" minlength="8" maxlength="120">
+                        </label>
+                        <label class="modal-field">Rôle
+                            <input type="text" name="role" maxlength="40" value="utilisateur">
+                        </label>
+                        <label class="modal-field">Spécialité
+                            <input type="text" name="specialite" maxlength="120">
+                        </label>
+                        <label class="modal-field" style="grid-column:1 / -1;">Ville
+                            <input type="text" name="ville" maxlength="120">
+                        </label>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-ghost" onclick="closeModal('create-modal')">Annuler</button>
+                        <button type="submit" class="btn-add">Créer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="edit-modal" onclick="closeModalOutside(event, 'edit-modal')">
+        <div class="modal-box">
+            <div class="modal-head">
+                <span>Modifier profil</span>
+                <button class="btn-ghost" type="button" onclick="closeModal('edit-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="<?= htmlspecialchars(app_url('/admin/updateUser')) ?>" id="edit-form">
+                    <input type="hidden" name="id" id="edit-id" value="">
+                    <div class="modal-grid">
+                        <label class="modal-field">Nom
+                            <input type="text" name="nom" id="edit-nom" maxlength="60">
+                        </label>
+                        <label class="modal-field">Prénom
+                            <input type="text" name="prenom" id="edit-prenom" maxlength="60">
+                        </label>
+                        <label class="modal-field">Email
+                            <input type="email" name="email" id="edit-email" maxlength="120">
+                        </label>
+                        <label class="modal-field">Rôle (optionnel)
+                            <input type="text" name="role" id="edit-role" maxlength="40" placeholder="utilisateur">
+                        </label>
+                        <label class="modal-field">Spécialité
+                            <input type="text" name="specialite" id="edit-specialite" maxlength="120">
+                        </label>
+                        <label class="modal-field">Ville
+                            <input type="text" name="ville" id="edit-ville" maxlength="120">
+                        </label>
+                        <label class="modal-field" style="grid-column:1 / -1;">Téléphone
+                            <input type="text" name="telephone" id="edit-telephone" maxlength="30">
+                        </label>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-ghost" onclick="closeModal('edit-modal')">Annuler</button>
+                        <button type="submit" class="btn-add">Enregistrer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
         <script>
         function toggleAll(cb) {
                 document.querySelectorAll('#profiles-tbody input[type=checkbox]').forEach(function(c) {
@@ -1064,6 +1225,48 @@ $baseAdminUrl = app_url('/admin');
                 if (overlay && e.target === overlay) {
                         closeDetail();
                 }
+        }
+
+        function openModal(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.style.display = 'flex';
+            }
+        }
+
+        function closeModal(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.style.display = 'none';
+            }
+        }
+
+        function closeModalOutside(e, id) {
+            if (e.target && e.target.id === id) {
+                closeModal(id);
+            }
+        }
+
+        function openCreateModal() {
+            openModal('create-modal');
+        }
+
+        function openEditModal(button) {
+            var row = button && button.closest ? button.closest('tr') : null;
+            if (!row) {
+                return;
+            }
+
+            document.getElementById('edit-id').value = row.dataset.id || '';
+            document.getElementById('edit-nom').value = row.dataset.nom || '';
+            document.getElementById('edit-prenom').value = row.dataset.prenom || '';
+            document.getElementById('edit-email').value = row.dataset.email || '';
+            document.getElementById('edit-specialite').value = row.dataset.specialite || '';
+            document.getElementById('edit-ville').value = row.dataset.ville || '';
+            document.getElementById('edit-role').value = '';
+            document.getElementById('edit-telephone').value = '';
+
+            openModal('edit-modal');
         }
         </script>
 </body>

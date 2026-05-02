@@ -36,25 +36,27 @@ class ProfilController
     private function isAjaxRequest(): bool
     {
         $requestedWith = strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '');
-        $accept = strtolower($_SERVER['HTTP_ACCEPT'] ?? '');
+        return $requestedWith === 'xmlhttprequest';
+    }
 
-        return $requestedWith === 'xmlhttprequest' || strpos($accept, 'application/json') !== false;
+    private function textResponse(bool $success, string $message, int $statusCode = 200, array $data = []): void
+    {
+        http_response_code($statusCode);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo $message;
+        exit;
     }
 
     private function jsonResponse(bool $success, string $message, int $statusCode = 200, array $data = []): void
     {
         http_response_code($statusCode);
         header('Content-Type: application/json; charset=utf-8');
-        $payload = [
+        echo json_encode([
             'success' => $success,
-            'message' => $message
-        ];
-
-        if (!empty($data)) {
-            $payload = array_merge($payload, $data);
-        }
-
-        echo json_encode($payload);
+            'message' => $message,
+            'data' => $data,
+            'provider' => 'ollama'
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
     }
 
@@ -154,6 +156,253 @@ class ProfilController
 
         $dt = DateTime::createFromFormat('Y-m-d', $value);
         return $dt instanceof DateTime && $dt->format('Y-m-d') === $value;
+    }
+
+    private function getPivotTableName(bool $createIfMissing = false): ?string
+    {
+        $pdo = getPDO();
+        foreach (['profil_competence', 'profil_competences'] as $candidate) {
+            $check = $pdo->query("SHOW TABLES LIKE '$candidate'");
+            if ($check && $check->rowCount() > 0) {
+                return $candidate;
+            }
+        }
+
+        if (!$createIfMissing) {
+            return null;
+        }
+
+        try {
+            $pdo->exec("\n                CREATE TABLE IF NOT EXISTS profil_competence (\n                    id_profil BIGINT NOT NULL,\n                    id_competence BIGINT NOT NULL,\n                    date_ajout DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,\n                    PRIMARY KEY (id_profil, id_competence),\n                    KEY idx_pc_comp (id_competence)\n                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4\n            ");
+            return 'profil_competence';
+        } catch (Exception) {
+            return null;
+        }
+    }
+
+    private function getPivotCompetenceColumn(string $pivotTable): ?string
+    {
+        $pdo = getPDO();
+        foreach (['id_competence', 'id_competences'] as $column) {
+            $stmt = $pdo->prepare("\n                SELECT COUNT(*)\n                FROM INFORMATION_SCHEMA.COLUMNS\n                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?\n            ");
+            $stmt->execute([$pivotTable, $column]);
+            if ((int)$stmt->fetchColumn() > 0) {
+                return $column;
+            }
+        }
+
+        return null;
+    }
+
+    private function getOrCreateProfilId(int $userId): ?int
+    {
+        $pdo = getPDO();
+        $check = $pdo->query("SHOW TABLES LIKE 'profil_professionnel'");
+        if (!$check || $check->rowCount() === 0) {
+            return null;
+        }
+
+        $stmt = $pdo->prepare("SELECT id_profil FROM profil_professionnel WHERE id_user = ? ORDER BY id_profil ASC LIMIT 1");
+        $stmt->execute([$userId]);
+        $idProfil = $stmt->fetchColumn();
+        if ($idProfil !== false) {
+            return (int)$idProfil;
+        }
+
+        $insert = $pdo->prepare("INSERT INTO profil_professionnel (id_user, date_creation) VALUES (?, CURDATE())");
+        $insert->execute([$userId]);
+
+        $stmt->execute([$userId]);
+        $idProfil = $stmt->fetchColumn();
+        return $idProfil !== false ? (int)$idProfil : null;
+    }
+
+    private function getCompetenceCatalogRows(): array
+    {
+        try {
+            $pdo = getPDO();
+            $check = $pdo->query("SHOW TABLES LIKE 'competences'");
+            if (!$check || $check->rowCount() === 0) {
+                return [];
+            }
+
+            $stmt = $pdo->query("\n                SELECT id_competence, nom_competence, description\n                FROM competences\n                ORDER BY nom_competence ASC, id_competence ASC\n            ");
+            return $stmt ? ($stmt->fetchAll(PDO::FETCH_ASSOC) ?: []) : [];
+        } catch (Exception) {
+            return [];
+        }
+    }
+
+    private function getSelectedCompetenceIds(int $userId): array
+    {
+        $pivotTable = $this->getPivotTableName();
+        $profilId = $this->getOrCreateProfilId($userId);
+        if ($pivotTable === null || $profilId === null) {
+            return [];
+        }
+
+        $pivotCompetenceColumn = $this->getPivotCompetenceColumn($pivotTable);
+        if ($pivotCompetenceColumn === null) {
+            return [];
+        }
+
+        $stmt = getPDO()->prepare("SELECT `$pivotCompetenceColumn` FROM `$pivotTable` WHERE id_profil = ?");
+        $stmt->execute([$profilId]);
+
+        $ids = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) ?: [] as $raw) {
+            $id = (int)$raw;
+            if ($id > 0) {
+                $ids[] = $id;
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    private function getUserCompetencesManyToMany(int $userId): array
+    {
+        $pivotTable = $this->getPivotTableName();
+        $profilId = $this->getOrCreateProfilId($userId);
+        if ($pivotTable === null || $profilId === null) {
+            return $this->model->getCompetences($userId);
+        }
+
+        $pivotCompetenceColumn = $this->getPivotCompetenceColumn($pivotTable);
+        if ($pivotCompetenceColumn === null) {
+            return $this->model->getCompetences($userId);
+        }
+
+        $stmt = getPDO()->prepare("\n            SELECT c.id_competence, c.nom_competence, c.description, 100 AS niveau, 0 AS ordre\n            FROM `$pivotTable` pc\n            INNER JOIN competences c ON c.id_competence = pc.`$pivotCompetenceColumn`\n            WHERE pc.id_profil = ?\n            ORDER BY c.nom_competence ASC, c.id_competence ASC\n        ");
+        $stmt->execute([$profilId]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    private function saveSelectedCompetencesForUser(int $userId, array $competenceIds): bool
+    {
+        $pivotTable = $this->getPivotTableName(true);
+        $profilId = $this->getOrCreateProfilId($userId);
+        if ($pivotTable === null || $profilId === null) {
+            return false;
+        }
+
+        $pivotCompetenceColumn = $this->getPivotCompetenceColumn($pivotTable);
+        if ($pivotCompetenceColumn === null) {
+            return false;
+        }
+
+        $cleanIds = [];
+        foreach ($competenceIds as $rawId) {
+            $id = (int)$rawId;
+            if ($id > 0) {
+                $cleanIds[] = $id;
+            }
+        }
+        $cleanIds = array_values(array_unique($cleanIds));
+
+        $pdo = getPDO();
+        $existingIds = [];
+        if (!empty($cleanIds)) {
+            $placeholders = implode(',', array_fill(0, count($cleanIds), '?'));
+            $stmtValid = $pdo->prepare("SELECT id_competence FROM competences WHERE id_competence IN ($placeholders)");
+            $stmtValid->execute($cleanIds);
+            foreach ($stmtValid->fetchAll(PDO::FETCH_COLUMN) ?: [] as $rawValid) {
+                $existingIds[] = (int)$rawValid;
+            }
+        }
+
+        $pdo->beginTransaction();
+        try {
+            $stmtDelete = $pdo->prepare("DELETE FROM `$pivotTable` WHERE id_profil = ?");
+            $stmtDelete->execute([$profilId]);
+
+            if (!empty($existingIds)) {
+                $stmtInsert = $pdo->prepare("INSERT INTO `$pivotTable` (id_profil, `$pivotCompetenceColumn`) VALUES (?, ?)");
+                foreach ($existingIds as $competenceId) {
+                    $stmtInsert->execute([$profilId, $competenceId]);
+                }
+            }
+
+            $pdo->commit();
+            return true;
+        } catch (Exception) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            return false;
+        }
+    }
+
+    private function resolveCompetenceIdFromRequest(string $catalogChoice, string $nom): ?int
+    {
+        $pdo = getPDO();
+
+        $catalogChoice = trim($catalogChoice);
+        if ($catalogChoice !== '') {
+            if (strncmp($catalogChoice, 'id:', 3) === 0) {
+                $id = (int)substr($catalogChoice, 3);
+                if ($id > 0) {
+                    $stmt = $pdo->prepare('SELECT id_competence FROM competences WHERE id_competence = ? LIMIT 1');
+                    $stmt->execute([$id]);
+                    $found = $stmt->fetchColumn();
+                    return $found !== false ? (int)$found : null;
+                }
+            }
+
+            if (strncmp($catalogChoice, 'name:', 5) === 0) {
+                $nom = trim(substr($catalogChoice, 5));
+            }
+        }
+
+        $nom = $this->normalizeText($nom, 100);
+        if ($nom === '') {
+            return null;
+        }
+
+        $stmt = $pdo->prepare('SELECT id_competence FROM competences WHERE LOWER(nom_competence) = LOWER(?) LIMIT 1');
+        $stmt->execute([$nom]);
+        $found = $stmt->fetchColumn();
+
+        return $found !== false ? (int)$found : null;
+    }
+
+    private function addUserCompetenceLink(int $userId, int $competenceId): bool
+    {
+        $pivotTable = $this->getPivotTableName(true);
+        $profilId = $this->getOrCreateProfilId($userId);
+        if ($pivotTable === null || $profilId === null || $competenceId <= 0) {
+            return false;
+        }
+
+        $pivotCompetenceColumn = $this->getPivotCompetenceColumn($pivotTable);
+        if ($pivotCompetenceColumn === null) {
+            return false;
+        }
+
+        $stmt = getPDO()->prepare("INSERT IGNORE INTO `$pivotTable` (id_profil, `$pivotCompetenceColumn`) VALUES (?, ?)");
+        $stmt->execute([$profilId, $competenceId]);
+
+        return true;
+    }
+
+    private function removeUserCompetenceLink(int $userId, int $competenceId): bool
+    {
+        $pivotTable = $this->getPivotTableName();
+        $profilId = $this->getOrCreateProfilId($userId);
+        if ($pivotTable === null || $profilId === null || $competenceId <= 0) {
+            return false;
+        }
+
+        $pivotCompetenceColumn = $this->getPivotCompetenceColumn($pivotTable);
+        if ($pivotCompetenceColumn === null) {
+            return false;
+        }
+
+        $stmt = getPDO()->prepare("DELETE FROM `$pivotTable` WHERE id_profil = ? AND `$pivotCompetenceColumn` = ?");
+        $stmt->execute([$profilId, $competenceId]);
+
+        return $stmt->rowCount() > 0;
     }
 
     private function getDefaultPortfolioRealisations(): array
@@ -395,6 +644,43 @@ class ProfilController
         ];
     }
 
+    private function buildCompletionData(string $bio, array $competences, array $portfolioFiles): array
+    {
+        $descriptionCompleted = trim($bio) !== '';
+        $competencesCompleted = count($competences) > 0;
+        $portfolioCompleted = count($portfolioFiles) > 0;
+
+        $score = 0;
+        if ($descriptionCompleted) {
+            $score += 20;
+        }
+        if ($competencesCompleted) {
+            $score += 30;
+        }
+        if ($portfolioCompleted) {
+            $score += 50;
+        }
+
+        return [
+            'score' => $score,
+            'description' => [
+                'label' => 'Description',
+                'weight' => 20,
+                'completed' => $descriptionCompleted,
+            ],
+            'competences' => [
+                'label' => 'Competences',
+                'weight' => 30,
+                'completed' => $competencesCompleted,
+            ],
+            'portfolio' => [
+                'label' => 'Portfolio',
+                'weight' => 50,
+                'completed' => $portfolioCompleted,
+            ],
+        ];
+    }
+
     private function buildInsightData(
         string $specialite,
         string $bio,
@@ -415,23 +701,11 @@ class ProfilController
         $experienceCount = count($experiences);
         $portfolioCount = count($portfolioFiles);
 
+        $completionData = $this->buildCompletionData($bio, $competences, $portfolioFiles);
+        $completionScore = (int)($completionData['score'] ?? 0);
+
         $skillAverage = $skillCount > 0 ? array_sum($competenceScores) / $skillCount : 0;
         $certAverage = $certCount > 0 ? array_sum($certificationScores) / $certCount : 0;
-
-        $profileSignals = [
-            trim((string)$specialite) !== '' && $this->lowerText(trim((string)$specialite)) !== 'specialite non renseignee',
-            trim((string)$bio) !== '',
-            trim((string)$ville) !== '' && $this->lowerText(trim((string)$ville)) !== 'non renseigne',
-            trim((string)$email) !== '' && $this->lowerText(trim((string)$email)) !== 'non renseigne',
-            trim((string)$telephone) !== '' && $this->lowerText(trim((string)$telephone)) !== 'non renseigne',
-            $skillCount > 0,
-            $certCount > 0,
-            $experienceCount > 0,
-            $portfolioCount > 0
-        ];
-
-        $completedSignals = count(array_filter($profileSignals));
-        $completenessScore = (int)round(($completedSignals / max(1, count($profileSignals))) * 100);
 
         $skillDepthScore = min(100, (int)round(($skillAverage * 0.6) + min(25, $skillCount * 4)));
         $certQualityScore = min(100, (int)round(($certAverage * 0.7) + min(20, $certCount * 6)));
@@ -441,7 +715,7 @@ class ProfilController
             (0.38 * $skillDepthScore) +
             (0.24 * $certQualityScore) +
             (0.18 * $portfolioQualityScore) +
-            (0.20 * $completenessScore)
+            (0.20 * $completionScore)
         );
         $profileScore = max(0, min(100, $profileScore));
 
@@ -456,7 +730,7 @@ class ProfilController
             (0.35 * $activityScore) +
             (0.25 * $engagementScore) +
             (0.20 * $freshnessScore) +
-            (0.20 * $completenessScore)
+            (0.20 * $completionScore)
         );
         $popularityScore = max(0, min(100, $popularityScore));
 
@@ -494,6 +768,8 @@ class ProfilController
         }
 
         return [
+            'completionScore' => $completionScore,
+            'completionBreakdown' => $completionData,
             'profileScore' => $profileScore,
             'popularityScore' => $popularityScore,
             'isTrending' => $isTrending,
@@ -540,7 +816,7 @@ class ProfilController
             }
 
             $stats = $this->model->getStats($userId);
-            $competences = $this->model->getCompetences($userId);
+            $competences = $this->getUserCompetencesManyToMany($userId);
             $certifications = $this->model->getCertifications($userId);
             $experiences = $this->model->getExperiences($userId);
             $portfolioFiles = $this->model->getPortfolioFiles($userId);
@@ -577,8 +853,8 @@ class ProfilController
         }
 
         $stats = $this->model->getStats($user_id);
-        $competenceCatalog = $this->model->getCompetenceCatalog();
-        $competences = $this->model->getCompetences($user_id);
+        $competenceCatalog = $this->getCompetenceCatalogRows();
+        $competences = $this->getUserCompetencesManyToMany($user_id);
         $certifications = $this->model->getCertifications($user_id);
         $experiences = $this->model->getExperiences($user_id);
         $portfolioFiles = $this->model->getPortfolioFiles($user_id);
@@ -647,6 +923,8 @@ class ProfilController
             $stats
         );
 
+        $completionScore = (int)$insightData['completionScore'];
+        $completionBreakdown = $insightData['completionBreakdown'];
         $profileScore = (int)$insightData['profileScore'];
         $popularityScore = (int)$insightData['popularityScore'];
         $isTrending = (bool)$insightData['isTrending'];
@@ -680,13 +958,96 @@ class ProfilController
         require_once 'views/profil/index.php';
     }
 
+    public function recalculateCompletion()
+    {
+        $user_id = $this->requireAuth();
+        $isAjax = $this->isAjaxRequest();
+
+        $user = $this->model->getUserById($user_id);
+        if (!$user) {
+            if ($isAjax) {
+                $this->textResponse(false, 'Profil introuvable.', 404);
+            }
+            $this->flash('error', 'Profil introuvable.');
+            $this->redirect('/profil');
+        }
+
+        $specialite = (string)($user['specialite'] ?? 'Specialite non renseignee');
+        $bio = (string)$this->model->getBioByUserId($user_id);
+        $ville = (string)($user['ville'] ?? 'Tunisie');
+        $email = (string)($user['email'] ?? 'Non renseigne');
+        $telephone = trim((string)($user['telephone'] ?? ''));
+        if ($telephone === '') {
+            $telephone = trim((string)($user['profil_telephone'] ?? ($user['num_tel'] ?? '')));
+        }
+        if ($telephone === '') {
+            $telephone = 'Non renseigne';
+        }
+
+        $stats = $this->model->getStats($user_id);
+        $competences = $this->getUserCompetencesManyToMany($user_id);
+        $certifications = $this->model->getCertifications($user_id);
+        $experiences = $this->model->getExperiences($user_id);
+        $portfolioFiles = $this->model->getPortfolioFiles($user_id);
+
+        $insightData = $this->buildInsightData(
+            $specialite,
+            $bio,
+            $ville,
+            $email,
+            $telephone,
+            $competences,
+            $certifications,
+            $experiences,
+            $portfolioFiles,
+            $stats
+        );
+
+        $this->persistInsightCache($user_id, $insightData);
+
+        $completionScore = (int)($insightData['completionScore'] ?? 0);
+        $completionBreakdown = (array)($insightData['completionBreakdown'] ?? []);
+
+        if ($isAjax) {
+            $this->textResponse(true, 'Progression du profil recalculee.', 200, [
+                'completionScore' => $completionScore,
+                'completionBreakdown' => $completionBreakdown,
+                'profileScore' => (int)($insightData['profileScore'] ?? 0),
+                'popularityScore' => (int)($insightData['popularityScore'] ?? 0)
+            ]);
+        }
+
+        $this->flash('success', 'Progression du profil recalculee : ' . $completionScore . '%.');
+        $this->redirect('/profil');
+    }
+
     public function gestion_competences()
     {
         $user_id = $this->requireAuth();
-        $competenceCatalog = $this->model->getCompetenceCatalog();
-        $competences = $this->model->getCompetences($user_id);
+        $competenceCatalog = $this->getCompetenceCatalogRows();
+        $competences = $this->getUserCompetencesManyToMany($user_id);
+        $selectedCompetenceIds = $this->getSelectedCompetenceIds($user_id);
 
         require_once 'views/profil/gestion_competences.php';
+    }
+
+    public function saveCompetences()
+    {
+        $user_id = $this->requireAuth();
+
+        $competenceIds = $_POST['competence_ids'] ?? [];
+        if (!is_array($competenceIds)) {
+            $competenceIds = [];
+        }
+
+        if ($this->saveSelectedCompetencesForUser($user_id, $competenceIds)) {
+            $this->refreshInsightCache($user_id);
+            $this->flash('success', 'Competences du profil mises a jour.');
+        } else {
+            $this->flash('error', 'Mise a jour des competences impossible.');
+        }
+
+        $this->redirect('/profil/gestion_competences');
     }
 
     public function gestion_certifications()
@@ -703,173 +1064,71 @@ class ProfilController
         $isAjax = $this->isAjaxRequest();
 
         $catalogChoice = trim((string)($_POST['competence_catalog_choice'] ?? ''));
-        $catalogId = null;
-        $catalogName = '';
-        if ($catalogChoice !== '') {
-            if (strncmp($catalogChoice, 'id:', 3) === 0) {
-                $catalogId = (int)substr($catalogChoice, 3);
-            } elseif (strncmp($catalogChoice, 'name:', 5) === 0) {
-                $catalogName = trim(substr($catalogChoice, 5));
-            }
-        }
+        $nom = $this->normalizeText($_POST['nom'] ?? '', 100);
 
-        $nom = $this->normalizeText($_POST['nom'] ?? '', 80);
-        $description = $this->normalizeText($_POST['description'] ?? '', 500);
-        $niveau = filter_input(INPUT_POST, 'niveau', FILTER_VALIDATE_INT);
-
-        if ($catalogId) {
-            $catalog = $this->model->getCompetenceCatalogById($catalogId);
-            if (!$catalog) {
-                if ($isAjax) {
-                    $this->jsonResponse(false, 'Competence cataloguee introuvable.', 404);
-                }
-                $this->flash('error', 'Competence cataloguee introuvable.');
-                $this->redirect('/profil');
-            }
-
-            $nom = trim((string)($catalog['nom_competence'] ?? $nom));
-            if ($description === '') {
-                $description = trim((string)($catalog['description'] ?? ''));
-            }
-        } elseif ($catalogName !== '' && $nom === '') {
-            $nom = $catalogName;
-        }
-
-        if ($catalogId === null && $catalogName === '' && !$this->isValidSkillName($nom, 2, 80)) {
+        $competenceId = $this->resolveCompetenceIdFromRequest($catalogChoice, $nom);
+        if ($competenceId === null) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Nom de competence invalide.', 422);
+                $this->textResponse(false, 'Veuillez selectionner une competence existante.', 422);
             }
-            $this->flash('error', 'Nom de competence invalide.');
-            $this->redirect('/profil');
+            $this->flash('error', 'Veuillez selectionner une competence existante.');
+            $this->redirect('/profil/gestion_competences');
         }
 
-        if (!$this->isValidSkillDescription($description, 500)) {
-            if ($isAjax) {
-                $this->jsonResponse(false, 'Description de competence invalide.', 422);
-            }
-            $this->flash('error', 'Description de competence invalide.');
-            $this->redirect('/profil');
-        }
-
-        if ($niveau === false || $niveau < 0 || $niveau > 100) {
-            if ($isAjax) {
-                $this->jsonResponse(false, 'Niveau invalide.', 422);
-            }
-            $this->flash('error', 'Niveau invalide.');
-            $this->redirect('/profil');
-        }
-
-        try {
-            $this->model->addCompetence($user_id, $nom, $description, $niveau, $catalogId);
+        if ($this->addUserCompetenceLink($user_id, $competenceId)) {
             $this->refreshInsightCache($user_id);
             if ($isAjax) {
-                $this->jsonResponse(true, 'Competence ajoutee');
+                $this->textResponse(true, 'Competence associee au profil.');
             }
-            $this->flash('success', 'Competence ajoutee');
-        } catch (Exception $e) {
+            $this->flash('success', 'Competence associee au profil.');
+        } else {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Erreur lors de l\'ajout', 500);
+                $this->textResponse(false, 'Erreur lors de l\'ajout', 500);
             }
             $this->flash('error', 'Erreur lors de l\'ajout');
         }
 
-        $this->redirect('/profil');
+        $this->redirect('/profil/gestion_competences');
     }
 
     public function deleteCompetence()
     {
         $user_id = $this->requireAuth();
+        $isAjax = $this->isAjaxRequest();
+
         $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
-
         if (!$id) {
-            $this->flash('error', 'ID invalide');
-            $this->redirect('/profil');
-        }
-
-        try {
-            if ($this->model->deleteCompetence($id, $user_id)) {
-                $this->refreshInsightCache($user_id);
-                $this->flash('success', 'Competence supprimee');
-            } else {
-                $this->flash('error', 'Suppression impossible');
+            if ($isAjax) {
+                $this->textResponse(false, 'ID invalide', 422);
             }
-        } catch (Exception $e) {
-            $this->flash('error', 'Erreur suppression');
+            $this->flash('error', 'ID invalide');
+            $this->redirect('/profil/gestion_competences');
         }
 
-        $this->redirect('/profil');
+        if ($this->removeUserCompetenceLink($user_id, (int)$id)) {
+            $this->refreshInsightCache($user_id);
+            if ($isAjax) {
+                $this->textResponse(true, 'Competence retiree du profil.');
+            }
+            $this->flash('success', 'Competence retiree du profil.');
+        } else {
+            if ($isAjax) {
+                $this->textResponse(false, 'Suppression impossible', 409);
+            }
+            $this->flash('error', 'Suppression impossible');
+        }
+
+        $this->redirect('/profil/gestion_competences');
     }
 
     public function updateCompetence()
     {
-        $user_id = $this->requireAuth();
-        $isAjax = $this->isAjaxRequest();
-
-        $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT);
-        $nom = $this->normalizeText($_POST['nom'] ?? '', 80);
-        $description = $this->normalizeText($_POST['description'] ?? '', 500);
-        $niveau = filter_input(INPUT_POST, 'niveau', FILTER_VALIDATE_INT);
-
-        if (!$id) {
-            if ($isAjax) {
-                $this->jsonResponse(false, 'ID invalide', 422);
-            }
-            $this->flash('error', 'ID invalide');
-            $this->redirect('/profil');
+        $this->requireAuth();
+        if ($this->isAjaxRequest()) {
+            $this->textResponse(false, 'Modification refusee: le catalogue est gere par admin.', 403);
         }
-
-        if (!$this->isValidSkillName($nom, 2, 80)) {
-            if ($isAjax) {
-                $this->jsonResponse(false, 'Nom de competence invalide.', 422);
-            }
-            $this->flash('error', 'Nom de competence invalide.');
-            $this->redirect('/profil');
-        }
-
-        if (!$this->isValidSkillDescription($description, 500)) {
-            if ($isAjax) {
-                $this->jsonResponse(false, 'Description de competence invalide.', 422);
-            }
-            $this->flash('error', 'Description de competence invalide.');
-            $this->redirect('/profil');
-        }
-
-        if ($niveau === false || $niveau < 0 || $niveau > 100) {
-            if ($isAjax) {
-                $this->jsonResponse(false, 'Niveau invalide.', 422);
-            }
-            $this->flash('error', 'Champs invalides');
-            $this->redirect('/profil');
-        }
-
-        try {
-            if ($this->model->updateCompetence($id, $user_id, $nom, $description, $niveau)) {
-                $this->refreshInsightCache($user_id);
-                if ($isAjax) {
-                    $this->jsonResponse(true, 'Competence modifiee', 200, [
-                        'competence' => [
-                            'id_competence' => $id,
-                            'nom_competence' => $nom,
-                            'description' => $description,
-                            'niveau' => $niveau
-                        ]
-                    ]);
-                }
-                $this->flash('success', 'Competence modifiee');
-            } else {
-                if ($isAjax) {
-                    $this->jsonResponse(false, 'Modification impossible', 409);
-                }
-                $this->flash('error', 'Modification impossible');
-            }
-        } catch (Exception $e) {
-            if ($isAjax) {
-                $this->jsonResponse(false, 'Erreur modification', 500);
-            }
-            $this->flash('error', 'Erreur modification');
-        }
-
-        $this->redirect('/profil');
+        $this->flash('error', 'Modification refusee: le catalogue est gere par admin.');
+        $this->redirect('/profil/gestion_competences');
     }
 
     public function addExperience()
@@ -885,7 +1144,7 @@ class ProfilController
 
         if (!$this->isWithinLength($poste, 2, 100) || $this->hasControlChars($poste)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Le poste est obligatoire', 422);
+                $this->textResponse(false, 'Le poste est obligatoire', 422);
             }
             $this->flash('error', 'Le poste est obligatoire');
             $this->redirect('/profil');
@@ -893,7 +1152,7 @@ class ProfilController
 
         if ($entreprise !== '' && ($this->textLength($entreprise) > 120 || $this->hasControlChars($entreprise))) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Entreprise invalide', 422);
+                $this->textResponse(false, 'Entreprise invalide', 422);
             }
             $this->flash('error', 'Entreprise invalide');
             $this->redirect('/profil');
@@ -901,7 +1160,7 @@ class ProfilController
 
         if ($description !== '' && ($this->textLength($description) > 1000 || $this->hasControlChars($description))) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Description invalide', 422);
+                $this->textResponse(false, 'Description invalide', 422);
             }
             $this->flash('error', 'Description invalide');
             $this->redirect('/profil');
@@ -909,7 +1168,7 @@ class ProfilController
 
         if (!$this->isValidDate($date_debut)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'La date de debut est obligatoire', 422);
+                $this->textResponse(false, 'La date de debut est obligatoire', 422);
             }
             $this->flash('error', 'Date de debut invalide');
             $this->redirect('/profil');
@@ -917,7 +1176,7 @@ class ProfilController
 
         if ($date_fin !== '' && !$this->isValidDate($date_fin)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Date de fin invalide', 422);
+                $this->textResponse(false, 'Date de fin invalide', 422);
             }
             $this->flash('error', 'Date de fin invalide');
             $this->redirect('/profil');
@@ -925,7 +1184,7 @@ class ProfilController
 
         if ($date_fin !== '' && strtotime($date_fin) < strtotime($date_debut)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'La date de fin doit etre apres la date de debut', 422);
+                $this->textResponse(false, 'La date de fin doit etre apres la date de debut', 422);
             }
             $this->flash('error', 'La date de fin doit etre apres la date de debut');
             $this->redirect('/profil');
@@ -935,7 +1194,7 @@ class ProfilController
             $newId = $this->model->addExperience($user_id, $poste, $entreprise, $date_debut, $date_fin, $description);
             $this->refreshInsightCache($user_id);
             if ($isAjax) {
-                $this->jsonResponse(true, 'Experience ajoutee', 200, [
+                $this->textResponse(true, 'Experience ajoutee', 200, [
                     'experience' => [
                         'id_experience' => $newId,
                         'poste' => $poste,
@@ -949,7 +1208,7 @@ class ProfilController
             $this->flash('success', 'Experience ajoutee');
         } catch (Exception $e) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Erreur lors de l\'ajout', 500);
+                $this->textResponse(false, 'Erreur lors de l\'ajout', 500);
             }
             $this->flash('error', 'Erreur lors de l\'ajout');
         }
@@ -965,7 +1224,7 @@ class ProfilController
 
         if (!$id) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'ID invalide', 422);
+                $this->textResponse(false, 'ID invalide', 422);
             }
             $this->flash('error', 'ID invalide');
             $this->redirect('/profil');
@@ -975,18 +1234,18 @@ class ProfilController
             if ($this->model->deleteExperience($id, $user_id)) {
                 $this->refreshInsightCache($user_id);
                 if ($isAjax) {
-                    $this->jsonResponse(true, 'Experience supprimee');
+                    $this->textResponse(true, 'Experience supprimee');
                 }
                 $this->flash('success', 'Experience supprimee');
             } else {
                 if ($isAjax) {
-                    $this->jsonResponse(false, 'Suppression impossible', 404);
+                    $this->textResponse(false, 'Suppression impossible', 404);
                 }
                 $this->flash('error', 'Suppression impossible');
             }
         } catch (Exception $e) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Erreur suppression', 500);
+                $this->textResponse(false, 'Erreur suppression', 500);
             }
             $this->flash('error', 'Erreur suppression');
         }
@@ -1013,7 +1272,7 @@ class ProfilController
             !$this->isValidDate($date_debut)
         ) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Champs invalides', 422);
+                $this->textResponse(false, 'Champs invalides', 422);
             }
             $this->flash('error', 'Champs invalides');
             $this->redirect('/profil');
@@ -1021,7 +1280,7 @@ class ProfilController
 
         if ($entreprise !== '' && ($this->textLength($entreprise) > 120 || $this->hasControlChars($entreprise))) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Entreprise invalide', 422);
+                $this->textResponse(false, 'Entreprise invalide', 422);
             }
             $this->flash('error', 'Entreprise invalide');
             $this->redirect('/profil');
@@ -1029,7 +1288,7 @@ class ProfilController
 
         if ($description !== '' && ($this->textLength($description) > 1000 || $this->hasControlChars($description))) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Description invalide', 422);
+                $this->textResponse(false, 'Description invalide', 422);
             }
             $this->flash('error', 'Description invalide');
             $this->redirect('/profil');
@@ -1037,7 +1296,7 @@ class ProfilController
 
         if ($date_fin !== '' && !$this->isValidDate($date_fin)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Date de fin invalide', 422);
+                $this->textResponse(false, 'Date de fin invalide', 422);
             }
             $this->flash('error', 'Date de fin invalide');
             $this->redirect('/profil');
@@ -1045,7 +1304,7 @@ class ProfilController
 
         if ($date_fin !== '' && strtotime($date_fin) < strtotime($date_debut)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'La date de fin doit etre apres la date de debut', 422);
+                $this->textResponse(false, 'La date de fin doit etre apres la date de debut', 422);
             }
             $this->flash('error', 'La date de fin doit etre apres la date de debut');
             $this->redirect('/profil');
@@ -1055,7 +1314,7 @@ class ProfilController
             if ($this->model->updateExperience($id, $user_id, $poste, $entreprise, $date_debut, $date_fin, $description)) {
                 $this->refreshInsightCache($user_id);
                 if ($isAjax) {
-                    $this->jsonResponse(true, 'Experience modifiee', 200, [
+                    $this->textResponse(true, 'Experience modifiee', 200, [
                         'experience' => [
                             'id_experience' => $id,
                             'poste' => $poste,
@@ -1069,13 +1328,13 @@ class ProfilController
                 $this->flash('success', 'Experience modifiee');
             } else {
                 if ($isAjax) {
-                    $this->jsonResponse(false, 'Modification impossible', 409);
+                    $this->textResponse(false, 'Modification impossible', 409);
                 }
                 $this->flash('error', 'Modification impossible');
             }
         } catch (Exception $e) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Erreur modification', 500);
+                $this->textResponse(false, 'Erreur modification', 500);
             }
             $this->flash('error', 'Erreur modification');
         }
@@ -1093,7 +1352,7 @@ class ProfilController
 
         if (!$this->isValidSkillName($nom, 2, 100)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Nom de certification invalide.', 422);
+                $this->textResponse(false, 'Nom de certification invalide.', 422);
             }
             $this->flash('error', 'Nom de certification invalide.');
             $this->redirect('/profil');
@@ -1101,7 +1360,7 @@ class ProfilController
 
         if ($niveau === null || $niveau === false || $niveau < 0 || $niveau > 100) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Niveau invalide.', 422);
+                $this->textResponse(false, 'Niveau invalide.', 422);
             }
             $this->flash('error', 'Niveau invalide.');
             $this->redirect('/profil');
@@ -1111,12 +1370,12 @@ class ProfilController
             $this->model->addCertification($user_id, $nom, $niveau);
             $this->refreshInsightCache($user_id);
             if ($isAjax) {
-                $this->jsonResponse(true, 'Certification ajoutee');
+                $this->textResponse(true, 'Certification ajoutee');
             }
             $this->flash('success', 'Certification ajoutee');
         } catch (Exception $e) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Erreur lors de l\'ajout', 500);
+                $this->textResponse(false, 'Erreur lors de l\'ajout', 500);
             }
             $this->flash('error', 'Erreur lors de l\'ajout');
         }
@@ -1159,7 +1418,7 @@ class ProfilController
 
         if (!$id) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'ID invalide', 422);
+                $this->textResponse(false, 'ID invalide', 422);
             }
             $this->flash('error', 'ID invalide');
             $this->redirect('/profil');
@@ -1167,7 +1426,7 @@ class ProfilController
 
         if (!$this->isValidSkillName($nom, 2, 100)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Nom de certification invalide.', 422);
+                $this->textResponse(false, 'Nom de certification invalide.', 422);
             }
             $this->flash('error', 'Nom de certification invalide.');
             $this->redirect('/profil');
@@ -1175,7 +1434,7 @@ class ProfilController
 
         if ($niveau === false || $niveau < 0 || $niveau > 100) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Niveau invalide.', 422);
+                $this->textResponse(false, 'Niveau invalide.', 422);
             }
             $this->flash('error', 'Champs invalides');
             $this->redirect('/profil');
@@ -1185,7 +1444,7 @@ class ProfilController
             if ($this->model->updateCertification($id, $user_id, $nom, $niveau)) {
                 $this->refreshInsightCache($user_id);
                 if ($isAjax) {
-                    $this->jsonResponse(true, 'Certification modifiee', 200, [
+                    $this->textResponse(true, 'Certification modifiee', 200, [
                         'certification' => [
                             'id_certification' => $id,
                             'nom_certification' => $nom,
@@ -1196,13 +1455,13 @@ class ProfilController
                 $this->flash('success', 'Certification modifiee');
             } else {
                 if ($isAjax) {
-                    $this->jsonResponse(false, 'Modification impossible', 409);
+                    $this->textResponse(false, 'Modification impossible', 409);
                 }
                 $this->flash('error', 'Modification impossible');
             }
         } catch (Exception $e) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Erreur modification', 500);
+                $this->textResponse(false, 'Erreur modification', 500);
             }
             $this->flash('error', 'Erreur modification');
         }
@@ -1217,7 +1476,7 @@ class ProfilController
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Methode non autorisee', 405);
+                $this->textResponse(false, 'Methode non autorisee', 405);
             }
             $this->redirect('/profil');
         }
@@ -1240,7 +1499,7 @@ class ProfilController
 
         if (!$this->isValidName($nom) || !$this->isValidName($prenom) || !$this->isValidEmail($email)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Nom, prenom ou email invalide.', 422);
+                $this->textResponse(false, 'Nom, prenom ou email invalide.', 422);
             }
             $this->flash('error', 'Nom, prenom ou email invalide.');
             $this->redirect('/profil');
@@ -1248,7 +1507,7 @@ class ProfilController
 
         if (!in_array($disponibilite, ['disponible', 'occupe', 'indisponible'], true)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Disponibilite invalide.', 422);
+                $this->textResponse(false, 'Disponibilite invalide.', 422);
             }
             $this->flash('error', 'Disponibilite invalide.');
             $this->redirect('/profil');
@@ -1256,7 +1515,7 @@ class ProfilController
 
         if (!$this->isValidPhone($telephone)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Telephone invalide.', 422);
+                $this->textResponse(false, 'Telephone invalide.', 422);
             }
             $this->flash('error', 'Telephone invalide.');
             $this->redirect('/profil');
@@ -1269,7 +1528,7 @@ class ProfilController
             $this->hasControlChars($disponibilite_message)
         ) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Champs texte invalides.', 422);
+                $this->textResponse(false, 'Champs texte invalides.', 422);
             }
             $this->flash('error', 'Champs texte invalides.');
             $this->redirect('/profil');
@@ -1281,23 +1540,13 @@ class ProfilController
             $this->textLength($disponibilite_conges) > 5000
         ) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Donnees de disponibilite trop volumineuses.', 422);
+                $this->textResponse(false, 'Donnees de disponibilite trop volumineuses.', 422);
             }
             $this->flash('error', 'Donnees de disponibilite trop volumineuses.');
             $this->redirect('/profil');
         }
 
-        $invalidSlotsJson = json_decode($disponibilite_slots, true) === null && $disponibilite_slots !== 'null' && $disponibilite_slots !== '[]';
-        $invalidExceptionsJson = json_decode($disponibilite_exceptions, true) === null && $disponibilite_exceptions !== 'null' && $disponibilite_exceptions !== '[]';
-        $invalidCongesJson = json_decode($disponibilite_conges, true) === null && $disponibilite_conges !== 'null' && $disponibilite_conges !== '[]';
-
-        if ($invalidSlotsJson || $invalidExceptionsJson || $invalidCongesJson) {
-            if ($isAjax) {
-                $this->jsonResponse(false, 'Format des donnees de disponibilite invalide.', 422);
-            }
-            $this->flash('error', 'Format des donnees de disponibilite invalide.');
-            $this->redirect('/profil');
-        }
+        // Disponibilite slots/exceptions/conges sont laissés tel quel (pas de validation JSON ici)
 
         try {
             $data = [
@@ -1318,7 +1567,7 @@ class ProfilController
             $this->model->updateProfil($user_id, $data);
             $this->refreshInsightCache($user_id);
             if ($isAjax) {
-                $this->jsonResponse(true, 'Profil mis a jour !', 200, [
+                $this->textResponse(true, 'Profil mis a jour !', 200, [
                     'nom' => $nom,
                     'prenom' => $prenom,
                     'email' => $email,
@@ -1336,7 +1585,7 @@ class ProfilController
             $this->redirect('/profil?success=1');
         } catch (Exception $e) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Erreur lors de la mise a jour du profil.', 500);
+                $this->textResponse(false, 'Erreur lors de la mise a jour du profil.', 500);
             }
             $this->flash('error', 'Erreur lors de la mise a jour du profil.');
             $this->redirect('/profil');
@@ -1350,7 +1599,7 @@ class ProfilController
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Methode non autorisee', 405);
+                $this->textResponse(false, 'Methode non autorisee', 405);
             }
             $this->redirect('/profil');
         }
@@ -1359,7 +1608,7 @@ class ProfilController
 
         if (!$this->isWithinLength($bio, 2, 2000) || $this->hasControlChars($bio)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Bio invalide.', 422);
+                $this->textResponse(false, 'Bio invalide.', 422);
             }
             $this->flash('error', 'Bio invalide.');
             $this->redirect('/profil');
@@ -1369,18 +1618,18 @@ class ProfilController
             if ($this->model->addBioForUser($user_id, $bio)) {
                 $this->refreshInsightCache($user_id);
                 if ($isAjax) {
-                    $this->jsonResponse(true, 'Bio ajoutee.', 200, ['bio' => $bio]);
+                    $this->textResponse(true, 'Bio ajoutee.', 200, ['bio' => $bio]);
                 }
                 $this->flash('success', 'Bio ajoutee.');
             } else {
                 if ($isAjax) {
-                    $this->jsonResponse(false, 'Ajout impossible. Verifiez qu\'une competence existe deja.', 409);
+                    $this->textResponse(false, 'Ajout impossible. Verifiez qu\'une competence existe deja.', 409);
                 }
                 $this->flash('error', 'Ajout impossible. Verifiez qu\'une competence existe deja.');
             }
         } catch (Exception $e) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Erreur lors de l\'ajout de la bio.', 500);
+                $this->textResponse(false, 'Erreur lors de l\'ajout de la bio.', 500);
             }
             $this->flash('error', 'Erreur lors de l\'ajout de la bio.');
         }
@@ -1395,7 +1644,7 @@ class ProfilController
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Methode non autorisee', 405);
+                $this->textResponse(false, 'Methode non autorisee', 405);
             }
             $this->redirect('/profil');
         }
@@ -1404,7 +1653,7 @@ class ProfilController
 
         if (!$this->isWithinLength($bio, 2, 2000) || $this->hasControlChars($bio)) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Bio invalide.', 422);
+                $this->textResponse(false, 'Bio invalide.', 422);
             }
             $this->flash('error', 'Bio invalide.');
             $this->redirect('/profil');
@@ -1414,18 +1663,18 @@ class ProfilController
             if ($this->model->updateBioForUser($user_id, $bio)) {
                 $this->refreshInsightCache($user_id);
                 if ($isAjax) {
-                    $this->jsonResponse(true, 'Bio modifiee.', 200, ['bio' => $bio]);
+                    $this->textResponse(true, 'Bio modifiee.', 200, ['bio' => $bio]);
                 }
                 $this->flash('success', 'Bio modifiee.');
             } else {
                 if ($isAjax) {
-                    $this->jsonResponse(false, 'Modification impossible. Ajoutez d\'abord une bio.', 409);
+                    $this->textResponse(false, 'Modification impossible. Ajoutez d\'abord une bio.', 409);
                 }
                 $this->flash('error', 'Modification impossible. Ajoutez d\'abord une bio.');
             }
         } catch (Exception $e) {
             if ($isAjax) {
-                $this->jsonResponse(false, 'Erreur lors de la modification de la bio.', 500);
+                $this->textResponse(false, 'Erreur lors de la modification de la bio.', 500);
             }
             $this->flash('error', 'Erreur lors de la modification de la bio.');
         }
@@ -1574,7 +1823,7 @@ class ProfilController
         $isAjax = $this->isAjaxRequest();
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            if ($isAjax) { $this->jsonResponse(false, 'Méthode non autorisée', 405); }
+            if ($isAjax) { $this->textResponse(false, 'Méthode non autorisée', 405); }
             $this->redirect('/profil');
         }
 
@@ -1596,7 +1845,7 @@ class ProfilController
         $technologies = array_slice(array_values(array_unique($technologies)), 0, 10);
 
         if (!$this->isValidSkillName($titre, 2, 150)) {
-            if ($isAjax) { $this->jsonResponse(false, 'Titre du métier invalide.', 422); }
+            if ($isAjax) { $this->textResponse(false, 'Titre du métier invalide.', 422); }
             $this->flash('error', 'Titre du métier invalide.');
             $this->redirect('/profil');
         }
@@ -1607,7 +1856,7 @@ class ProfilController
             );
 
             // Lancer l'analyse IA immédiatement
-            $competences    = $this->model->getCompetences($userId);
+            $competences    = $this->getUserCompetencesManyToMany($userId);
             $certifications = $this->model->getCertifications($userId);
             $ia = $this->buildMetierIaAnalysis(
                 $titre, $description, $niveauMaitrise, $technologies, $competences, $certifications
@@ -1622,7 +1871,7 @@ class ProfilController
             );
 
             if ($isAjax) {
-                $this->jsonResponse(true, 'Métier avancé sauvegardé.', 200, [
+                $this->textResponse(true, 'Métier avancé sauvegardé.', 200, [
                     'id_metier'           => $idMetier,
                     'slot'                => $slot,
                     'titre'               => $titre,
@@ -1633,7 +1882,7 @@ class ProfilController
             }
             $this->flash('success', 'Métier avancé "' . $titre . '" sauvegardé avec analyse IA.');
         } catch (Exception $e) {
-            if ($isAjax) { $this->jsonResponse(false, 'Erreur lors de la sauvegarde du métier.', 500); }
+            if ($isAjax) { $this->textResponse(false, 'Erreur lors de la sauvegarde du métier.', 500); }
             $this->flash('error', 'Erreur lors de la sauvegarde du métier.');
         }
 
@@ -1650,21 +1899,21 @@ class ProfilController
         $idMetier = filter_input(INPUT_POST, 'id_metier', FILTER_VALIDATE_INT);
 
         if (!$idMetier) {
-            if ($isAjax) { $this->jsonResponse(false, 'ID invalide', 422); }
+            if ($isAjax) { $this->textResponse(false, 'ID invalide', 422); }
             $this->flash('error', 'ID invalide');
             $this->redirect('/profil');
         }
 
         try {
             if ($this->model->deleteMetierAvance($idMetier, $userId)) {
-                if ($isAjax) { $this->jsonResponse(true, 'Métier supprimé.'); }
+                if ($isAjax) { $this->textResponse(true, 'Métier supprimé.'); }
                 $this->flash('success', 'Métier avancé supprimé.');
             } else {
-                if ($isAjax) { $this->jsonResponse(false, 'Suppression impossible.', 404); }
+                if ($isAjax) { $this->textResponse(false, 'Suppression impossible.', 404); }
                 $this->flash('error', 'Suppression impossible.');
             }
         } catch (Exception $e) {
-            if ($isAjax) { $this->jsonResponse(false, 'Erreur suppression.', 500); }
+            if ($isAjax) { $this->textResponse(false, 'Erreur suppression.', 500); }
             $this->flash('error', 'Erreur suppression.');
         }
 
@@ -1681,17 +1930,17 @@ class ProfilController
         $idMetier = filter_input(INPUT_POST, 'id_metier', FILTER_VALIDATE_INT);
 
         if (!$idMetier) {
-            if ($isAjax) { $this->jsonResponse(false, 'ID invalide', 422); }
+            if ($isAjax) { $this->textResponse(false, 'ID invalide', 422); }
             $this->redirect('/profil');
         }
 
         $metier = $this->model->getMetierById($idMetier, $userId);
         if (!$metier) {
-            if ($isAjax) { $this->jsonResponse(false, 'Métier introuvable.', 404); }
+            if ($isAjax) { $this->textResponse(false, 'Métier introuvable.', 404); }
             $this->redirect('/profil');
         }
 
-        $competences    = $this->model->getCompetences($userId);
+        $competences    = $this->getUserCompetencesManyToMany($userId);
         $certifications = $this->model->getCertifications($userId);
         $ia = $this->buildMetierIaAnalysis(
             (string)$metier['titre'],
@@ -1711,9 +1960,485 @@ class ProfilController
         );
 
         if ($isAjax) {
-            $this->jsonResponse(true, 'Analyse IA complétée.', 200, ['ia' => $ia]);
+            $this->textResponse(true, 'Analyse IA complétée.', 200, ['ia' => $ia]);
         }
         $this->flash('success', 'Analyse IA relancée.');
+        $this->redirect('/profil');
+    }
+
+    private function decodeRequestPayload(): array
+    {
+        return $_POST;
+    }
+
+
+    private function buildCvSeedData(int $userId): array
+    {
+        $user = $this->model->getUserById($userId) ?: [];
+        $bio = $this->model->getBioByUserId($userId);
+        $stats = $this->model->getStats($userId);
+        $competences = $this->getUserCompetencesManyToMany($userId);
+        $certifications = $this->model->getCertifications($userId);
+        $experiences = $this->model->getExperiences($userId);
+
+        $specialite = (string)($user['specialite'] ?? 'Professionnel polyvalent');
+        $ville = (string)($user['ville'] ?? 'Tunisie');
+        $email = (string)($user['email'] ?? '');
+        $telephone = trim((string)($user['telephone'] ?? ''));
+        if ($telephone === '') {
+            $telephone = trim((string)($user['profil_telephone'] ?? ($user['num_tel'] ?? '')));
+        }
+
+        $insightData = $this->buildInsightData(
+            (string)$specialite,
+            (string)$bio,
+            (string)$ville,
+            (string)$email,
+            (string)$telephone,
+            $competences,
+            $certifications,
+            $experiences,
+            [],
+            $stats
+        );
+
+        return [
+            'personal' => [
+                'fullName' => trim(((string)($user['prenom'] ?? '')) . ' ' . ((string)($user['nom'] ?? ''))),
+                'title' => $specialite,
+                'email' => $email,
+                'phone' => $telephone,
+                'city' => $ville,
+                'summary' => trim($bio) !== '' ? (string)$bio : (string)($insightData['cvSummary'] ?? '')
+            ],
+            'skills' => array_map(static function (array $item): array {
+                return [
+                    'name' => (string)($item['nom_competence'] ?? ''),
+                    'level' => (int)($item['niveau'] ?? 50)
+                ];
+            }, $competences),
+            'experiences' => array_map(static function (array $item): array {
+                return [
+                    'role' => (string)($item['poste'] ?? ''),
+                    'company' => (string)($item['entreprise'] ?? ''),
+                    'start' => (string)($item['date_debut'] ?? ''),
+                    'end' => (string)($item['date_fin'] ?? ''),
+                    'description' => (string)($item['description'] ?? '')
+                ];
+            }, $experiences),
+            'education' => array_map(static function (array $item): array {
+                return [
+                    'degree' => (string)($item['nom_certification'] ?? 'Certification'),
+                    'school' => 'Certification professionnelle',
+                    'start' => '',
+                    'end' => '',
+                    'description' => 'Niveau estime: ' . (int)($item['niveau'] ?? 0) . '%'
+                ];
+            }, $certifications),
+            'scores' => [
+                'ats' => (int)($insightData['profileScore'] ?? 60),
+                'impact' => (int)($insightData['popularityScore'] ?? 55),
+                'readability' => 78
+            ],
+            'tips' => [
+                'Ajoutez des verbes d action et des resultats mesurables dans chaque experience.',
+                'Gardez des competences ciblees sur le poste vise pour renforcer le score ATS.',
+                'Conservez un resume clair en 4 a 6 lignes max pour une meilleure lisibilite.'
+            ],
+            'language' => 'fr',
+            'template' => 'moderne',
+            'primaryColor' => '#2E6B3E'
+        ];
+    }
+
+    private function getOllamaBaseUrl(): string
+    {
+        // Use explicit IPv4 loopback to avoid IPv6/localhost resolution issues on Windows
+        return 'http://127.0.0.1:11434';
+    }
+
+    private function buildOllamaPrompt(array $profileData, string $language, string $userPrompt): string
+    {
+        $langs = [
+            'fr' => 'Tu es Assistant Professionnel Intelligent HERFA.\n\nTu aides les artisans et professionnels tunisiens à créer un CV professionnel moderne et impactant.\n\nAnalyse les informations suivantes et génère UNIQUEMENT EN JSON structuré avec ces clés exactes:\n- resume_professionnel\n- competences_reformulees\n- experiences_reformulees\n- qualites_professionnelles\n- slogan_professionnel\n- recommandations\n- conseils_cv\n\nLes conseils_cv doivent contenir 3 à 5 conseils courts, concrets et actionnables pour améliorer le CV.\n',
+            'en' => 'You are an Intelligent Professional Assistant for HERFA.\n\nYou help Tunisian craftspeople and professionals create a modern and impactful CV.\n\nAnalyze the following information and generate ONLY in structured JSON with these exact keys:\n- professional_summary\n- reformulated_skills\n- reformulated_experiences\n- professional_qualities\n- professional_slogan\n- recommendations\n- cv_tips\n\nThe cv_tips field must contain 3 to 5 short, concrete, actionable tips to improve the CV.\n',
+            'ar' => 'أنت مساعد احترافي ذكي لـ HERFA.\n\nتساعد الحرفيين والمهنيين التونسيين على إنشاء سيرة ذاتية حديثة وفعالة.\n\nحلل المعلومات التالية وأنتج JSON منظم فقط بهذه المفاتيح الدقيقة:\n- resume_professionnel\n- competences_reformulees\n- experiences_reformulees\n- qualites_professionnelles\n- slogan_professionnel\n- recommandations\n- conseils_cv\n\nيجب أن تحتوي conseils_cv على 3 إلى 5 نصائح قصيرة وعملية لتحسين السيرة الذاتية.\n'
+        ];
+
+        $header = $langs[$language] ?? $langs['fr'];
+
+        $prompt = $header;
+        $prompt .= "=== INFORMATIONS PROFIL ===\n";
+        $prompt .= "Nom: " . $this->normalizeText($profileData['personal']['fullName'] ?? '', 100) . "\n";
+        $prompt .= "Métier/Spécialité: " . $this->normalizeText($profileData['personal']['title'] ?? '', 100) . "\n";
+        $prompt .= "Email: " . $this->normalizeText($profileData['personal']['email'] ?? '', 100) . "\n";
+        $prompt .= "Téléphone: " . $this->normalizeText($profileData['personal']['phone'] ?? '', 20) . "\n";
+        $prompt .= "Ville: " . $this->normalizeText($profileData['personal']['city'] ?? '', 50) . "\n";
+        $prompt .= "Résumé actuel: " . $this->normalizeText($profileData['personal']['summary'] ?? '', 300) . "\n\n";
+
+        if (!empty($profileData['skills'])) {
+            $prompt .= "=== COMPÉTENCES ===\n";
+            foreach ($profileData['skills'] as $skill) {
+                $skillName = $this->normalizeText($skill['name'] ?? '', 100);
+                $skillLevel = (int)($skill['level'] ?? 50);
+                $prompt .= "- " . $skillName . " (Niveau: " . $skillLevel . "%)\n";
+            }
+            $prompt .= "\n";
+        }
+
+        if (!empty($profileData['experiences'])) {
+            $prompt .= "=== EXPÉRIENCES ===\n";
+            foreach ($profileData['experiences'] as $exp) {
+                $prompt .= "Poste: " . $this->normalizeText($exp['role'] ?? '', 100) . "\n";
+                $prompt .= "Entreprise: " . $this->normalizeText($exp['company'] ?? '', 100) . "\n";
+                $prompt .= "Période: " . $this->normalizeText($exp['start'] ?? '', 50) . " - " . $this->normalizeText($exp['end'] ?? '', 50) . "\n";
+                $prompt .= "Description: " . $this->normalizeText($exp['description'] ?? '', 500) . "\n\n";
+            }
+        }
+
+        if (!empty($profileData['education'])) {
+            $prompt .= "=== CERTIFICATIONS ===\n";
+            foreach ($profileData['education'] as $edu) {
+                $prompt .= "- " . $this->normalizeText($edu['degree'] ?? '', 100) . " (" . $this->normalizeText($edu['description'] ?? '', 100) . ")\n";
+            }
+            $prompt .= "\n";
+        }
+
+        if (!empty($profileData['scores'])) {
+            $prompt .= "=== SCORES DU PROFIL ===\n";
+            $prompt .= "Score ATS: " . (int)($profileData['scores']['ats'] ?? 0) . "%\n";
+            $prompt .= "Score Impact: " . (int)($profileData['scores']['impact'] ?? 0) . "%\n";
+            $prompt .= "Lisibilité: " . (int)($profileData['scores']['readability'] ?? 0) . "%\n\n";
+        }
+
+        if ($userPrompt !== '') {
+            $prompt .= "=== OBJECTIF SUPPLÉMENTAIRE ===\n";
+            $prompt .= $this->normalizeText($userPrompt, 500) . "\n\n";
+        }
+
+        $prompt .= "Génère un CV professionnel structuré et impactant au format JSON.\n";
+        $prompt .= "Assure-toi que chaque section est pertinente et optimisée pour les recruteurs et les ATS.\n";
+
+        return $prompt;
+    }
+
+    private function callOllamaCvGenerate(array $profileData, string $language, string $userPrompt, string $model = 'mistral'): ?array
+    {
+        $prompt = $this->buildOllamaPrompt($profileData, $language, $userPrompt);
+
+        $payload = [
+            'model' => $model,
+            'prompt' => $prompt,
+            'stream' => false,
+            'temperature' => 0.7
+        ];
+
+        $url = $this->getOllamaBaseUrl() . '/api/generate';
+
+        // Preferred: cURL with IPv4 resolution and sensible timeouts
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            if ($ch !== false) {
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Accept: application/json']);
+                // Force IPv4 to avoid Windows resolving 'localhost' to IPv6 (::1)
+                if (defined('CURLOPT_IPRESOLVE') && defined('CURL_IPRESOLVE_V4')) {
+                    curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+                }
+                // Use HTTP/1.1 for compatibility
+                if (defined('CURLOPT_HTTP_VERSION') && defined('CURL_HTTP_VERSION_1_1')) {
+                    curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+                }
+
+                $response = curl_exec($ch);
+                $curlErr = null;
+                if ($response === false) {
+                    $curlErr = curl_error($ch);
+                }
+                $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+
+                if ($response !== false && $httpCode === 200) {
+                    $data = json_decode($response, true);
+                } else {
+                    error_log('[ProfilController] Ollama cURL error: ' . ($curlErr ?: 'http_code=' . $httpCode));
+                    $data = null;
+                }
+            } else {
+                $data = null;
+            }
+        } else {
+            $data = null;
+        }
+
+        // Fallback: try file_get_contents with stream context if cURL failed
+        if ((!is_array($data) || !isset($data['response'])) && function_exists('stream_context_create')) {
+            $ctxOpts = [
+                'http' => [
+                    'method' => 'POST',
+                    'header' => "Content-Type: application/json\r\nAccept: application/json\r\n",
+                    'content' => json_encode($payload),
+                    'timeout' => 120
+                ]
+            ];
+            $ctx = stream_context_create($ctxOpts);
+            $response2 = @file_get_contents($url, false, $ctx);
+            if ($response2 !== false) {
+                $data = json_decode($response2, true);
+            } else {
+                error_log('[ProfilController] Ollama fallback file_get_contents failed');
+            }
+        }
+
+        if (!is_array($data) || !isset($data['response'])) {
+            return null;
+        }
+
+        $responseText = (string)($data['response'] ?? '');
+        $jsonMatch = null;
+        if (preg_match('/\{[\s\S]*\}/', $responseText, $jsonMatch)) {
+            $parsed = json_decode($jsonMatch[0], true);
+            if (is_array($parsed)) {
+                return $parsed;
+            }
+        }
+
+        return null;
+    }
+
+    private function parseOllamaResponse(?array $ollamaData, array $seed): array
+    {
+        if ($ollamaData === null) {
+            return $this->buildLocalCvFromSeed($seed, 'fr');
+        }
+
+        $result = $seed;
+
+        if (isset($ollamaData['resume_professionnel'])) {
+            $result['personal']['summary'] = (string)$ollamaData['resume_professionnel'];
+        }
+
+        if (isset($ollamaData['professional_summary'])) {
+            $result['personal']['summary'] = (string)$ollamaData['professional_summary'];
+        }
+
+        if (isset($ollamaData['competences_reformulees'])) {
+            $competences = $ollamaData['competences_reformulees'];
+            if (is_array($competences)) {
+                $result['skills'] = [];
+                foreach ($competences as $comp) {
+                    if (is_string($comp)) {
+                        $result['skills'][] = ['name' => $comp, 'level' => 75];
+                    } elseif (is_array($comp) && isset($comp['name'])) {
+                        $result['skills'][] = [
+                            'name' => (string)$comp['name'],
+                            'level' => (int)($comp['level'] ?? 75)
+                        ];
+                    }
+                }
+            }
+        }
+
+        if (isset($ollamaData['reformulated_skills'])) {
+            $competences = $ollamaData['reformulated_skills'];
+            if (is_array($competences)) {
+                $result['skills'] = [];
+                foreach ($competences as $comp) {
+                    if (is_string($comp)) {
+                        $result['skills'][] = ['name' => $comp, 'level' => 75];
+                    } elseif (is_array($comp) && isset($comp['name'])) {
+                        $result['skills'][] = [
+                            'name' => (string)$comp['name'],
+                            'level' => (int)($comp['level'] ?? 75)
+                        ];
+                    }
+                }
+            }
+        }
+
+        if (isset($ollamaData['qualites_professionnelles'])) {
+            $qualities = $ollamaData['qualites_professionnelles'];
+            if (is_array($qualities) && !isset($result['qualities'])) {
+                $result['qualities'] = $qualities;
+            }
+        }
+
+        if (isset($ollamaData['professional_qualities'])) {
+            $qualities = $ollamaData['professional_qualities'];
+            if (is_array($qualities) && !isset($result['qualities'])) {
+                $result['qualities'] = $qualities;
+            }
+        }
+
+        if (isset($ollamaData['slogan_professionnel'])) {
+            $result['slogan'] = (string)$ollamaData['slogan_professionnel'];
+        }
+
+        if (isset($ollamaData['professional_slogan'])) {
+            $result['slogan'] = (string)$ollamaData['professional_slogan'];
+        }
+
+        if (isset($ollamaData['recommandations'])) {
+            $recs = $ollamaData['recommandations'];
+            $result['recommendations'] = is_array($recs) ? $recs : [(string)$recs];
+        }
+
+        if (isset($ollamaData['recommendations'])) {
+            $recs = $ollamaData['recommendations'];
+            $result['recommendations'] = is_array($recs) ? $recs : [(string)$recs];
+        }
+
+        if (isset($ollamaData['conseils_cv'])) {
+            $advice = $ollamaData['conseils_cv'];
+            $result['aiAdvice'] = is_array($advice) ? $advice : [(string)$advice];
+        }
+
+        if (isset($ollamaData['cv_tips'])) {
+            $advice = $ollamaData['cv_tips'];
+            $result['aiAdvice'] = is_array($advice) ? $advice : [(string)$advice];
+        }
+
+        if (isset($ollamaData['advice'])) {
+            $advice = $ollamaData['advice'];
+            $result['aiAdvice'] = is_array($advice) ? $advice : [(string)$advice];
+        }
+
+        return $result;
+    }
+
+    private function buildLocalCvFromSeed(array $seed, string $language, string $prompt = ''): array
+    {
+        $result = $seed;
+        $result['language'] = $language;
+
+        $summary = trim((string)($result['personal']['summary'] ?? ''));
+        if ($summary === '') {
+            $title = (string)($result['personal']['title'] ?? 'Professionnel');
+            $summary = 'Professionnel ' . $title . ' oriente resultats, capable de contribuer rapidement a des projets concrets.';
+        }
+        if ($prompt !== '') {
+            $summary .= ' Objectif cible: ' . $this->normalizeText($prompt, 260) . '.';
+        }
+        $result['personal']['summary'] = $summary;
+
+        $result['tips'] = [
+            'Ajoutez 3 a 5 mots-cles metier exacts dans le titre et le resume.',
+            'Transformez chaque experience en impact: action + contexte + resultat.',
+            'Conservez une hierarchie visuelle simple pour une lecture rapide par recruteurs et ATS.'
+        ];
+
+        $result['aiAdvice'] = [
+            'Gardez le titre de poste très précis et orienté métier.',
+            'Commencez le résumé par votre valeur ajoutée la plus forte.',
+            'Limitez les compétences à celles qui sont utiles pour le poste visé.'
+        ];
+
+        return $result;
+    }
+
+    public function generateCvAi(): void
+    {
+        $userId = $this->requireAuth();
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            if ($this->isAjaxRequest()) {
+                $this->jsonResponse(false, 'Méthode non autorisée', 405);
+            }
+            $this->textResponse(false, 'Methode non autorisee', 405);
+        }
+
+        $prompt = $this->normalizeText($_POST['prompt'] ?? '', 1200);
+        $language = strtolower(trim((string)($_POST['language'] ?? 'fr')));
+        $model = strtolower(trim((string)($_POST['model'] ?? 'mistral')));
+
+        if (!in_array($language, ['fr', 'en', 'ar'], true)) {
+            $language = 'fr';
+        }
+
+        if (!in_array($model, ['mistral', 'llama3', 'llama2', 'neural-chat', 'starling-lm'], true)) {
+            $model = 'mistral';
+        }
+
+        // Build seed data from database
+        $seed = $this->buildCvSeedData($userId);
+
+        // Call Ollama API
+        $ollamaResponse = $this->callOllamaCvGenerate($seed, $language, $prompt, $model);
+
+        // Parse response (fallback to local generation if Ollama fails)
+        $cvData = $this->parseOllamaResponse($ollamaResponse, $seed);
+
+        // If AJAX request, return JSON
+        if ($this->isAjaxRequest()) {
+            $this->jsonResponse(
+                true,
+                $ollamaResponse !== null ? 'CV généré avec Ollama' : 'CV généré localement',
+                200,
+                $cvData
+            );
+        }
+
+        // For regular POST, save and redirect
+        $this->flash('success', $ollamaResponse !== null ? 'CV généré avec Ollama' : 'CV généré localement');
+        $this->redirect('/profil');
+    }
+
+    public function optimizeCvAi(): void
+    {
+        $userId = $this->requireAuth();
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+            if ($this->isAjaxRequest()) {
+                $this->jsonResponse(false, 'Méthode non autorisée', 405);
+            }
+            $this->textResponse(false, 'Methode non autorisee', 405);
+        }
+
+        $cvData = $_POST['cv'] ?? '{}';
+        $language = strtolower(trim((string)($_POST['language'] ?? 'fr')));
+        $model = strtolower(trim((string)($_POST['model'] ?? 'mistral')));
+
+        if (!in_array($language, ['fr', 'en', 'ar'], true)) {
+            $language = 'fr';
+        }
+
+        if (!in_array($model, ['mistral', 'llama3', 'llama2', 'neural-chat', 'starling-lm'], true)) {
+            $model = 'mistral';
+        }
+
+        $parsed = is_string($cvData) ? json_decode($cvData, true) : $cvData;
+        if (!is_array($parsed)) {
+            $parsed = $this->buildCvSeedData($userId);
+        }
+
+        // Build optimization prompt
+        $optimizationPrompt = "Optimise ce CV pour qu'il soit plus impactant et attire davantage les recruteurs. ";
+        $optimizationPrompt .= "Fournisse des recommandations précises pour améliorer chaque section.";
+
+        $ollamaResponse = $this->callOllamaCvGenerate($parsed, $language, $optimizationPrompt, $model);
+
+        if ($ollamaResponse !== null && isset($ollamaResponse['recommandations'])) {
+            $parsed['recommendations'] = is_array($ollamaResponse['recommandations']) 
+                ? $ollamaResponse['recommandations'] 
+                : [$ollamaResponse['recommandations']];
+        } elseif ($ollamaResponse !== null && isset($ollamaResponse['recommendations'])) {
+            $parsed['recommendations'] = is_array($ollamaResponse['recommendations']) 
+                ? $ollamaResponse['recommendations'] 
+                : [$ollamaResponse['recommendations']];
+        }
+
+        if ($this->isAjaxRequest()) {
+            $this->jsonResponse(
+                true,
+                $ollamaResponse !== null ? 'CV optimisé avec Ollama' : 'CV optimisé localement',
+                200,
+                $parsed
+            );
+        }
+
+        $this->flash('success', $ollamaResponse !== null ? 'CV optimisé avec Ollama' : 'CV optimisé localement');
         $this->redirect('/profil');
     }
 

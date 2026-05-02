@@ -709,10 +709,10 @@ class ProfilModel
         $stmt->execute([$userId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 
-        // Décoder les champs JSON
+        // Décoder les champs stockés en texte
         foreach ($rows as &$row) {
-            $row['technologies']       = $this->decodeJsonColumn($row['technologies']);
-            $row['ia_recommandations'] = $this->decodeJsonColumn($row['ia_recommandations']);
+            $row['technologies']       = $this->decodeListColumn($row['technologies']);
+            $row['ia_recommandations'] = $this->decodeListColumn($row['ia_recommandations']);
         }
         unset($row);
 
@@ -741,8 +741,8 @@ class ProfilModel
             return false;
         }
 
-        $row['technologies']       = $this->decodeJsonColumn($row['technologies']);
-        $row['ia_recommandations'] = $this->decodeJsonColumn($row['ia_recommandations']);
+        $row['technologies']       = $this->decodeListColumn($row['technologies']);
+        $row['ia_recommandations'] = $this->decodeListColumn($row['ia_recommandations']);
         return $row;
     }
 
@@ -758,7 +758,7 @@ class ProfilModel
         int    $niveauMaitrise,
         array  $technologies
     ): int {
-        $techJson = json_encode($technologies, JSON_UNESCAPED_UNICODE);
+        $techText = $this->encodeListColumn($technologies);
 
         // Vérifie si le slot existe déjà pour cet utilisateur
         $stmt = $this->pdo->prepare(
@@ -778,7 +778,7 @@ class ProfilModel
                     updated_at     = NOW()
                 WHERE id_metier = ? AND id_user = ?
             ");
-            $stmt->execute([$titre, $description, $niveauMaitrise, $techJson, $existing, $userId]);
+            $stmt->execute([$titre, $description, $niveauMaitrise, $techText, $existing, $userId]);
             return (int)$existing;
         }
 
@@ -788,7 +788,7 @@ class ProfilModel
                 (id_user, slot, titre, description, niveau_maitrise, technologies, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())
         ");
-        $stmt->execute([$userId, $slot, $titre, $description, $niveauMaitrise, $techJson]);
+        $stmt->execute([$userId, $slot, $titre, $description, $niveauMaitrise, $techText]);
         return (int)$this->pdo->lastInsertId();
     }
 
@@ -832,7 +832,7 @@ class ProfilModel
             WHERE id_metier = ? AND id_user = ?
         ");
         $stmt->execute([
-            json_encode($recommandations, JSON_UNESCAPED_UNICODE),
+            $this->encodeListColumn($recommandations),
             $projectionSalaire,
             $tendanceMarche,
             $scoreAdequation,
@@ -846,16 +846,47 @@ class ProfilModel
     // HELPERS PRIVÉS
     // =========================================================
 
-    private function decodeJsonColumn(mixed $raw): array
+    private function decodeListColumn(mixed $raw): array
     {
         if (is_array($raw)) {
             return $raw;
         }
-        if (!is_string($raw) || $raw === '') {
+        if (!is_string($raw)) {
             return [];
         }
-        $decoded = json_decode($raw, true);
-        return is_array($decoded) ? $decoded : [];
+
+        $text = trim($raw);
+        if ($text === '') {
+            return [];
+        }
+
+        // Legacy list storage: extract quoted strings without using JSON helpers.
+        if (strpos($text, '[') !== false && strpos($text, ']') !== false && strpos($text, '"') !== false) {
+            preg_match_all('/"([^"]+)"/', $text, $matches);
+            if (!empty($matches[1])) {
+                return array_values(array_filter(array_map('trim', $matches[1]), 'strlen'));
+            }
+        }
+
+        $parts = preg_split('/\s*\|\s*/', $text);
+        if (count($parts) === 1) {
+            $parts = preg_split('/\s*,\s*/', $text);
+        }
+
+        return array_values(array_filter(array_map('trim', $parts), 'strlen'));
+    }
+
+    private function encodeListColumn(array $items): string
+    {
+        $clean = [];
+        foreach ($items as $item) {
+            $value = trim((string)$item);
+            if ($value !== '') {
+                $clean[] = $value;
+            }
+        }
+
+        return implode(' | ', array_values(array_unique($clean)));
     }
 
     private function textLength(string $value): int

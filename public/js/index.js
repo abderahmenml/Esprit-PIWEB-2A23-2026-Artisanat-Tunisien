@@ -314,33 +314,26 @@ function validateProfilWriteForm(form) {
     return '';
 }
 
-async function postFormAsJson(form) {
+async function postFormAsText(form) {
     try {
         const response = await fetch(form.action, {
             method: 'POST',
             headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Accept': 'application/json'
+                'X-Requested-With': 'XMLHttpRequest'
             },
             body: new FormData(form)
         });
 
-        let payload = null;
-        try {
-            payload = await response.json();
-        } catch (error) {
-            payload = null;
-        }
-
+        const message = await response.text();
         return {
-            ok: Boolean(response.ok && payload && payload.success),
-            payload,
+            ok: Boolean(response.ok),
+            message,
             response
         };
     } catch (error) {
         return {
             ok: false,
-            payload: null,
+            message: null,
             response: null,
             error
         };
@@ -367,17 +360,15 @@ async function submitAjaxAddForm(form) {
         submitButton.textContent = 'Envoi...';
     }
 
-    const result = await postFormAsJson(form);
+    const result = await postFormAsText(form);
 
     if (result.ok) {
-        showAppNotification((result.payload && result.payload.message) || 'Ajout reussi', 'success');
+        showAppNotification(result.message || 'Ajout reussi', 'success');
     } else {
         if (result.error) {
             showAppNotification('Erreur reseau, reessayez.', isBioForm ? 'success' : 'error');
         } else {
-            const errorMessage = result.payload && result.payload.message
-                ? result.payload.message
-                : 'Erreur lors de l\'ajout';
+            const errorMessage = result.message || 'Erreur lors de l\'ajout';
             showAppNotification(errorMessage, isBioForm ? 'success' : 'error');
         }
     }
@@ -585,7 +576,7 @@ function bindAjaxExperienceDeleteForms(scope = document) {
             }
 
             event.preventDefault();
-            const result = await postFormAsJson(form);
+            const result = await postFormAsText(form);
 
             if (result.ok) {
                 const row = form.closest('tr');
@@ -594,13 +585,13 @@ function bindAjaxExperienceDeleteForms(scope = document) {
                     syncExperienceEmptyState();
                 }
                 applyExperienceTableTools();
-                showAppNotification((result.payload && result.payload.message) || 'Experience supprimee', 'success');
+                showAppNotification(result.message || 'Experience supprimee', 'success');
                 return;
             }
 
             const errorMessage = result.error
                 ? 'Erreur reseau, reessayez.'
-                : ((result.payload && result.payload.message) || 'Suppression impossible');
+                : (result.message || 'Suppression impossible');
             showAppNotification(errorMessage, 'error');
         });
     });
@@ -655,20 +646,8 @@ function bindAjaxAddForms() {
                 return;
             }
 
-            if (isExperienceAddForm(form)) {
-                if (result.payload && result.payload.experience) {
-                    appendExperienceRow(result.payload.experience);
-                }
-                form.reset();
-                return;
-            }
-
-            if (isBioAjaxForm(form)) {
-                const bioText = result.payload && typeof result.payload.bio === 'string'
-                    ? result.payload.bio
-                    : getFormValue(form, 'bio');
-                setBioDisplayText(bioText);
-                switchBioFormToUpdate(form);
+            if (isExperienceAddForm(form) || isBioAjaxForm(form)) {
+                window.location.reload();
                 return;
             }
 
@@ -712,18 +691,58 @@ function bindGeneralWriteFormValidation() {
     });
 }
 
-function parseJsonArraySafe(value) {
-    const raw = String(value || '').trim();
-    if (!raw) {
-        return [];
-    }
+function renderCompletionBreakdownText(breakdown) {
+    const safe = breakdown && typeof breakdown === 'object' ? breakdown : {};
+    const descriptionDone = Boolean(safe.description && safe.description.completed);
+    const competencesDone = Boolean(safe.competences && safe.competences.completed);
+    const portfolioDone = Boolean(safe.portfolio && safe.portfolio.completed);
 
-    try {
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
-    } catch (error) {
-        return [];
+    return `Description ${descriptionDone ? '✅' : '❌'} (+20%) · Competences ${competencesDone ? '✅' : '❌'} (+30%) · Portfolio ${portfolioDone ? '✅' : '❌'} (+50%)`;
+}
+
+function bindCompletionRecalculateForm() {
+    const form = document.querySelector('form[data-completion-form="true"]');
+    if (!form || form.dataset.completionBound === '1') {
+        return;
     }
+    form.dataset.completionBound = '1';
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+
+        const submitButton = form.querySelector('[data-completion-submit="true"]');
+        const completionValue = document.querySelector('[data-completion-value="true"]');
+        const completionFill = document.querySelector('[data-completion-fill="true"]');
+        const completionDetail = document.querySelector('[data-completion-detail="true"]');
+
+        const initialLabel = submitButton ? submitButton.textContent : '';
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = 'Calcul en cours...';
+        }
+
+        const result = await postFormAsText(form);
+
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = initialLabel;
+        }
+
+        if (!result.ok) {
+            const message = result.error
+                ? 'Erreur reseau, reessayez.'
+                : (result.message || 'Recalcul impossible');
+            showAppNotification(message, 'error');
+            return;
+        }
+
+        showAppNotification(result.message || 'Progression recalculee', 'success');
+        window.location.reload();
+    });
+}
+
+function parseJsonArraySafe() {
+    return [];
 }
 
 function normalizeAvailabilityStatus(value) {
@@ -905,13 +924,13 @@ function initAvailabilityDesigner() {
         const state = {
             status: normalizeAvailabilityStatus(hiddenStatus.value || designer.dataset.initialStatus || 'disponible'),
             message: String(hiddenMessage.value || designer.dataset.initialMessage || '').trim(),
-            slots: parseJsonArraySafe(hiddenSlots.value || designer.dataset.initialSlots || '[]')
+            slots: []
                 .map(normalizeSlot)
                 .filter(Boolean),
-            exceptions: parseJsonArraySafe(hiddenExceptions.value || designer.dataset.initialExceptions || '[]')
+            exceptions: []
                 .map(normalizeException)
                 .filter(Boolean),
-            conges: parseJsonArraySafe(hiddenConges.value || designer.dataset.initialConges || '[]')
+            conges: []
                 .map(normalizeConge)
                 .filter(Boolean)
         };
@@ -1102,9 +1121,9 @@ function initAvailabilityDesigner() {
             hiddenStatus.value = status;
             hiddenSummary.value = summary;
             hiddenMessage.value = message.slice(0, 120);
-            hiddenSlots.value = JSON.stringify(state.slots);
-            hiddenExceptions.value = JSON.stringify(state.exceptions);
-            hiddenConges.value = JSON.stringify(state.conges);
+            hiddenSlots.value = '';
+            hiddenExceptions.value = '';
+            hiddenConges.value = '';
         };
 
         const renderAll = () => {
@@ -1400,7 +1419,7 @@ function editCompetence(id) {
         form.elements.niveau.value = String(niveau);
 
         saveButton.disabled = true;
-        const result = await postFormAsJson(form);
+        const result = await postFormAsText(form);
         saveButton.disabled = false;
 
         if (!result.ok) {
@@ -1421,6 +1440,7 @@ function editCompetence(id) {
         if (deleteForm) { deleteForm.style.display = 'inline'; }
         row.dataset.inlineEdit = '0';
 
+        applyCompetenceTableTools();
         showAppNotification('Competence modifiee', 'success');
     };
 
@@ -1538,7 +1558,7 @@ function editCertification(id) {
         form.elements.niveau.value = String(niveau);
 
         saveButton.disabled = true;
-        const result = await postFormAsJson(form);
+        const result = await postFormAsText(form);
         saveButton.disabled = false;
 
         if (!result.ok) {
@@ -1558,6 +1578,7 @@ function editCertification(id) {
         if (deleteForm) { deleteForm.style.display = 'inline'; }
         row.dataset.inlineEdit = '0';
 
+        applyCertificationTableTools();
         showAppNotification('Certification modifiee', 'success');
     };
 
@@ -1731,7 +1752,7 @@ function editExperience(id) {
 
         isSaving = true;
         saveButton.disabled = true;
-        const result = await postFormAsJson(form);
+        const result = await postFormAsText(form);
         isSaving = false;
         saveButton.disabled = false;
 
@@ -1834,6 +1855,291 @@ function toggleNoResultsRow(tbody, rowClass, colSpan, message, shouldShow) {
     }
 
     tbody.appendChild(noResultRow);
+}
+
+function parseHumanDateToTimestamp(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!match) {
+        return 0;
+    }
+
+    const day = Number.parseInt(match[1], 10);
+    const month = Number.parseInt(match[2], 10);
+    const year = Number.parseInt(match[3], 10);
+
+    if (!day || !month || !year) {
+        return 0;
+    }
+
+    const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+    if (Number.isNaN(date.getTime())) {
+        return 0;
+    }
+
+    return date.getTime();
+}
+
+function buildPortfolioDocRowMeta(row) {
+    const title = String((row.querySelector('.doc-title')?.textContent || '')).trim();
+    const realisation = String((row.querySelector('.doc-realisation')?.textContent || '')).trim();
+    const dateText = String((row.querySelector('.doc-date')?.textContent || '')).trim();
+    const createdAtRaw = String(row.getAttribute('data-created-at') || '').trim();
+
+    let createdAtTs = parseDateToTimestamp(createdAtRaw.slice(0, 10));
+    if (!createdAtTs) {
+        createdAtTs = parseHumanDateToTimestamp(dateText);
+    }
+
+    return {
+        row,
+        title,
+        titleLower: title.toLowerCase(),
+        realisation,
+        realisationLower: realisation.toLowerCase(),
+        searchable: `${title} ${realisation}`.toLowerCase(),
+        createdAtTs
+    };
+}
+
+function applyPortfolioDocsTableTools() {
+    const tbody = document.getElementById('portfolio-docs-list');
+    const searchInput = document.querySelector('[data-doc-search="true"]');
+    const sortSelect = document.querySelector('[data-doc-sort="true"]');
+
+    if (!tbody || !searchInput || !sortSelect) {
+        return;
+    }
+
+    const rows = Array.from(tbody.querySelectorAll('tr[data-id]'));
+    const query = searchInput.value.trim().toLowerCase();
+    const sortValue = sortSelect.value;
+
+    const items = rows.map(buildPortfolioDocRowMeta);
+
+    items.sort((a, b) => {
+        if (sortValue === 'date-asc') {
+            return a.createdAtTs - b.createdAtTs;
+        }
+        if (sortValue === 'titre-asc') {
+            return a.titleLower.localeCompare(b.titleLower, 'fr');
+        }
+        if (sortValue === 'realisation-asc') {
+            return a.realisationLower.localeCompare(b.realisationLower, 'fr');
+        }
+        return b.createdAtTs - a.createdAtTs;
+    });
+
+    items.forEach((item) => {
+        tbody.appendChild(item.row);
+    });
+
+    const currentYear = new Date().getFullYear();
+    let visibleCount = 0;
+    let currentYearCount = 0;
+    const realisations = new Set();
+
+    items.forEach((item) => {
+        const isVisible = query === '' || item.searchable.includes(query);
+        item.row.style.display = isVisible ? '' : 'none';
+
+        if (!isVisible) {
+            return;
+        }
+
+        visibleCount++;
+        if (item.realisationLower && item.realisationLower !== '-') {
+            realisations.add(item.realisationLower);
+        }
+
+        if (item.createdAtTs > 0) {
+            const year = new Date(item.createdAtTs).getFullYear();
+            if (year === currentYear) {
+                currentYearCount++;
+            }
+        }
+    });
+
+    const showNoResult = items.length > 0 && visibleCount === 0;
+    toggleNoResultsRow(
+        tbody,
+        'doc-empty-search-row',
+        4,
+        'Aucun document ne correspond a votre recherche.',
+        showNoResult
+    );
+
+    const totalEl = document.querySelector('[data-doc-stat-total="true"]');
+    const realisationsEl = document.querySelector('[data-doc-stat-realisations="true"]');
+    const yearEl = document.querySelector('[data-doc-stat-year="true"]');
+    const visibleEl = document.querySelector('[data-doc-stat-visible="true"]');
+
+    if (totalEl) {
+        totalEl.textContent = String(items.length);
+    }
+    if (realisationsEl) {
+        realisationsEl.textContent = String(realisations.size);
+    }
+    if (yearEl) {
+        yearEl.textContent = String(currentYearCount);
+    }
+    if (visibleEl) {
+        visibleEl.textContent = String(visibleCount);
+    }
+}
+
+function initPortfolioDocsTableTools() {
+    const tbody = document.getElementById('portfolio-docs-list');
+    const searchInput = document.querySelector('[data-doc-search="true"]');
+    const sortSelect = document.querySelector('[data-doc-sort="true"]');
+    const statsButton = document.querySelector('[data-doc-stats-toggle="true"]');
+    const statsPanel = document.querySelector('[data-doc-stats-panel="true"]');
+
+    if (!tbody || !searchInput || !sortSelect) {
+        return;
+    }
+
+    if (tbody.dataset.toolsBound === 'doc') {
+        applyPortfolioDocsTableTools();
+        return;
+    }
+
+    tbody.dataset.toolsBound = 'doc';
+    searchInput.addEventListener('input', applyPortfolioDocsTableTools);
+    sortSelect.addEventListener('change', applyPortfolioDocsTableTools);
+
+    if (statsButton && statsPanel) {
+        statsButton.addEventListener('click', () => {
+            statsPanel.style.display = statsPanel.style.display === 'none' ? 'flex' : 'none';
+        });
+    }
+
+    applyPortfolioDocsTableTools();
+}
+
+function buildCompetenceRowMeta(row) {
+    const nom = String((row.querySelector('.comp-nom')?.textContent || '')).trim();
+    const description = String((row.querySelector('.comp-desc')?.textContent || '')).trim();
+    const categorie = String((row.querySelector('.comp-cat')?.textContent || '')).trim();
+    const niveauText = String((row.querySelector('.comp-niveau')?.textContent || '')).replace('%', '');
+    const niveau = Number.parseInt(niveauText, 10);
+
+    return {
+        row,
+        nom,
+        nomLower: nom.toLowerCase(),
+        description,
+        searchable: `${nom} ${description} ${categorie}`.toLowerCase(),
+        niveau: Number.isNaN(niveau) ? 0 : niveau
+    };
+}
+
+function applyCompetenceTableTools() {
+    const tbody = document.getElementById('competences-list');
+    const searchInput = document.querySelector('[data-comp-search="true"]');
+    const sortSelect = document.querySelector('[data-comp-sort="true"]');
+
+    if (!tbody || !searchInput || !sortSelect) {
+        return;
+    }
+
+    const rows = Array.from(tbody.querySelectorAll('tr[data-id]'));
+    const query = searchInput.value.trim().toLowerCase();
+    const sortValue = sortSelect.value;
+
+    const items = rows.map(buildCompetenceRowMeta);
+
+    items.sort((a, b) => {
+        if (sortValue === 'niveau-asc') {
+            return a.niveau - b.niveau;
+        }
+        if (sortValue === 'nom-asc') {
+            return a.nomLower.localeCompare(b.nomLower, 'fr');
+        }
+        if (sortValue === 'nom-desc') {
+            return b.nomLower.localeCompare(a.nomLower, 'fr');
+        }
+        return b.niveau - a.niveau;
+    });
+
+    items.forEach((item) => {
+        tbody.appendChild(item.row);
+    });
+
+    let visibleCount = 0;
+    let visibleNiveauTotal = 0;
+    let visibleAdvanced = 0;
+
+    items.forEach((item) => {
+        const isVisible = query === '' || item.searchable.includes(query);
+        item.row.style.display = isVisible ? '' : 'none';
+
+        if (!isVisible) {
+            return;
+        }
+
+        visibleCount++;
+        visibleNiveauTotal += item.niveau;
+        if (item.niveau >= 80) {
+            visibleAdvanced++;
+        }
+    });
+
+    const showNoResult = items.length > 0 && visibleCount === 0;
+    toggleNoResultsRow(
+        tbody,
+        'comp-empty-search-row',
+        7,
+        'Aucune competence ne correspond a votre recherche.',
+        showNoResult
+    );
+
+    const totalEl = document.querySelector('[data-comp-stat-total="true"]');
+    const avgEl = document.querySelector('[data-comp-stat-average="true"]');
+    const advancedEl = document.querySelector('[data-comp-stat-advanced="true"]');
+    const visibleEl = document.querySelector('[data-comp-stat-visible="true"]');
+
+    if (totalEl) {
+        totalEl.textContent = String(items.length);
+    }
+    if (avgEl) {
+        avgEl.textContent = `${visibleCount > 0 ? Math.round(visibleNiveauTotal / visibleCount) : 0}%`;
+    }
+    if (advancedEl) {
+        advancedEl.textContent = String(visibleAdvanced);
+    }
+    if (visibleEl) {
+        visibleEl.textContent = String(visibleCount);
+    }
+}
+
+function initCompetenceTableTools() {
+    const tbody = document.getElementById('competences-list');
+    const searchInput = document.querySelector('[data-comp-search="true"]');
+    const sortSelect = document.querySelector('[data-comp-sort="true"]');
+    const statsButton = document.querySelector('[data-comp-stats-toggle="true"]');
+    const statsPanel = document.querySelector('[data-comp-stats-panel="true"]');
+
+    if (!tbody || !searchInput || !sortSelect) {
+        return;
+    }
+
+    if (tbody.dataset.toolsBound === 'comp') {
+        applyCompetenceTableTools();
+        return;
+    }
+
+    tbody.dataset.toolsBound = 'comp';
+    searchInput.addEventListener('input', applyCompetenceTableTools);
+    sortSelect.addEventListener('change', applyCompetenceTableTools);
+
+    if (statsButton && statsPanel) {
+        statsButton.addEventListener('click', () => {
+            statsPanel.style.display = statsPanel.style.display === 'none' ? 'flex' : 'none';
+        });
+    }
+
+    applyCompetenceTableTools();
 }
 
 function applyCertificationTableTools() {
@@ -2117,10 +2423,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     bindAjaxAddForms();
     bindGeneralWriteFormValidation();
+    bindCompletionRecalculateForm();
     bindPortfolioRealisationSelector();
     initAvailabilityDesigner();
     bindAjaxExperienceDeleteForms();
     syncExperienceEmptyState();
+    initPortfolioDocsTableTools();
+    initCompetenceTableTools();
     initCertificationTableTools();
     initExperienceTableTools();
 
@@ -2160,7 +2469,7 @@ function bindEditProfilFormAjax() {
             submitBtn.textContent = 'Enregistrement...';
         }
 
-        const result = await postFormAsJson(form);
+        const result = await postFormAsText(form);
 
         if (submitBtn) {
             submitBtn.disabled = false;
