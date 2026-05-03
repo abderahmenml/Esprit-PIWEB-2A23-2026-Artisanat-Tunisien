@@ -1,0 +1,52 @@
+# =========================
+# 🔐 Sensitive files
+# =========================
+/model/config.php
+.env
+.env.*
+
+# Clé API (ne jamais committer)
+config/config.php
+
+
+# =========================
+# 🧾 Logs
+# =========================
+*.log
+logs/
+*.tmp
+
+# =========================
+# 🖼️ Uploaded / generated content
+# =========================
+uploads/
+tmp/
+cache/
+
+# =========================
+# 🧠 IDE / Editor files
+# =========================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# =========================
+# 💻 OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# 📦 Dependencies (if added later)
+# =========================
+vendor/
+node_modules/
+
+# =========================
+# 🔄 Build / export files
+# =========================
+dist/
+build/

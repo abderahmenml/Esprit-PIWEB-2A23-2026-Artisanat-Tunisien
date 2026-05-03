@@ -1,5 +1,7 @@
 <?php
 require_once '../model/config.php';
+require_once 'craftlink_darija_voice.php';
+require_once 'craftlink_english_voice.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -58,6 +60,140 @@ function certifOui($certification)
 
     return false;
 }
+
+// ── TRADUCTION IA (Groq) ────────────────────────────────────────────────────
+
+// Calls the Groq API to translate a text into AR and EN, returns ['ar'=>..., 'en'=>...].
+function translateWithGroq($text)
+{
+    $text = trim((string) $text);
+    if ($text === '') {
+        return ['ar' => '', 'en' => ''];
+    }
+
+    $apiKey = defined('GROQ_API_KEY') ? GROQ_API_KEY : '';
+    if ($apiKey === '') {
+        return ['ar' => '', 'en' => ''];
+    }
+
+    $prompt = 'Translate the following French text about Tunisian craftsmanship into Arabic and English.'
+            . ' Reply ONLY with a valid JSON object, no markdown, no backticks, no explanation.'
+            . ' Format: {"ar":"...","en":"..."}'
+            . ' Text: "' . addslashes($text) . '"';
+
+    $body = json_encode([
+        'model'    => 'llama3-8b-8192',
+        'messages' => [['role' => 'user', 'content' => $prompt]],
+        'max_tokens' => 512,
+        'temperature' => 0.2
+    ]);
+
+    $ctx = stream_context_create([
+        'http' => [
+            'method'        => 'POST',
+            'header'        => "Content-Type: application/json\r\nAuthorization: Bearer " . $apiKey,
+            'content'       => $body,
+            'timeout'       => 15,
+            'ignore_errors' => true
+        ]
+    ]);
+
+    $response = @file_get_contents('https://api.groq.com/openai/v1/chat/completions', false, $ctx);
+    if ($response === false) {
+        return ['ar' => '', 'en' => ''];
+    }
+
+    $data = json_decode($response, true);
+    if (!$data || !isset($data['choices'][0]['message']['content'])) {
+        return ['ar' => '', 'en' => ''];
+    }
+
+    $raw = trim((string) $data['choices'][0]['message']['content']);
+    // Strip optional markdown fences
+    $raw = preg_replace('/^```[a-z]*\s*/i', '', $raw);
+    $raw = preg_replace('/\s*```$/', '', $raw);
+    $parsed = json_decode($raw, true);
+
+    if (!$parsed || !isset($parsed['ar']) || !isset($parsed['en'])) {
+        return ['ar' => '', 'en' => ''];
+    }
+
+    return [
+        'ar' => trim((string) $parsed['ar']),
+        'en' => trim((string) $parsed['en'])
+    ];
+}
+
+// Returns the translated field value for the active language, falling back to French.
+function getTranslatedField($row, $field, $lang)
+{
+    if ($lang !== 'fr') {
+        $col = $field . '_' . $lang;
+        if (isset($row[$col]) && trim((string) $row[$col]) !== '') {
+            return trim((string) $row[$col]);
+        }
+    }
+    return isset($row[$field]) ? trim((string) $row[$field]) : '';
+}
+
+// Ensures translation columns exist in the formations table (runs once per request if missing).
+function ensureTranslationColumns($pdo)
+{
+    $cols = ['domaine_ar', 'domaine_en', 'description_ar', 'description_en'];
+    foreach ($cols as $col) {
+        if (!columnExists($pdo, 'formations', $col)) {
+            try {
+                $pdo->exec("ALTER TABLE formations ADD COLUMN `{$col}` TEXT DEFAULT NULL");
+            } catch (PDOException $e) {
+                // Ignore if it fails (e.g. no ALTER privilege)
+            }
+        }
+    }
+}
+
+// ── Backfill traductions pour les formations existantes ──────────────────────
+// Translates up to $limit formations that still have empty translation columns.
+// Runs silently and never blocks the page — errors are swallowed.
+function batchTranslateMissingFormations($pdo, $limit = 3)
+{
+    try {
+        $stmt = $pdo->prepare(
+            'SELECT id_formation, domaine, description
+             FROM formations
+             WHERE (domaine_ar IS NULL OR domaine_ar = \'\')
+                OR (domaine_en IS NULL OR domaine_en = \'\')
+             LIMIT :lim'
+        );
+        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+
+        if (count($rows) === 0) {
+            return;
+        }
+
+        $sqlUpd = 'UPDATE formations
+                   SET domaine_ar = :da, domaine_en = :de,
+                       description_ar = :dsa, description_en = :dse
+                   WHERE id_formation = :id';
+        $stmtUpd = $pdo->prepare($sqlUpd);
+
+        foreach ($rows as $row) {
+            $td   = translateWithGroq(trim((string) $row['domaine']));
+            $tDesc = translateWithGroq(trim((string) $row['description']));
+
+            $stmtUpd->bindValue(':da',  $td['ar']    !== '' ? $td['ar']    : null, $td['ar']    !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmtUpd->bindValue(':de',  $td['en']    !== '' ? $td['en']    : null, $td['en']    !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmtUpd->bindValue(':dsa', $tDesc['ar'] !== '' ? $tDesc['ar'] : null, $tDesc['ar'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmtUpd->bindValue(':dse', $tDesc['en'] !== '' ? $tDesc['en'] : null, $tDesc['en'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+            $stmtUpd->bindValue(':id',  (int) $row['id_formation'], PDO::PARAM_INT);
+            $stmtUpd->execute();
+        }
+    } catch (PDOException $eBatch) {
+        // Non-blocking — the page still renders even if Groq is unreachable.
+    }
+}
+// ── FIN TRADUCTION ───────────────────────────────────────────────────────────
 
 // Builds initials from a full name for avatar display.
 function initials($name)
@@ -579,6 +715,23 @@ if ($hasWorkshopsBookingUrl) {
 }
 
 $workshopsAssociationEnabled = $hasFormationsWorkshopsTable || $hasWorkshopsFormationTable || $hasWorkshopsFormationId;
+
+// ── Langue active ────────────────────────────────────────────────────────────
+if (isset($_GET['lang']) && in_array($_GET['lang'], ['fr', 'ar', 'en'], true)) {
+    $_SESSION['craftlink_lang'] = $_GET['lang'];
+}
+$activeLang = isset($_SESSION['craftlink_lang']) ? $_SESSION['craftlink_lang'] : 'fr';
+
+// Ensure translation columns exist (idempotent, auto-migrates the DB).
+ensureTranslationColumns($pdo);
+$hasTranslationCols = columnExists($pdo, 'formations', 'domaine_ar');
+
+// Auto-backfill translations for existing formations (up to 3 per request).
+// This silently populates domaine_ar/en and description_ar/en via Groq.
+if ($hasTranslationCols) {
+    batchTranslateMissingFormations($pdo, 3);
+}
+// ── Fin Langue ───────────────────────────────────────────────────────────────
 
 $erreur = '';
 $succes = '';
@@ -1311,6 +1464,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
           $idFormationCree = (int) $pdo->lastInsertId();
 
+          // ── Traduction IA automatique ────────────────────────────────────
+          if ($hasTranslationCols) {
+              $tradDomaine     = translateWithGroq($old['titre']);
+              $tradDescription = translateWithGroq($old['description']);
+              if ($tradDomaine['ar'] !== '' || $tradDomaine['en'] !== '' || $tradDescription['ar'] !== '' || $tradDescription['en'] !== '') {
+                  try {
+                      $sqlTrad = 'UPDATE formations SET domaine_ar = :da, domaine_en = :de, description_ar = :dsa, description_en = :dse WHERE id_formation = :id';
+                      $stmtTrad = $pdo->prepare($sqlTrad);
+                      $stmtTrad->bindValue(':da',  $tradDomaine['ar']     !== '' ? $tradDomaine['ar']     : null, $tradDomaine['ar']     !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+                      $stmtTrad->bindValue(':de',  $tradDomaine['en']     !== '' ? $tradDomaine['en']     : null, $tradDomaine['en']     !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+                      $stmtTrad->bindValue(':dsa', $tradDescription['ar'] !== '' ? $tradDescription['ar'] : null, $tradDescription['ar'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+                      $stmtTrad->bindValue(':dse', $tradDescription['en'] !== '' ? $tradDescription['en'] : null, $tradDescription['en'] !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+                      $stmtTrad->bindValue(':id',  $idFormationCree, PDO::PARAM_INT);
+                      $stmtTrad->execute();
+                  } catch (PDOException $eTrad) {
+                      // Traduction non bloquante — la formation est déjà créée
+                  }
+              }
+          }
+          // ── Fin traduction ───────────────────────────────────────────────
+
           $quizTitre = $old['quiz_titre'];
           $quizDescription = $old['quiz_description'];
 
@@ -1625,7 +1799,13 @@ try {
         $selectMeet = 'f.' . $formationMeetColumn . ' AS meet_link';
     }
 
-    $sql = 'SELECT f.id_formation, f.domaine, f.formateur, f.description, f.duree, f.certification, f.niveau, f.prix,
+    $selectTrad = '';
+    if ($hasTranslationCols) {
+        $selectTrad = ', f.domaine_ar, f.domaine_en, f.description_ar, f.description_en';
+    }
+
+    $sql = 'SELECT f.id_formation, f.domaine, f.formateur, f.description, f.duree, f.certification, f.niveau, f.prix'
+         . $selectTrad . ',
                    ' . $selectVideo . ',
                    ' . $selectMeet . ',
              qz.id_quizz AS quiz_id, qz.titre AS quiz_titre, ' . $selectQuizDescriptionExpr . ',
@@ -1872,9 +2052,79 @@ if ($workshopsAssociationEnabled) {
         $workshopsLoadMessage = 'Impossible de charger les ateliers associés pour le moment.';
     }
 }
+
+// ── UI labels (FR / EN / AR) ─────────────────────────────────────────────────
+$ui = [
+    'fr' => [
+        'hero_title'      => 'Développez votre <em>savoir-faire</em><br>artisanal tunisien',
+        'hero_subtitle'   => 'Des formations structurées par des mentors certifiés, liées à de vrais projets artisanaux. Obtenez un certificat CraftLink reconnu.',
+        'search_ph'       => 'Rechercher une formation...',
+        'search_btn'      => 'Rechercher',
+        'filter_label'    => 'Filtrer la liste :',
+        'all_levels'      => 'Tous niveaux',
+        'with_certif'     => 'Avec certification',
+        'without_certif'  => 'Sans certification',
+        'certif_or_not'   => 'Certif ou non',
+        'apply'           => 'Appliquer',
+        'reset'           => 'Réinitialiser',
+        'section_title'   => 'Formations disponibles',
+        'see_details'     => 'Voir détails',
+        'stat_formations' => 'Formations dans la base',
+        'stat_mentors'    => 'Mentors',
+        'stat_inscrits'   => 'Inscriptions',
+        'stat_results'    => 'Résultats affichés',
+        'lang_hint'       => '',
+        'lang_back'       => '',
+    ],
+    'en' => [
+        'hero_title'      => 'Develop your <em>expertise</em><br>in Tunisian craftsmanship',
+        'hero_subtitle'   => 'Structured courses taught by certified mentors, linked to real artisan projects. Earn a recognised CraftLink certificate.',
+        'search_ph'       => 'Search a course...',
+        'search_btn'      => 'Search',
+        'filter_label'    => 'Filter the list:',
+        'all_levels'      => 'All levels',
+        'with_certif'     => 'With certification',
+        'without_certif'  => 'Without certification',
+        'certif_or_not'   => 'All',
+        'apply'           => 'Apply',
+        'reset'           => 'Reset',
+        'section_title'   => 'Available Courses',
+        'see_details'     => 'See details',
+        'stat_formations' => 'Courses in database',
+        'stat_mentors'    => 'Mentors',
+        'stat_inscrits'   => 'Enrolments',
+        'stat_results'    => 'Results shown',
+        'lang_hint'       => '🌐 Content displayed in English',
+        'lang_back'       => 'Switch to French',
+    ],
+    'ar' => [
+        'hero_title'      => 'طوّر <em>مهاراتك</em><br>في الحرف التونسية',
+        'hero_subtitle'   => 'دورات تكوينية منظّمة بإشراف مدرّبين معتمدين، مرتبطة بمشاريع حرفية حقيقية. احصل على شهادة CraftLink المعترف بها.',
+        'search_ph'       => 'ابحث عن تكوين...',
+        'search_btn'      => 'بحث',
+        'filter_label'    => 'تصفية القائمة :',
+        'all_levels'      => 'جميع المستويات',
+        'with_certif'     => 'مع شهادة',
+        'without_certif'  => 'بدون شهادة',
+        'certif_or_not'   => 'الكل',
+        'apply'           => 'تطبيق',
+        'reset'           => 'إعادة تعيين',
+        'section_title'   => 'التكوينات المتاحة',
+        'see_details'     => 'عرض التفاصيل',
+        'stat_formations' => 'التكوينات في القاعدة',
+        'stat_mentors'    => 'المدرّبون',
+        'stat_inscrits'   => 'التسجيلات',
+        'stat_results'    => 'نتائج معروضة',
+        'lang_hint'       => '🌐 المحتوى معروض بالعربية',
+        'lang_back'       => 'العودة إلى الفرنسية',
+    ],
+];
+$t = $ui[$activeLang] ?? $ui['fr'];
+$htmlDir = $activeLang === 'ar' ? 'rtl' : 'ltr';
+// ── Fin UI labels ────────────────────────────────────────────────────────────
 ?>
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="<?php echo e($activeLang); ?>" dir="<?php echo e($htmlDir); ?>">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2460,6 +2710,17 @@ if ($workshopsAssociationEnabled) {
   background: var(--creme);
   color: var(--brun);
 }
+/* Language switcher active state */
+.front-nav .admin-link.lang-active {
+  background: var(--marron);
+  color: var(--creme);
+}
+/* Arabic RTL card support */
+[dir="rtl"] .card-body h3,
+[dir="rtl"] .card-body p,
+[dir="rtl"] .detail-description {
+  text-align: right;
+}
 @media (max-width: 900px) {
   .front-nav {
     padding: 0 20px;
@@ -2482,6 +2743,235 @@ if ($workshopsAssociationEnabled) {
     padding: 0 20px;
   }
 }
+/* Darija explanation styles */
+/* Darija explanation styles - Enhanced */
+.darija-explain-btn {
+    background: #C8860A !important;
+    color: white !important;
+    border: none !important;
+    transition: all 0.3s;
+}
+
+.darija-explain-btn:hover {
+    background: #a56e08 !important;
+    transform: scale(1.02);
+}
+
+.darija-explain-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    transform: none;
+}
+
+.darija-explanation-card {
+    margin-top: 20px;
+    padding: 18px;
+    background: linear-gradient(135deg, #fff8ee, #fffdf5);
+    border-radius: 16px;
+    border-right: 4px solid #C8860A;
+    animation: slideIn 0.5s ease-out;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.darija-explanation-text {
+    font-size: 16px;
+    line-height: 1.8;
+    color: #2c1d05;
+    text-align: right;
+    direction: rtl;
+    margin-bottom: 15px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.darija-audio-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #f0d090;
+}
+
+.darija-play-btn {
+    background: linear-gradient(135deg, #C8860A, #E5A020);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 20px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    transition: all 0.2s;
+}
+
+.darija-play-btn:hover {
+    background: linear-gradient(135deg, #a56e08, #c8860a);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(200,134,10,0.3);
+}
+
+.darija-play-btn.playing {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+    animation: pulse 1s infinite;
+}
+
+.darija-stop-btn {
+    background: #7f8c8d;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 20px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    transition: all 0.2s;
+}
+
+.darija-stop-btn:hover {
+    background: #6c7a7a;
+}
+
+.darija-note {
+    margin-top: 10px;
+    font-size: 11px;
+    color: #C8860A;
+    text-align: center;
+    direction: rtl;
+}
+
+.darija-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #C8860A;
+    font-size: 14px;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── English Voice Button ── */
+.english-explain-btn {
+    background: #1a6fa8 !important;
+    color: white !important;
+    border: none !important;
+    transition: all 0.3s;
+}
+.english-explain-btn:hover {
+    background: #155a8a !important;
+    transform: scale(1.02);
+}
+.english-explain-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    transform: none;
+}
+
+/* ── English Explanation Card ── */
+.english-explanation-card {
+    margin-top: 20px;
+    padding: 18px;
+    background: linear-gradient(135deg, #eef5fb, #f5f9ff);
+    border-radius: 16px;
+    border-left: 4px solid #1a6fa8;
+    animation: slideIn 0.5s ease-out;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.english-explanation-text {
+    font-size: 16px;
+    line-height: 1.8;
+    color: #0d2b40;
+    text-align: left;
+    direction: ltr;
+    margin-bottom: 15px;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+.english-audio-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #b3d4ec;
+}
+.english-play-btn {
+    background: linear-gradient(135deg, #1a6fa8, #2196d3);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 20px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    transition: all 0.2s;
+}
+.english-play-btn:hover {
+    background: linear-gradient(135deg, #155a8a, #1a6fa8);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(26,111,168,0.3);
+}
+.english-play-btn.playing {
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+    animation: pulse 1s infinite;
+}
+.english-stop-btn {
+    background: #7f8c8d;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 20px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    transition: all 0.2s;
+}
+.english-stop-btn:hover { background: #6c7a7a; }
+.english-loading {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #1a6fa8;
+    font-size: 14px;
+}
+.english-note {
+    margin-top: 10px;
+    font-size: 11px;
+    color: #1a6fa8;
+    text-align: center;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+}
+/* Voice availability hint */
+.voice-warning {
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    padding: 10px;
+    margin: 10px 0;
+    font-size: 12px;
+    color: #856404;
+    text-align: center;
+    direction: rtl;
+}
 </style>
 </head>
 
@@ -2491,44 +2981,63 @@ if ($workshopsAssociationEnabled) {
     ح <span>CraftLink Tunisie</span>
   </div>
   <ul class="nav-admin-actions">
+    <li style="display:flex;align-items:center;gap:6px;margin-right:12px;">
+      <?php
+        $buildLangUrl = function($lang) {
+            $params = $_GET;
+            $params['lang'] = $lang;
+            unset($params['ok']);
+            return 'front.php?' . http_build_query($params);
+        };
+      ?>
+
+    </li>
     <li><a href="back.php" class="admin-link">Admin</a></li>
   </ul>
 </nav>
 
 <section class="hero">
-  <h1>Développez votre <em>savoir-faire</em><br>artisanal tunisien</h1>
-  <p>Des formations structurées par des mentors certifiés, liées à de vrais projets artisanaux. Obtenez un certificat CraftLink reconnu.</p>
+  <h1><?php echo $t['hero_title']; ?></h1>
+  <p><?php echo e($t['hero_subtitle']); ?></p>
+  <?php if ($activeLang !== 'fr' && $t['lang_hint'] !== ''): ?>
+  <p style="margin-top:6px;font-size:0.82rem;color:rgba(255,255,255,0.8);">
+    <?php echo e($t['lang_hint']); ?>
+    — <a href="front.php?lang=fr" style="color:rgba(255,255,255,0.9);text-decoration:underline;"><?php echo e($t['lang_back']); ?></a>
+  </p>
+  <?php endif; ?>
   <form method="get" action="front.php" class="search-bar" id="formRechercheFront" novalidate>
-    <input type="text" name="q" value="<?php echo e($recherche); ?>" placeholder="Rechercher une formation...">
-    <button type="submit">Rechercher</button>
+    <input type="hidden" name="lang" value="<?php echo e($activeLang); ?>">
+    <input type="text" name="q" value="<?php echo e($recherche); ?>" placeholder="<?php echo e($t['search_ph']); ?>">
+    <button type="submit"><?php echo e($t['search_btn']); ?></button>
   </form>
 </section>
 
 <div class="stats-bar">
-  <div class="stat"><strong><?php echo e((string) $totalFormations); ?></strong><span>Formations dans la base</span></div>
-  <div class="stat"><strong><?php echo e((string) count($mentorsUniques)); ?></strong><span>Mentors</span></div>
-  <div class="stat"><strong><?php echo e((string) $totalInscrits); ?>+</strong><span>Inscriptions</span></div>
-  <div class="stat"><strong><?php echo e((string) count($formations)); ?></strong><span>Résultats affichés</span></div>
+  <div class="stat"><strong><?php echo e((string) $totalFormations); ?></strong><span><?php echo e($t['stat_formations']); ?></span></div>
+  <div class="stat"><strong><?php echo e((string) count($mentorsUniques)); ?></strong><span><?php echo e($t['stat_mentors']); ?></span></div>
+  <div class="stat"><strong><?php echo e((string) $totalInscrits); ?>+</strong><span><?php echo e($t['stat_inscrits']); ?></span></div>
+  <div class="stat"><strong><?php echo e((string) count($formations)); ?></strong><span><?php echo e($t['stat_results']); ?></span></div>
 </div>
 
 <div class="filter-section">
-  <span class="filter-label">Filtrer la liste :</span>
+  <span class="filter-label"><?php echo e($t['filter_label']); ?></span>
 </div>
 <form method="get" action="front.php" class="filter-form" id="formFiltresFront" novalidate>
   <input type="hidden" name="q" value="<?php echo e($recherche); ?>">
+  <input type="hidden" name="lang" value="<?php echo e($activeLang); ?>">
   <select name="niveau">
-    <option value="">Tous niveaux</option>
+    <option value=""><?php echo e($t['all_levels']); ?></option>
     <option value="debutant" <?php echo ($niveauFiltreDb === 'debutant' ? 'selected' : ''); ?>>Débutant</option>
     <option value="intermediaire" <?php echo ($niveauFiltreDb === 'intermediaire' ? 'selected' : ''); ?>>Intermédiaire</option>
     <option value="avance" <?php echo ($niveauFiltreDb === 'avance' ? 'selected' : ''); ?>>Avancé</option>
   </select>
   <select name="certif">
-    <option value="">Certif ou non</option>
-    <option value="oui" <?php echo ($certifFiltre === 'oui' ? 'selected' : ''); ?>>Avec certification</option>
-    <option value="non" <?php echo ($certifFiltre === 'non' ? 'selected' : ''); ?>>Sans certification</option>
+    <option value=""><?php echo e($t['certif_or_not']); ?></option>
+    <option value="oui" <?php echo ($certifFiltre === 'oui' ? 'selected' : ''); ?>><?php echo e($t['with_certif']); ?></option>
+    <option value="non" <?php echo ($certifFiltre === 'non' ? 'selected' : ''); ?>><?php echo e($t['without_certif']); ?></option>
   </select>
-  <button type="submit" class="btn-inscrit">Appliquer</button>
-  <a href="front.php" class="btn-inscrit vert">Réinitialiser</a>
+  <button type="submit" class="btn-inscrit"><?php echo e($t['apply']); ?></button>
+  <a href="front.php?lang=<?php echo e($activeLang); ?>" class="btn-inscrit vert"><?php echo e($t['reset']); ?></a>
 </form>
 
 <?php if ($succes !== ''): ?>
@@ -2545,7 +3054,7 @@ if ($workshopsAssociationEnabled) {
 
 
 
-<div class="section-title container">Formations disponibles</div>
+<div class="section-title container"><?php echo e($t['section_title']); ?></div>
 <div class="berber-divider container">◆ ◇ ◆ ◇ ◆</div>
 
 <div id="formationsGridSection" class="cards-wrapper">
@@ -2564,7 +3073,8 @@ if ($workshopsAssociationEnabled) {
           $formationId = (int) $f['id_formation'];
           $niveau = niveauLabel($f['niveau']);
           $certif = certifOui($f['certification']);
-          $description = trim((string) $f['description']);
+          $displayDomaine = getTranslatedField($f, 'domaine', $activeLang);
+          $description = getTranslatedField($f, 'description', $activeLang);
           if ($description === '') {
               $description = 'Description bientôt disponible.';
           }
@@ -2574,7 +3084,7 @@ if ($workshopsAssociationEnabled) {
               $assocCount = count($workshopsByFormation[$formationId]);
           }
         ?>
-        <div class="card formation-card" tabindex="0" role="button" data-formation-id="<?php echo e((string) $formationId); ?>" aria-label="Voir les détails de la formation <?php echo e($f['domaine']); ?>">
+        <div class="card formation-card" tabindex="0" role="button" data-formation-id="<?php echo e((string) $formationId); ?>" aria-label="Voir les détails de la formation <?php echo e($displayDomaine); ?>">
           <div class="card-body">
             <div class="card-meta">
               <span class="tag tag-niveau"><?php echo e($niveau); ?></span>
@@ -2582,7 +3092,7 @@ if ($workshopsAssociationEnabled) {
                 <span class="tag tag-certif">📜 Certifiant</span>
               <?php endif; ?>
             </div>
-            <h3><?php echo e($f['domaine']); ?></h3>
+            <h3><?php echo e($displayDomaine); ?></h3>
             <p><?php echo e($description); ?></p>
             <div class="card-info">
               <span>🕐 <?php echo e((string) $f['duree']); ?>h</span>
@@ -2601,7 +3111,7 @@ if ($workshopsAssociationEnabled) {
             <div class="price"><?php echo e(formatPrix($f['prix'])); ?> TND
               <small><?php echo ($certif ? 'Certificat inclus' : 'Attestation de suivi'); ?></small>
             </div>
-            <button type="button" class="btn-inscrit formation-detail-btn" data-formation-id="<?php echo e((string) $formationId); ?>">Voir détails</button>
+            <button type="button" class="btn-inscrit formation-detail-btn" data-formation-id="<?php echo e((string) $formationId); ?>"><?php echo e($t['see_details']); ?></button>
           </div>
         </div>
       <?php endfor; ?>
@@ -2616,7 +3126,8 @@ if ($workshopsAssociationEnabled) {
       $formationId = (int) $f['id_formation'];
       $niveau = niveauLabel($f['niveau']);
       $certif = certifOui($f['certification']);
-      $description = trim((string) $f['description']);
+      $displayDomaine = getTranslatedField($f, 'domaine', $activeLang);
+      $description = getTranslatedField($f, 'description', $activeLang);
       if ($description === '') {
           $description = 'Description bientôt disponible.';
       }
@@ -2689,14 +3200,40 @@ if ($workshopsAssociationEnabled) {
     ?>
     <article class="formation-detail-card" data-detail-id="<?php echo e((string) $formationId); ?>">
       <div class="detail-actions-top">
-        <button type="button" class="btn-cancel" onclick="closeFormationDetails()">← Retour aux formations</button>
-        <?php if ($formationMeetIsValid): ?>
-          <a href="<?php echo e($meetLink); ?>" target="_blank" rel="noopener noreferrer" class="btn-inscrit">Rencontrer le formateur</a>
-        <?php endif; ?>
-      </div>
+    <button type="button" class="btn-cancel" onclick="closeFormationDetails()">← Retour aux formations</button>
+    
+    
+    <button type="button" class="btn-inscrit darija-explain-btn" 
+            data-formation-id="<?php echo e((string) $formationId); ?>"
+            data-formation-title="<?php echo e($f['domaine']); ?>"
+            data-formation-description="<?php echo e(trim((string) $f['description'])); ?>"
+            data-formation-niveau="<?php echo e($f['niveau']); ?>"
+            data-formation-duree="<?php echo e($f['duree']); ?>"
+            data-formation-prix="<?php echo e(formatPrix($f['prix'])); ?>"
+            data-formation-certif="<?php echo e($f['certification']); ?>"
+            onclick="explainFormationInDarija(this)">
+        🔊 شرح بالدارجة
+    </button>
+
+   <button type="button" class="btn-inscrit english-explain-btn"
+        data-formation-id="<?php echo e((string) $formationId); ?>"
+        data-formation-title="<?php echo e($f['domaine']); ?>"
+        data-formation-description="<?php echo e(trim((string) $f['description'])); ?>"
+        data-formation-niveau="<?php echo e($f['niveau']); ?>"
+        data-formation-duree="<?php echo e($f['duree']); ?>"
+        data-formation-prix="<?php echo e(formatPrix($f['prix'])); ?>"
+        data-formation-certif="<?php echo e($f['certification']); ?>"
+        onclick="explainFormationInEnglish(this)">
+    🔊 Explain in English
+</button>
+    
+    <?php if ($formationMeetIsValid): ?>
+        <a href="<?php echo e($meetLink); ?>" target="_blank" rel="noopener noreferrer" class="btn-inscrit">Rencontrer le formateur</a>
+    <?php endif; ?>
+</div>
 
       <div class="detail-head">
-        <h2><?php echo e($f['domaine']); ?></h2>
+        <h2><?php echo e($displayDomaine); ?></h2>
         <div class="detail-chip-row">
           <span class="detail-chip">📚 <?php echo e($niveau); ?></span>
           <?php if ($certif): ?>
@@ -2709,7 +3246,7 @@ if ($workshopsAssociationEnabled) {
         </div>
       </div>
 
-      <p class="detail-description"><?php echo e($description); ?></p>
+      <p class="detail-description" <?php echo ($activeLang === 'ar' ? 'dir="rtl" style="text-align:right"' : ''); ?>><?php echo e($description); ?></p>
 
       <div class="detail-meta-grid">
         <div class="detail-meta-item">
@@ -3334,7 +3871,502 @@ if ($workshopsAssociationEnabled) {
 <footer>
   <strong>ح CraftLink Tunisie</strong> · 
 </footer>
+
 <script>
+// ============================================================
+// Formation Explanation with Browser Text-to-Speech (DARIJA ONLY!)
+// ============================================================
+
+let currentUtterance = null;
+let currentSpeakingButton = null;
+
+async function explainFormationInDarija(buttonElement) {
+    const formationId = buttonElement.getAttribute('data-formation-id');
+    const formationTitle = buttonElement.getAttribute('data-formation-title');
+    const formationDescription = buttonElement.getAttribute('data-formation-description');
+    const formationNiveau = buttonElement.getAttribute('data-formation-niveau') || '';
+    const formationDuree = buttonElement.getAttribute('data-formation-duree') || '';
+    const formationPrix = buttonElement.getAttribute('data-formation-prix') || '';
+    const formationCertif = buttonElement.getAttribute('data-formation-certif') || '';
+    
+    // Disable button while processing
+    buttonElement.disabled = true;
+    buttonElement.textContent = '⏳ تحضير...';
+    
+    const detailCard = buttonElement.closest('.formation-detail-card');
+    
+    // Remove existing explanation card if any
+    const existingCard = detailCard.querySelector('.darija-explanation-card');
+    if (existingCard) existingCard.remove();
+    
+    // Create explanation card
+    const explanationCard = document.createElement('div');
+    explanationCard.className = 'darija-explanation-card';
+    explanationCard.innerHTML = `
+        <div class="darija-loading">
+            <span>🎙️</span> جاري تحضير الشرح بالدارجة التونسية...
+        </div>
+    `;
+    
+    buttonElement.parentNode.insertAdjacentElement('afterend', explanationCard);
+    
+    try {
+        const formData = new FormData();
+        formData.append('action', 'explain_formation');
+        // Use title as fallback when description is empty (newly added formations)
+        formData.append('formation_text', (formationDescription && formationDescription.trim() !== '') ? formationDescription : formationTitle);
+        formData.append('formation_title', formationTitle);
+        formData.append('formation_niveau', formationNiveau);
+        formData.append('formation_duree', formationDuree);
+        formData.append('formation_prix', formationPrix);
+        formData.append('formation_certif', formationCertif);
+        
+        const response = await fetch(window.location.pathname, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+            explanationCard.innerHTML = `<div class="darija-explanation-text" style="color:#c0392b;">⚠️ ${data.error}</div>`;
+            setTimeout(() => { explanationCard.remove(); }, 4000);
+            return;
+        }
+        
+        const darijaText = data.darija_text;
+        
+        // Update card with text and audio controls
+        // IMPORTANT: text is stored in data-text attribute to avoid
+        // single-quote truncation when Arabic text contains apostrophes.
+        explanationCard.innerHTML = `
+            <div class="darija-explanation-text">📢 ${escapeHtml(darijaText)}</div>
+            <div class="darija-audio-controls">
+                <button class="darija-play-btn" data-text="${escapeHtmlForAttr(darijaText)}" onclick="speakDarijaText(this)">
+                    🔊 استمع بالدارجة
+                </button>
+                <button class="darija-stop-btn" onclick="stopDarijaSpeech()">
+                    ⏹️ إيقاف
+                </button>
+            </div>
+            <div class="darija-note">🎧 النص والقراءة بالدارجة التونسية</div>
+        `;
+        
+    } catch (error) {
+        console.error('Error:', error);
+        explanationCard.innerHTML = `<div class="darija-explanation-text" style="color:#c0392b;">⚠️ خطأ في الاتصال. حاول مرة أخرى.</div>`;
+        setTimeout(() => { explanationCard.remove(); }, 4000);
+    } finally {
+        buttonElement.disabled = false;
+        buttonElement.textContent = '🔊 شرح بالدارجة';
+    }
+}
+
+// ============================================================
+// speakDarijaText — TTS for Arabic/Darija
+// Calls a PHP proxy on your own server which fetches the audio
+// from Google Translate TTS and streams it back — no CORS issues.
+// ============================================================
+function speakDarijaText(buttonElement, text) {
+    // Read text from data-text attribute when not passed directly.
+    if (!text) {
+        text = buttonElement.getAttribute('data-text') || '';
+    }
+    if (!text) { return; }
+
+    // Stop anything already playing
+    if (currentUtterance) {
+        window.speechSynthesis.cancel();
+        currentUtterance = null;
+    }
+    var existingPlayer = document.getElementById('darija-tts-player');
+    if (existingPlayer) {
+        existingPlayer.pause();
+        existingPlayer.src = '';
+    }
+
+    // Reset any previously active button
+    if (currentSpeakingButton && currentSpeakingButton !== buttonElement) {
+        currentSpeakingButton.innerHTML = '🔊 استمع بالدارجة';
+        currentSpeakingButton.disabled = false;
+        currentSpeakingButton.classList.remove('playing');
+    }
+
+    var originalHTML = buttonElement.innerHTML;
+    buttonElement.innerHTML = '⏳ تشغيل...';
+    buttonElement.disabled = true;
+    currentSpeakingButton = buttonElement;
+
+    // Split into ≤180-char chunks on sentence boundaries
+    function chunkText(str, maxLen) {
+        var chunks = [];
+        var sentences = str.split(/([.!?،؟\n]+\s*)/);
+        var current = '';
+        for (var i = 0; i < sentences.length; i++) {
+            var s = sentences[i];
+            if ((current + s).length <= maxLen) {
+                current += s;
+            } else {
+                if (current.trim()) { chunks.push(current.trim()); }
+                while (s.length > maxLen) {
+                    chunks.push(s.slice(0, maxLen));
+                    s = s.slice(maxLen);
+                }
+                current = s;
+            }
+        }
+        if (current.trim()) { chunks.push(current.trim()); }
+        return chunks.filter(function(c) { return c.trim() !== ''; });
+    }
+
+    var chunks = chunkText(text, 180);
+
+    var player = document.getElementById('darija-tts-player');
+    if (!player) {
+        player = document.createElement('audio');
+        player.id = 'darija-tts-player';
+        player.style.display = 'none';
+        document.body.appendChild(player);
+    }
+
+    function resetButton() {
+        buttonElement.innerHTML = originalHTML;
+        buttonElement.disabled = false;
+        buttonElement.classList.remove('playing');
+        currentSpeakingButton = null;
+    }
+
+    function playChunk(index) {
+        if (index >= chunks.length) {
+            resetButton();
+            return;
+        }
+
+        // Point to your PHP proxy — same page, action=tts_proxy
+        var proxyUrl = window.location.pathname
+            + '?action=tts_proxy&tl=ar&q=' + encodeURIComponent(chunks[index]);
+
+        player.src = proxyUrl;
+
+        player.oncanplay = null;
+        player.onplay = function() {
+            buttonElement.innerHTML = '🔊 جاري القراءة...';
+            buttonElement.classList.add('playing');
+        };
+        player.onended = function() {
+            playChunk(index + 1);
+        };
+        player.onerror = function(e) {
+            console.error('TTS proxy error on chunk ' + index, e);
+            resetButton();
+        };
+
+        player.load();
+        player.play().catch(function(err) {
+            console.error('play() rejected:', err);
+            resetButton();
+        });
+    }
+
+    playChunk(0);
+}
+
+// Also add a function to check and list available voices (for debugging)
+function listAvailableVoices() {
+    var voices = window.speechSynthesis.getVoices();
+    console.log('=== Available Voices for Darija ===');
+    var arabicFound = false;
+    for (var i = 0; i < voices.length; i++) {
+        if (voices[i].lang === 'ar' || voices[i].lang.startsWith('ar-')) {
+            console.log('Arabic voice:', voices[i].name, voices[i].lang);
+            arabicFound = true;
+        }
+    }
+    if (!arabicFound) {
+        console.warn('No Arabic voices found! Your browser may not support Arabic TTS.');
+        console.log('Available languages:', voices.map(v => v.lang).join(', '));
+    }
+}
+
+// Initialize voices and log them for debugging
+window.addEventListener('load', function() {
+    // Small delay to ensure voices are loaded
+    setTimeout(function() {
+        listAvailableVoices();
+    }, 500);
+    
+    // Also trigger voice loading
+    window.speechSynthesis.getVoices();
+});
+
+function stopDarijaSpeech() {
+    // Stop Web Speech API
+    if (currentUtterance) {
+        window.speechSynthesis.cancel();
+        currentUtterance = null;
+    }
+
+    // Stop Google TTS audio player
+    var player = document.getElementById('darija-tts-player');
+    if (player) {
+        player.pause();
+        player.src = '';
+    }
+
+    // Reset any playing buttons
+    document.querySelectorAll('.darija-play-btn').forEach(function(btn) {
+        btn.innerHTML = '🔊 استمع بالدارجة';
+        btn.disabled = false;
+        btn.classList.remove('playing');
+    });
+
+    currentSpeakingButton = null;
+}
+
+// ============================================================
+// ENGLISH VOICE — Complete rewrite with better error handling
+// ============================================================
+let currentEnglishSpeakingButton = null;
+let currentEnglishAudio = null;
+
+async function explainFormationInEnglish(buttonElement) {
+    const formationTitle       = buttonElement.getAttribute('data-formation-title');
+    const formationDescription = buttonElement.getAttribute('data-formation-description');
+    const formationNiveau      = buttonElement.getAttribute('data-formation-niveau') || '';
+    const formationDuree       = buttonElement.getAttribute('data-formation-duree')  || '';
+    const formationPrix        = buttonElement.getAttribute('data-formation-prix')   || '';
+    const formationCertif      = buttonElement.getAttribute('data-formation-certif') || '';
+
+    // Disable button and show loading state
+    const originalText = buttonElement.innerHTML;
+    buttonElement.disabled = true;
+    buttonElement.innerHTML = '⏳ Loading...';
+
+    const detailCard = buttonElement.closest('.formation-detail-card');
+    if (!detailCard) return;
+
+    // Remove any existing English explanation card
+    const existingCard = detailCard.querySelector('.english-explanation-card');
+    if (existingCard) existingCard.remove();
+
+    // Create explanation card with loading indicator
+    const explanationCard = document.createElement('div');
+    explanationCard.className = 'english-explanation-card';
+    explanationCard.innerHTML = `
+        <div class="english-loading">
+            <span>🎙️</span> Generating English explanation...
+        </div>
+    `;
+    buttonElement.parentNode.insertAdjacentElement('afterend', explanationCard);
+
+    try {
+        const formData = new FormData();
+        formData.append('action',           'explain_formation_en');
+        // Use title as fallback when description is empty (newly added formations)
+        formData.append('formation_text',   (formationDescription && formationDescription.trim() !== '') ? formationDescription : formationTitle);
+        formData.append('formation_title',  formationTitle);
+        formData.append('formation_niveau', formationNiveau);
+        formData.append('formation_duree',  formationDuree);
+        formData.append('formation_prix',   formationPrix);
+        formData.append('formation_certif', formationCertif);
+
+        const response = await fetch(window.location.pathname, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+
+        if (data.error) {
+            explanationCard.innerHTML = `<div class="english-explanation-text" style="color:#c0392b;">⚠️ Error: ${escapeHtml(data.error)}</div>`;
+            setTimeout(() => { explanationCard.remove(); }, 5000);
+            return;
+        }
+
+        const englishText = data.english_text || 'No explanation generated. Please try again.';
+
+        // Build the explanation card with audio buttons
+        explanationCard.innerHTML = `
+            <div class="english-explanation-text">📢 ${escapeHtml(englishText)}</div>
+            <div class="english-audio-controls">
+                <button class="english-play-btn" data-text="${escapeHtmlForAttr(englishText)}" onclick="speakEnglishTextViaProxy(this)">
+                    🔊 Listen in English
+                </button>
+                <button class="english-stop-btn" onclick="stopEnglishAudio()">
+                    ⏹️ Stop
+                </button>
+            </div>
+            <div class="english-note">🎧 Click the play button to hear this explanation in English</div>
+        `;
+
+    } catch (error) {
+        console.error('English explanation error:', error);
+        explanationCard.innerHTML = `<div class="english-explanation-text" style="color:#c0392b;">⚠️ Connection error. Please refresh and try again.</div>`;
+        setTimeout(() => { explanationCard.remove(); }, 5000);
+    } finally {
+        buttonElement.disabled = false;
+        buttonElement.innerHTML = originalText;
+    }
+}
+
+// ============================================================
+// Speak English text via PHP proxy (handles CORS)
+// ============================================================
+function speakEnglishTextViaProxy(buttonElement) {
+    const text = buttonElement.getAttribute('data-text') || '';
+    if (!text) {
+        console.error('No text to speak');
+        return;
+    }
+
+    // Stop any currently playing audio
+    stopEnglishAudio();
+
+    const originalHTML = buttonElement.innerHTML;
+    buttonElement.innerHTML = '⏳ Loading audio...';
+    buttonElement.disabled = true;
+    currentEnglishSpeakingButton = buttonElement;
+
+    // Split text into smaller chunks for better TTS handling
+    const chunks = splitTextIntoChunks(text, 180);
+    
+    let currentChunk = 0;
+    let audioPlayer = document.getElementById('english-tts-player');
+    
+    if (!audioPlayer) {
+        audioPlayer = document.createElement('audio');
+        audioPlayer.id = 'english-tts-player';
+        audioPlayer.style.display = 'none';
+        document.body.appendChild(audioPlayer);
+    }
+
+    function playNextChunk() {
+        if (currentChunk >= chunks.length) {
+            // All chunks played
+            resetEnglishButton();
+            return;
+        }
+
+        const chunkText = chunks[currentChunk];
+        const proxyUrl = window.location.pathname + '?action=tts_proxy_en&tl=en&q=' + encodeURIComponent(chunkText);
+        
+        audioPlayer.src = proxyUrl;
+        
+        audioPlayer.oncanplay = function() {
+            buttonElement.innerHTML = '🔊 Playing... ' + (currentChunk + 1) + '/' + chunks.length;
+            buttonElement.classList.add('playing');
+        };
+        
+        audioPlayer.onended = function() {
+            currentChunk++;
+            playNextChunk();
+        };
+        
+        audioPlayer.onerror = function(e) {
+            console.error('TTS proxy error on chunk', currentChunk, e);
+            resetEnglishButton();
+            alert('Audio playback error. Please try again.');
+        };
+        
+        audioPlayer.load();
+        audioPlayer.play().catch(function(err) {
+            console.error('Playback failed:', err);
+            resetEnglishButton();
+            alert('Could not play audio. Your browser may not support this feature.');
+        });
+    }
+
+    function resetEnglishButton() {
+        if (currentEnglishSpeakingButton) {
+            currentEnglishSpeakingButton.innerHTML = originalHTML;
+            currentEnglishSpeakingButton.disabled = false;
+            currentEnglishSpeakingButton.classList.remove('playing');
+            currentEnglishSpeakingButton = null;
+        }
+    }
+
+    playNextChunk();
+}
+
+// Helper: Split text into chunks at sentence boundaries
+function splitTextIntoChunks(text, maxLength) {
+    const chunks = [];
+    const sentences = text.split(/([.!?]\s+)/);
+    let currentChunk = '';
+    
+    for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i];
+        if ((currentChunk + sentence).length <= maxLength) {
+            currentChunk += sentence;
+        } else {
+            if (currentChunk.trim()) {
+                chunks.push(currentChunk.trim());
+            }
+            if (sentence.length > maxLength) {
+                // Split long sentence further
+                for (let j = 0; j < sentence.length; j += maxLength) {
+                    chunks.push(sentence.substring(j, j + maxLength));
+                }
+                currentChunk = '';
+            } else {
+                currentChunk = sentence;
+            }
+        }
+    }
+    
+    if (currentChunk.trim()) {
+        chunks.push(currentChunk.trim());
+    }
+    
+    return chunks.filter(c => c.trim() !== '');
+}
+
+function stopEnglishAudio() {
+    const player = document.getElementById('english-tts-player');
+    if (player) {
+        player.pause();
+        player.src = '';
+    }
+    
+    // Reset any active play button
+    if (currentEnglishSpeakingButton) {
+        currentEnglishSpeakingButton.innerHTML = '🔊 Listen in English';
+        currentEnglishSpeakingButton.disabled = false;
+        currentEnglishSpeakingButton.classList.remove('playing');
+        currentEnglishSpeakingButton = null;
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function escapeHtmlForAttr(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/\n/g, ' ')
+        .replace(/\r/g, '');
+}
+
+
+
+// Initialize voices when page loads
+window.addEventListener('load', function() {
+    window.speechSynthesis.getVoices();
+    console.log('🎙️ Darija Text-to-Speech ready');
+});
+
 // Opens the related modal or panel.
 function ouvrirFormAjoutFront()
 {
@@ -3369,7 +4401,6 @@ function isAllowedOption(value, allowedValues)
       return true;
     }
   }
-
   return false;
 }
 
@@ -3379,7 +4410,6 @@ function isValidHttpUrl(value)
   if (value === '') {
     return true;
   }
-
   try {
     var parsed = new URL(value);
     return parsed.protocol === 'http:' || parsed.protocol === 'https:';
@@ -3395,7 +4425,6 @@ function ensureFormMessageNode(formElement)
   if (inlineNode) {
     return inlineNode;
   }
-
   var formId = formElement.getAttribute('id');
   if (formId !== null && formId !== '') {
     var linkedNode = document.querySelector('[data-form-message-for="' + formId + '"]');
@@ -3403,21 +4432,17 @@ function ensureFormMessageNode(formElement)
       return linkedNode;
     }
   }
-
   var messageNode = document.createElement('div');
   messageNode.className = 'form-feedback';
   messageNode.setAttribute('data-form-message', '1');
-
   if (formId !== null && formId !== '') {
     messageNode.setAttribute('data-form-message-for', formId);
   }
-
   if (formElement.classList.contains('search-bar') || formElement.classList.contains('filter-form')) {
     formElement.insertAdjacentElement('afterend', messageNode);
   } else {
     formElement.insertBefore(messageNode, formElement.firstChild);
   }
-
   return messageNode;
 }
 
@@ -3436,7 +4461,6 @@ function showFormMessage(formElement, status, message)
   messageNode.textContent = message;
   messageNode.classList.remove('error', 'success', 'info');
   messageNode.classList.add('show');
-
   if (status === 'success' || status === 'info') {
     messageNode.classList.add(status);
   } else {
@@ -3459,9 +4483,7 @@ function setDynamicFieldError(fieldElement, message)
   if (!fieldElement) {
     return;
   }
-
   fieldElement.classList.add('input-error');
-
   var alertNode = null;
   var group = fieldElement.closest('.form-group');
   if (group) {
@@ -3483,7 +4505,6 @@ function setDynamicFieldError(fieldElement, message)
       }
     }
   }
-
   if (alertNode) {
     alertNode.textContent = message;
     alertNode.classList.add('show');
@@ -3496,13 +4517,11 @@ function isValidDateValue(value)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return false;
   }
-
   var parts = value.split('-');
   var year = parseInt(parts[0], 10);
   var month = parseInt(parts[1], 10);
   var day = parseInt(parts[2], 10);
   var dateObj = new Date(year, month - 1, day);
-
   return dateObj.getFullYear() === year
     && (dateObj.getMonth() + 1) === month
     && dateObj.getDate() === day;
@@ -3514,7 +4533,6 @@ function isValidDateTimeValue(value)
   if (value === '') {
     return true;
   }
-
   return !isNaN(Date.parse(value));
 }
 
@@ -3522,18 +4540,15 @@ function isValidDateTimeValue(value)
 function clearAddFormationFieldErrors(formElement)
 {
   clearFormMessage(formElement);
-
   var alerts = formElement.querySelectorAll('.field-alert[data-field-error-for]');
   for (var i = 0; i < alerts.length; i++) {
     alerts[i].textContent = '';
     alerts[i].classList.remove('show');
   }
-
   var fields = formElement.querySelectorAll('.input-error');
   for (var j = 0; j < fields.length; j++) {
     fields[j].classList.remove('input-error');
   }
-
   clearDynamicFieldAlerts(formElement);
 }
 
@@ -3544,7 +4559,6 @@ function setAddFormationFieldError(formElement, fieldName, message)
   if (field) {
     field.classList.add('input-error');
   }
-
   var alertNode = formElement.querySelector('[data-field-error-for="' + fieldName + '"]');
   if (alertNode) {
     alertNode.textContent = message;
@@ -3556,7 +4570,6 @@ function setAddFormationFieldError(formElement, fieldName, message)
 function validateAddFormationForm(formElement)
 {
   clearAddFormationFieldErrors(formElement);
-
   var isValid = true;
   var firstErrorMessage = '';
   var integerPattern = /^\d+$/;
@@ -3593,7 +4606,6 @@ function validateAddFormationForm(formElement)
   if (titreField) {
     titre = titreField.value.trim();
   }
-
   if (titre === '') {
     registerStaticFieldError('titre', 'Le titre est obligatoire.');
   } else if (titre.length < 3) {
@@ -3609,7 +4621,6 @@ function validateAddFormationForm(formElement)
   if (mentorField) {
     mentor = mentorField.value.trim();
   }
-
   if (mentor === '') {
     registerStaticFieldError('mentor', 'Le mentor est obligatoire.');
   } else if (mentor.length > mentorMaxLength) {
@@ -3623,7 +4634,6 @@ function validateAddFormationForm(formElement)
   if (niveauField) {
     niveau = niveauField.value;
   }
-
   if (!isAllowedOption(niveau, ['debutant', 'intermediaire', 'avance'])) {
     registerStaticFieldError('niveau', 'Le niveau selectionne est invalide.');
   }
@@ -3633,7 +4643,6 @@ function validateAddFormationForm(formElement)
   if (dureeField) {
     duree = dureeField.value.trim();
   }
-
   if (!integerPattern.test(duree) || parseInt(duree, 10) <= 0) {
     registerStaticFieldError('duree', 'La duree doit etre un nombre entier superieur a 0.');
   }
@@ -3643,7 +4652,6 @@ function validateAddFormationForm(formElement)
   if (prixField) {
     prix = prixField.value.trim();
   }
-
   var prixNormalise = prix.replace(',', '.');
   if (prixNormalise === '' || isNaN(parseFloat(prixNormalise))) {
     registerStaticFieldError('prix', 'Le prix doit etre un nombre valide.');
@@ -3656,7 +4664,6 @@ function validateAddFormationForm(formElement)
   if (certificationField) {
     certification = certificationField.value;
   }
-
   if (!isAllowedOption(certification, ['oui', 'non'])) {
     registerStaticFieldError('certification', 'La certification selectionnee est invalide.');
   }
@@ -3666,7 +4673,6 @@ function validateAddFormationForm(formElement)
   if (etatField) {
     etat = etatField.value;
   }
-
   if (!isAllowedOption(etat, ['Actif', 'Inactif', 'Brouillon'])) {
     registerStaticFieldError('etat', 'Le statut selectionne est invalide.');
   }
@@ -3676,7 +4682,6 @@ function validateAddFormationForm(formElement)
   if (dateField) {
     dateRealisation = dateField.value.trim();
   }
-
   if (dateRealisation !== '' && !isValidDateValue(dateRealisation)) {
     registerStaticFieldError('date_realisation', 'La date de realisation est invalide.');
   }
@@ -3686,7 +4691,6 @@ function validateAddFormationForm(formElement)
   if (videoField) {
     videoUrl = videoField.value.trim();
   }
-
   if (!isValidHttpUrl(videoUrl)) {
     registerStaticFieldError('video_url', 'Le lien video doit etre une URL valide.');
   } else if (videoUrl.length > videoUrlMaxLength) {
@@ -3698,7 +4702,6 @@ function validateAddFormationForm(formElement)
   if (meetField) {
     meetLink = meetField.value.trim();
   }
-
   if (!isValidHttpUrl(meetLink)) {
     registerStaticFieldError('meet_link', 'Le lien de rencontre doit etre une URL valide.');
   }
@@ -3708,7 +4711,6 @@ function validateAddFormationForm(formElement)
   if (quizTitreField) {
     quizTitre = quizTitreField.value.trim();
   }
-
   if (quizTitre === '') {
     registerStaticFieldError('quiz_titre', 'Le titre du quiz est obligatoire.');
   } else if (quizTitre.length < 3) {
@@ -3722,7 +4724,6 @@ function validateAddFormationForm(formElement)
   if (quizDureeField) {
     quizDuree = quizDureeField.value.trim();
   }
-
   if (!integerPattern.test(quizDuree) || parseInt(quizDuree, 10) <= 0) {
     registerStaticFieldError('quiz_duree_minutes', 'La duree du quiz doit etre un entier superieur a 0.');
   }
@@ -3731,7 +4732,6 @@ function validateAddFormationForm(formElement)
   for (var w = 0; w < workshopCards.length; w++) {
     var workshopCard = workshopCards[w];
     var workshopLabel = 'Workshop #' + String(w + 1);
-
     var workshopTitreField = workshopCard.querySelector('input[name^="workshop_titre["]');
     var workshopDescriptionField = workshopCard.querySelector('textarea[name^="workshop_description["]');
     var workshopMentorField = workshopCard.querySelector('input[name^="workshop_mentor_id["]');
@@ -3742,7 +4742,6 @@ function validateAddFormationForm(formElement)
     var workshopPrixField = workshopCard.querySelector('input[name^="workshop_prix["]');
     var workshopCertificationField = workshopCard.querySelector('select[name^="workshop_certification["]');
     var workshopStatutField = workshopCard.querySelector('select[name^="workshop_statut["]');
-
     var workshopTitre = workshopTitreField ? workshopTitreField.value.trim() : '';
     var workshopDescription = workshopDescriptionField ? workshopDescriptionField.value.trim() : '';
     var workshopMentor = workshopMentorField ? workshopMentorField.value.trim() : '';
@@ -3753,22 +4752,8 @@ function validateAddFormationForm(formElement)
     var workshopPrix = workshopPrixField ? workshopPrixField.value.trim() : '';
     var workshopCertification = workshopCertificationField ? workshopCertificationField.value : 'non';
     var workshopStatut = workshopStatutField ? workshopStatutField.value : 'a_venir';
-
-    var hasWorkshopInput = (
-      workshopTitre !== '' ||
-      workshopDescription !== '' ||
-      workshopMentor !== '' ||
-      workshopDuree !== '' ||
-      workshopDate !== '' ||
-      workshopLieu !== '' ||
-      workshopPlaces !== '' ||
-      workshopPrix !== ''
-    );
-
-    if (!hasWorkshopInput) {
-      continue;
-    }
-
+    var hasWorkshopInput = (workshopTitre !== '' || workshopDescription !== '' || workshopMentor !== '' || workshopDuree !== '' || workshopDate !== '' || workshopLieu !== '' || workshopPlaces !== '' || workshopPrix !== '');
+    if (!hasWorkshopInput) { continue; }
     if (workshopTitre === '') {
       registerDynamicFieldError(workshopTitreField, workshopLabel + ' : renseignez le titre ou supprimez cette ligne.');
     } else if (workshopTitre.length < 3) {
@@ -3778,23 +4763,18 @@ function validateAddFormationForm(formElement)
     } else if (!titleLettersPattern.test(workshopTitre)) {
       registerDynamicFieldError(workshopTitreField, workshopLabel + ' : le titre doit contenir uniquement des lettres.');
     }
-
     if (workshopDescription === '' || workshopDescription.length < 10) {
       registerDynamicFieldError(workshopDescriptionField, workshopLabel + ' : la description doit contenir au moins 10 caracteres.');
     }
-
     if (workshopMentor !== '' && (!integerPattern.test(workshopMentor) || parseInt(workshopMentor, 10) <= 0)) {
       registerDynamicFieldError(workshopMentorField, workshopLabel + ' : mentor ID doit etre un entier positif.');
     }
-
     if (!integerPattern.test(workshopDuree) || parseInt(workshopDuree, 10) <= 0) {
       registerDynamicFieldError(workshopDureeField, workshopLabel + ' : la duree doit etre un entier superieur a 0.');
     }
-
     if (!isValidDateTimeValue(workshopDate)) {
       registerDynamicFieldError(workshopDateField, workshopLabel + ' : la date d\'atelier est invalide.');
     }
-
     if (workshopLieu === '' || workshopLieu.length < 2) {
       registerDynamicFieldError(workshopLieuField, workshopLabel + ' : le lieu est obligatoire (min. 2 caracteres).');
     } else if (workshopLieu.length > workshopLieuMaxLength) {
@@ -3802,22 +4782,18 @@ function validateAddFormationForm(formElement)
     } else if (!titleLettersPattern.test(workshopLieu)) {
       registerDynamicFieldError(workshopLieuField, workshopLabel + ' : le lieu doit contenir uniquement des lettres.');
     }
-
     if (!integerPattern.test(workshopPlaces) || parseInt(workshopPlaces, 10) <= 0) {
       registerDynamicFieldError(workshopPlacesField, workshopLabel + ' : le nombre de places max doit etre un entier superieur a 0.');
     }
-
     var workshopPrixNormalise = workshopPrix.replace(',', '.');
     if (workshopPrixNormalise === '' || isNaN(parseFloat(workshopPrixNormalise))) {
       registerDynamicFieldError(workshopPrixField, workshopLabel + ' : le prix doit etre un nombre valide.');
     } else if (parseFloat(workshopPrixNormalise) < 0) {
       registerDynamicFieldError(workshopPrixField, workshopLabel + ' : le prix doit etre superieur ou egal a 0.');
     }
-
     if (!isAllowedOption(workshopCertification, ['oui', 'non'])) {
       registerDynamicFieldError(workshopCertificationField, workshopLabel + ' : la certification est invalide.');
     }
-
     if (!isAllowedOption(workshopStatut, ['a_venir', 'en_cours', 'termine', 'annule'])) {
       registerDynamicFieldError(workshopStatutField, workshopLabel + ' : le statut est invalide.');
     }
@@ -3827,7 +4803,6 @@ function validateAddFormationForm(formElement)
   if (questionCards.length === 0) {
     registerFormError('Ajoutez au moins une question au quiz.');
   }
-
   for (var q = 0; q < questionCards.length; q++) {
     var questionCard = questionCards[q];
     var questionLabel = 'Question #' + String(q + 1);
@@ -3835,24 +4810,19 @@ function validateAddFormationForm(formElement)
     var questionTypeField = questionCard.querySelector('select[name^="quiz_question_type["]');
     var questionPointsField = questionCard.querySelector('input[name^="quiz_question_points["]');
     var tfCorrectField = questionCard.querySelector('select[name^="quiz_tf_correct["]');
-
     var questionText = questionTextField ? questionTextField.value.trim() : '';
     var questionType = questionTypeField ? questionTypeField.value : 'choix_unique';
     var questionPoints = questionPointsField ? questionPointsField.value.trim() : '1';
-
     if (questionText === '' || questionText.length < 3) {
       registerDynamicFieldError(questionTextField, questionLabel + ' : le texte doit contenir au moins 3 caracteres.');
     }
-
     if (!isAllowedOption(questionType, ['choix_unique', 'choix_multiple', 'vrai_faux'])) {
       registerDynamicFieldError(questionTypeField, questionLabel + ' : le type de question est invalide.');
       continue;
     }
-
     if (!integerPattern.test(questionPoints) || parseInt(questionPoints, 10) <= 0) {
       registerDynamicFieldError(questionPointsField, questionLabel + ' : les points doivent etre un entier superieur a 0.');
     }
-
     if (questionType === 'vrai_faux') {
       var tfValue = tfCorrectField ? tfCorrectField.value : 'true';
       if (!isAllowedOption(tfValue, ['true', 'false'])) {
@@ -3860,45 +4830,30 @@ function validateAddFormationForm(formElement)
       }
       continue;
     }
-
     var answerRows = questionCard.querySelectorAll('.quiz-builder-answer-row');
     var validAnswers = 0;
     var correctCount = 0;
-
     for (var a = 0; a < answerRows.length; a++) {
       var answerRow = answerRows[a];
       var answerTextField = answerRow.querySelector('input[type="text"]');
       var answerCorrectField = answerRow.querySelector('input[type="checkbox"]');
       var answerText = answerTextField ? answerTextField.value.trim() : '';
       var isCorrectAnswer = answerCorrectField ? answerCorrectField.checked : false;
-
       if (answerText !== '') {
         validAnswers += 1;
-        if (isCorrectAnswer) {
-          correctCount += 1;
-        }
+        if (isCorrectAnswer) { correctCount += 1; }
       } else if (isCorrectAnswer) {
         registerDynamicFieldError(answerTextField, questionLabel + ' : une reponse cochee ne peut pas etre vide.');
       }
     }
-
-    if (validAnswers < 2) {
-      registerFormError(questionLabel + ' : ajoutez au moins 2 reponses non vides.');
-    }
-
-    if (correctCount <= 0) {
-      registerFormError(questionLabel + ' : cochez au moins une bonne reponse.');
-    }
-
-    if (questionType === 'choix_unique' && correctCount !== 1) {
-      registerFormError(questionLabel + ' : en choix unique, une seule bonne reponse est autorisee.');
-    }
+    if (validAnswers < 2) { registerFormError(questionLabel + ' : ajoutez au moins 2 reponses non vides.'); }
+    if (correctCount <= 0) { registerFormError(questionLabel + ' : cochez au moins une bonne reponse.'); }
+    if (questionType === 'choix_unique' && correctCount !== 1) { registerFormError(questionLabel + ' : en choix unique, une seule bonne reponse est autorisee.'); }
   }
 
   if (!isValid) {
     showFormMessage(formElement, 'error', firstErrorMessage !== '' ? firstErrorMessage : 'Veuillez corriger les champs en erreur.');
   }
-
   return isValid;
 }
 
@@ -3906,21 +4861,15 @@ function validateAddFormationForm(formElement)
 function validateSearchForm(formElement)
 {
   clearFormMessage(formElement);
-
   var searchField = formElement.querySelector('[name="q"]');
-  if (!searchField) {
-    return true;
-  }
-
+  if (!searchField) { return true; }
   searchField.classList.remove('input-error');
   var value = searchField.value.trim();
-
   if (value !== '' && value.length < 2) {
     searchField.classList.add('input-error');
     showFormMessage(formElement, 'error', 'Veuillez saisir au moins 2 caracteres pour la recherche.');
     return false;
   }
-
   return true;
 }
 
@@ -3928,11 +4877,9 @@ function validateSearchForm(formElement)
 function validateFilterForm(formElement)
 {
   clearFormMessage(formElement);
-
   var niveauField = formElement.querySelector('[name="niveau"]');
   var certifField = formElement.querySelector('[name="certif"]');
   var isValid = true;
-
   if (niveauField) {
     niveauField.classList.remove('input-error');
     if (!isAllowedOption(niveauField.value, ['', 'debutant', 'intermediaire', 'avance'])) {
@@ -3940,7 +4887,6 @@ function validateFilterForm(formElement)
       isValid = false;
     }
   }
-
   if (certifField) {
     certifField.classList.remove('input-error');
     if (!isAllowedOption(certifField.value, ['', 'oui', 'non'])) {
@@ -3948,11 +4894,9 @@ function validateFilterForm(formElement)
       isValid = false;
     }
   }
-
   if (!isValid) {
     showFormMessage(formElement, 'error', 'Valeur de filtre invalide. Choisissez une option dans la liste.');
   }
-
   return isValid;
 }
 
@@ -3960,34 +4904,24 @@ function validateFilterForm(formElement)
 function validateQuizSubmitForm(formElement)
 {
   clearFormMessage(formElement);
-
   var questionItems = formElement.querySelectorAll('.quiz-question-item');
   var isValid = true;
-
   for (var i = 0; i < questionItems.length; i++) {
     var questionItem = questionItems[i];
     questionItem.classList.remove('quiz-question-error');
-
     var options = questionItem.querySelectorAll('input[type="radio"], input[type="checkbox"]');
     var hasChecked = false;
-
     for (var j = 0; j < options.length; j++) {
-      if (options[j].checked) {
-        hasChecked = true;
-        break;
-      }
+      if (options[j].checked) { hasChecked = true; break; }
     }
-
     if (!hasChecked) {
       questionItem.classList.add('quiz-question-error');
       isValid = false;
     }
   }
-
   if (!isValid) {
     showFormMessage(formElement, 'error', 'Selectionnez au moins une reponse pour chaque question du quiz.');
   }
-
   return isValid;
 }
 
@@ -3995,110 +4929,31 @@ function validateQuizSubmitForm(formElement)
 function quizBuilderEscapeHtml(value)
 {
   var text = String(value);
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
 // Builds HTML markup used by the dynamic form builder.
 function quizBuilderAnswerRowMarkup(questionIndex, answerIndex, answerText, isCorrect)
 {
   var checked = isCorrect ? ' checked' : '';
-  return ''
-    + '<div class="quiz-builder-answer-row">'
-    + '<input type="text" name="quiz_answer_text[' + questionIndex + '][' + answerIndex + ']" value="' + quizBuilderEscapeHtml(answerText) + '" placeholder="Texte de la réponse">'
-    + '<label>'
-    + '<input type="checkbox" name="quiz_answer_correct[' + questionIndex + '][]" value="' + answerIndex + '"' + checked + '>'
-    + 'Bonne réponse'
-    + '</label>'
-    + '</div>';
+  return '<div class="quiz-builder-answer-row"><input type="text" name="quiz_answer_text[' + questionIndex + '][' + answerIndex + ']" value="' + quizBuilderEscapeHtml(answerText) + '" placeholder="Texte de la réponse"><label><input type="checkbox" name="quiz_answer_correct[' + questionIndex + '][]" value="' + answerIndex + '"' + checked + '>Bonne réponse</label></div>';
 }
 
 // Builds HTML markup used by the dynamic form builder.
 function workshopBuilderRowMarkup(workshopIndex)
 {
-  return ''
-    + '<div class="workshop-builder-item" data-workshop-index="' + workshopIndex + '">'
-    + '  <div class="workshop-builder-head">'
-    + '    <strong>Workshop <span class="workshop-builder-number">0</span></strong>'
-    + '    <button type="button" class="btn-cancel quiz-remove-btn" onclick="removeWorkshopBuilderRow(this)">Supprimer</button>'
-    + '  </div>'
-    + '  <div class="front-form-row-2">'
-    + '    <div class="form-group">'
-    + '      <label>Titre workshop</label>'
-    + '      <input type="text" name="workshop_titre[' + workshopIndex + ']" placeholder="Ex: Atelier pratique de poterie" pattern="[A-Za-zÀ-ÖØ-öø-ÿ ]+" maxlength="200">'
-    + '    </div>'
-    + '    <div class="form-group">'
-    + '      <label>Mentor ID (optionnel)</label>'
-    + '      <input type="number" min="1" step="1" name="workshop_mentor_id[' + workshopIndex + ']" placeholder="Ex: 3">'
-    + '    </div>'
-    + '  </div>'
-    + '  <div class="form-group">'
-    + '    <label>Description workshop</label>'
-    + '    <textarea name="workshop_description[' + workshopIndex + ']" rows="2" placeholder="Description du workshop"></textarea>'
-    + '  </div>'
-    + '  <div class="front-form-row-3">'
-    + '    <div class="form-group">'
-    + '      <label>Durée workshop (heures)</label>'
-    + '      <input type="number" min="1" step="1" name="workshop_duree[' + workshopIndex + ']" placeholder="Ex: 2">'
-    + '    </div>'
-    + '    <div class="form-group">'
-    + '      <label>Date atelier (optionnel)</label>'
-    + '      <input type="datetime-local" name="workshop_date_atelier[' + workshopIndex + ']">'
-    + '    </div>'
-    + '    <div class="form-group">'
-    + '      <label>Lieu workshop</label>'
-    + '      <input type="text" name="workshop_lieu[' + workshopIndex + ']" placeholder="Ex: Tunis" pattern="[A-Za-zÀ-ÖØ-öø-ÿ ]+" maxlength="255">'
-    + '    </div>'
-    + '  </div>'
-    + '  <div class="front-form-row-3">'
-    + '    <div class="form-group">'
-    + '      <label>Places max workshop</label>'
-    + '      <input type="number" min="1" step="1" name="workshop_places_max[' + workshopIndex + ']" placeholder="Ex: 20">'
-    + '    </div>'
-    + '    <div class="form-group">'
-    + '      <label>Prix workshop (TND)</label>'
-    + '      <input type="number" min="0" step="0.01" name="workshop_prix[' + workshopIndex + ']" placeholder="Ex: 120">'
-    + '    </div>'
-    + '    <div class="form-group">'
-    + '      <label>Certification workshop</label>'
-    + '      <select name="workshop_certification[' + workshopIndex + ']">'
-    + '        <option value="oui">Oui</option>'
-    + '        <option value="non" selected>Non</option>'
-    + '      </select>'
-    + '    </div>'
-    + '  </div>'
-    + '  <div class="front-form-row-2">'
-    + '    <div class="form-group">'
-    + '      <label>Statut workshop</label>'
-    + '      <select name="workshop_statut[' + workshopIndex + ']">'
-    + '        <option value="a_venir" selected>A venir</option>'
-    + '        <option value="en_cours">En cours</option>'
-    + '        <option value="termine">Termine</option>'
-    + '        <option value="annule">Annule</option>'
-    + '      </select>'
-    + '    </div>'
-    + '  </div>'
-    + '</div>';
+  return '<div class="workshop-builder-item" data-workshop-index="' + workshopIndex + '"><div class="workshop-builder-head"><strong>Workshop <span class="workshop-builder-number">0</span></strong><button type="button" class="btn-cancel quiz-remove-btn" onclick="removeWorkshopBuilderRow(this)">Supprimer</button></div><div class="front-form-row-2"><div class="form-group"><label>Titre workshop</label><input type="text" name="workshop_titre[' + workshopIndex + ']" placeholder="Ex: Atelier pratique de poterie" pattern="[A-Za-zÀ-ÖØ-öø-ÿ ]+" maxlength="200"></div><div class="form-group"><label>Mentor ID (optionnel)</label><input type="number" min="1" step="1" name="workshop_mentor_id[' + workshopIndex + ']" placeholder="Ex: 3"></div></div><div class="form-group"><label>Description workshop</label><textarea name="workshop_description[' + workshopIndex + ']" rows="2" placeholder="Description du workshop"></textarea></div><div class="front-form-row-3"><div class="form-group"><label>Durée workshop (heures)</label><input type="number" min="1" step="1" name="workshop_duree[' + workshopIndex + ']" placeholder="Ex: 2"></div><div class="form-group"><label>Date atelier (optionnel)</label><input type="datetime-local" name="workshop_date_atelier[' + workshopIndex + ']"></div><div class="form-group"><label>Lieu workshop</label><input type="text" name="workshop_lieu[' + workshopIndex + ']" placeholder="Ex: Tunis" pattern="[A-Za-zÀ-ÖØ-öø-ÿ ]+" maxlength="255"></div></div><div class="front-form-row-3"><div class="form-group"><label>Places max workshop</label><input type="number" min="1" step="1" name="workshop_places_max[' + workshopIndex + ']" placeholder="Ex: 20"></div><div class="form-group"><label>Prix workshop (TND)</label><input type="number" min="0" step="0.01" name="workshop_prix[' + workshopIndex + ']" placeholder="Ex: 120"></div><div class="form-group"><label>Certification workshop</label><select name="workshop_certification[' + workshopIndex + ']"><option value="oui">Oui</option><option value="non" selected>Non</option></select></div></div><div class="front-form-row-2"><div class="form-group"><label>Statut workshop</label><select name="workshop_statut[' + workshopIndex + ']"><option value="a_venir" selected>A venir</option><option value="en_cours">En cours</option><option value="termine">Termine</option><option value="annule">Annule</option></select></div></div></div>';
 }
 
 // Refreshes derived UI values and labels.
 function refreshWorkshopBuilderLabels()
 {
   var container = document.getElementById('workshopBuilderRows');
-  if (!container) {
-    return;
-  }
-
+  if (!container) { return; }
   var cards = container.querySelectorAll('.workshop-builder-item');
   for (var i = 0; i < cards.length; i++) {
     var label = cards[i].querySelector('.workshop-builder-number');
-    if (label) {
-      label.textContent = String(i + 1);
-    }
+    if (label) { label.textContent = String(i + 1); }
   }
 }
 
@@ -4106,15 +4961,11 @@ function refreshWorkshopBuilderLabels()
 function addWorkshopBuilderRow()
 {
   var container = document.getElementById('workshopBuilderRows');
-  if (!container) {
-    return;
-  }
-
+  if (!container) { return; }
   var nextWorkshopIndex = parseInt(container.getAttribute('data-next-workshop-index'), 10);
   if (isNaN(nextWorkshopIndex) || nextWorkshopIndex < 0) {
     nextWorkshopIndex = container.querySelectorAll('.workshop-builder-item').length;
   }
-
   var workshopIndex = String(nextWorkshopIndex);
   container.setAttribute('data-next-workshop-index', String(nextWorkshopIndex + 1));
   container.insertAdjacentHTML('beforeend', workshopBuilderRowMarkup(workshopIndex));
@@ -4125,14 +4976,10 @@ function addWorkshopBuilderRow()
 function removeWorkshopBuilderRow(buttonElement)
 {
   var card = buttonElement.closest('.workshop-builder-item');
-  if (!card) {
-    return;
-  }
-
+  if (!card) { return; }
   var container = document.getElementById('workshopBuilderRows');
   card.remove();
   refreshWorkshopBuilderLabels();
-
   if (container && container.querySelectorAll('.workshop-builder-item').length === 0) {
     addWorkshopBuilderRow();
   }
@@ -4142,16 +4989,11 @@ function removeWorkshopBuilderRow(buttonElement)
 function refreshQuizBuilderQuestionLabels()
 {
   var container = document.getElementById('quizBuilderQuestions');
-  if (!container) {
-    return;
-  }
-
+  if (!container) { return; }
   var cards = container.querySelectorAll('.quiz-builder-question');
   for (var i = 0; i < cards.length; i++) {
     var label = cards[i].querySelector('.quiz-builder-number');
-    if (label) {
-      label.textContent = String(i + 1);
-    }
+    if (label) { label.textContent = String(i + 1); }
   }
 }
 
@@ -4160,10 +5002,7 @@ function onQuizBuilderTypeChange(selectElement, questionIndex)
 {
   var tfBox = document.getElementById('quizTrueFalseBox' + String(questionIndex));
   var answersBox = document.getElementById('quizAnswersBox' + String(questionIndex));
-  if (!tfBox || !answersBox) {
-    return;
-  }
-
+  if (!tfBox || !answersBox) { return; }
   if (selectElement.value === 'vrai_faux') {
     tfBox.classList.remove('quiz-builder-hidden');
     answersBox.classList.add('quiz-builder-hidden');
@@ -4177,20 +5016,13 @@ function onQuizBuilderTypeChange(selectElement, questionIndex)
 function addQuizBuilderAnswer(questionIndex)
 {
   var questionCard = document.querySelector('.quiz-builder-question[data-question-index="' + String(questionIndex) + '"]');
-  if (!questionCard) {
-    return;
-  }
-
+  if (!questionCard) { return; }
   var answerList = document.getElementById('quizAnswerList' + String(questionIndex));
-  if (!answerList) {
-    return;
-  }
-
+  if (!answerList) { return; }
   var nextAnswerIndex = parseInt(questionCard.getAttribute('data-next-answer-index'), 10);
   if (isNaN(nextAnswerIndex) || nextAnswerIndex < 0) {
     nextAnswerIndex = answerList.children.length;
   }
-
   answerList.insertAdjacentHTML('beforeend', quizBuilderAnswerRowMarkup(questionIndex, nextAnswerIndex, '', false));
   questionCard.setAttribute('data-next-answer-index', String(nextAnswerIndex + 1));
 }
@@ -4199,14 +5031,10 @@ function addQuizBuilderAnswer(questionIndex)
 function removeQuizBuilderQuestion(buttonElement)
 {
   var card = buttonElement.closest('.quiz-builder-question');
-  if (!card) {
-    return;
-  }
-
+  if (!card) { return; }
   var container = document.getElementById('quizBuilderQuestions');
   card.remove();
   refreshQuizBuilderQuestionLabels();
-
   if (container && container.querySelectorAll('.quiz-builder-question').length === 0) {
     addQuizBuilderQuestion();
   }
@@ -4216,59 +5044,14 @@ function removeQuizBuilderQuestion(buttonElement)
 function addQuizBuilderQuestion()
 {
   var container = document.getElementById('quizBuilderQuestions');
-  if (!container) {
-    return;
-  }
-
+  if (!container) { return; }
   var nextQuestionIndex = parseInt(container.getAttribute('data-next-question-index'), 10);
   if (isNaN(nextQuestionIndex) || nextQuestionIndex < 0) {
     nextQuestionIndex = container.querySelectorAll('.quiz-builder-question').length;
   }
-
   var questionIndex = String(nextQuestionIndex);
   container.setAttribute('data-next-question-index', String(nextQuestionIndex + 1));
-
-  var html = ''
-    + '<div class="quiz-builder-question" data-question-index="' + questionIndex + '" data-next-answer-index="2">'
-    + '  <div class="quiz-builder-head">'
-    + '    <strong>Question <span class="quiz-builder-number">0</span></strong>'
-    + '    <button type="button" class="btn-cancel quiz-remove-btn" onclick="removeQuizBuilderQuestion(this)">Supprimer</button>'
-    + '  </div>'
-    + '  <div class="form-group">'
-    + '    <label>Texte de la question *</label>'
-    + '    <input type="text" name="quiz_question_text[' + questionIndex + ']" placeholder="Ex: Quelle matière est utilisée en vannerie ?">'
-    + '  </div>'
-    + '  <div class="front-form-row-3">'
-    + '    <div class="form-group">'
-    + '      <label>Type</label>'
-    + '      <select class="quiz-builder-type-select" data-question-index="' + questionIndex + '" name="quiz_question_type[' + questionIndex + ']" onchange="onQuizBuilderTypeChange(this, \'' + questionIndex + '\')">'
-    + '        <option value="choix_unique">Choix unique</option>'
-    + '        <option value="choix_multiple">Choix multiple</option>'
-    + '        <option value="vrai_faux">Vrai / Faux</option>'
-    + '      </select>'
-    + '    </div>'
-    + '    <div class="form-group">'
-    + '      <label>Points</label>'
-    + '      <input type="number" min="1" step="1" name="quiz_question_points[' + questionIndex + ']" value="1">'
-    + '    </div>'
-    + '    <div class="form-group quiz-builder-hidden" id="quizTrueFalseBox' + questionIndex + '">'
-    + '      <label>Bonne réponse (Vrai/Faux)</label>'
-    + '      <select name="quiz_tf_correct[' + questionIndex + ']">'
-    + '        <option value="true">True</option>'
-    + '        <option value="false">False</option>'
-    + '      </select>'
-    + '    </div>'
-    + '  </div>'
-    + '  <div class="form-group" id="quizAnswersBox' + questionIndex + '">'
-    + '    <label>Réponses *</label>'
-    + '    <div class="quiz-builder-answer-list" id="quizAnswerList' + questionIndex + '">'
-    +       quizBuilderAnswerRowMarkup(questionIndex, 0, '', false)
-    +       quizBuilderAnswerRowMarkup(questionIndex, 1, '', false)
-    + '    </div>'
-    + '    <button type="button" class="btn-inscrit vert" onclick="addQuizBuilderAnswer(\'' + questionIndex + '\')">+ Ajouter une réponse</button>'
-    + '  </div>'
-    + '</div>';
-
+  var html = '<div class="quiz-builder-question" data-question-index="' + questionIndex + '" data-next-answer-index="2"><div class="quiz-builder-head"><strong>Question <span class="quiz-builder-number">0</span></strong><button type="button" class="btn-cancel quiz-remove-btn" onclick="removeQuizBuilderQuestion(this)">Supprimer</button></div><div class="form-group"><label>Texte de la question *</label><input type="text" name="quiz_question_text[' + questionIndex + ']" placeholder="Ex: Quelle matière est utilisée en vannerie ?"></div><div class="front-form-row-3"><div class="form-group"><label>Type</label><select class="quiz-builder-type-select" data-question-index="' + questionIndex + '" name="quiz_question_type[' + questionIndex + ']" onchange="onQuizBuilderTypeChange(this, \'' + questionIndex + '\')"><option value="choix_unique">Choix unique</option><option value="choix_multiple">Choix multiple</option><option value="vrai_faux">Vrai / Faux</option></select></div><div class="form-group"><label>Points</label><input type="number" min="1" step="1" name="quiz_question_points[' + questionIndex + ']" value="1"></div><div class="form-group quiz-builder-hidden" id="quizTrueFalseBox' + questionIndex + '"><label>Bonne réponse (Vrai/Faux)</label><select name="quiz_tf_correct[' + questionIndex + ']"><option value="true">True</option><option value="false">False</option></select></div></div><div class="form-group" id="quizAnswersBox' + questionIndex + '"><label>Réponses *</label><div class="quiz-builder-answer-list" id="quizAnswerList' + questionIndex + '">' + quizBuilderAnswerRowMarkup(questionIndex, 0, '', false) + quizBuilderAnswerRowMarkup(questionIndex, 1, '', false) + '</div><button type="button" class="btn-inscrit vert" onclick="addQuizBuilderAnswer(\'' + questionIndex + '\')">+ Ajouter une réponse</button></div></div>';
   container.insertAdjacentHTML('beforeend', html);
   refreshQuizBuilderQuestionLabels();
 }
@@ -4278,19 +5061,13 @@ function openFormationDetails(formationId)
 {
   var sectionGrid = document.getElementById('formationsGridSection');
   var sectionDetail = document.getElementById('formationDetailView');
-
-  if (!sectionGrid || !sectionDetail) {
-    return;
-  }
-
+  if (!sectionGrid || !sectionDetail) { return; }
   var panels = sectionDetail.querySelectorAll('.formation-detail-card');
   var found = false;
   var activePanel = null;
-
   for (var i = 0; i < panels.length; i++) {
     var panel = panels[i];
     var panelId = parseInt(panel.getAttribute('data-detail-id'), 10);
-
     if (panelId === formationId) {
       panel.style.display = 'block';
       found = true;
@@ -4299,51 +5076,23 @@ function openFormationDetails(formationId)
       panel.style.display = 'none';
     }
   }
-
-  if (!found || !activePanel) {
-    return;
-  }
-
+  if (!found || !activePanel) { return; }
   var workshopSections = sectionDetail.querySelectorAll('.associated-workshops');
-  for (var j = 0; j < workshopSections.length; j++) {
-    workshopSections[j].classList.remove('open');
-  }
-
+  for (var j = 0; j < workshopSections.length; j++) { workshopSections[j].classList.remove('open'); }
   var workshopButtons = sectionDetail.querySelectorAll('.workshops-toggle-btn');
-  for (var k = 0; k < workshopButtons.length; k++) {
-    workshopButtons[k].textContent = 'Voir ateliers';
-  }
-
+  for (var k = 0; k < workshopButtons.length; k++) { workshopButtons[k].textContent = 'Voir ateliers'; }
   var quizPanels = sectionDetail.querySelectorAll('.quiz-questions-panel');
-  for (var l = 0; l < quizPanels.length; l++) {
-    quizPanels[l].classList.remove('open');
-  }
-
+  for (var l = 0; l < quizPanels.length; l++) { quizPanels[l].classList.remove('open'); }
   var quizButtons = sectionDetail.querySelectorAll('.quiz-launch-btn');
-  for (var m = 0; m < quizButtons.length; m++) {
-    quizButtons[m].textContent = 'Passer quizz';
-  }
-
+  for (var m = 0; m < quizButtons.length; m++) { quizButtons[m].textContent = 'Passer quizz'; }
   var selectedWorkshopSection = activePanel.querySelector('.associated-workshops');
-  if (selectedWorkshopSection) {
-    selectedWorkshopSection.classList.add('open');
-  }
-
+  if (selectedWorkshopSection) { selectedWorkshopSection.classList.add('open'); }
   var selectedWorkshopButton = activePanel.querySelector('.workshops-toggle-btn');
-  if (selectedWorkshopButton) {
-    selectedWorkshopButton.textContent = 'Masquer ateliers';
-  }
-
+  if (selectedWorkshopButton) { selectedWorkshopButton.textContent = 'Masquer ateliers'; }
   var selectedQuizPanel = activePanel.querySelector('.quiz-questions-panel');
-  if (selectedQuizPanel) {
-    selectedQuizPanel.classList.add('open');
-  }
-
+  if (selectedQuizPanel) { selectedQuizPanel.classList.add('open'); }
   var selectedQuizButton = activePanel.querySelector('.quiz-launch-btn');
-  if (selectedQuizButton) {
-    selectedQuizButton.textContent = 'Masquer quizz';
-  }
-
+  if (selectedQuizButton) { selectedQuizButton.textContent = 'Masquer quizz'; }
   sectionGrid.style.display = 'none';
   sectionDetail.classList.add('open');
   sectionDetail.setAttribute('data-active-id', String(formationId));
@@ -4355,62 +5104,37 @@ function closeFormationDetails()
 {
   var sectionGrid = document.getElementById('formationsGridSection');
   var sectionDetail = document.getElementById('formationDetailView');
-
-  if (!sectionGrid || !sectionDetail) {
-    return;
-  }
-
+  if (!sectionGrid || !sectionDetail) { return; }
   sectionGrid.style.display = '';
   sectionDetail.classList.remove('open');
   sectionDetail.removeAttribute('data-active-id');
-
   var panels = sectionDetail.querySelectorAll('.formation-detail-card');
-  for (var i = 0; i < panels.length; i++) {
-    panels[i].style.display = 'none';
-  }
-
+  for (var i = 0; i < panels.length; i++) { panels[i].style.display = 'none'; }
   var workshopSections = sectionDetail.querySelectorAll('.associated-workshops');
-  for (var j = 0; j < workshopSections.length; j++) {
-    workshopSections[j].classList.remove('open');
-  }
-
+  for (var j = 0; j < workshopSections.length; j++) { workshopSections[j].classList.remove('open'); }
   var workshopButtons = sectionDetail.querySelectorAll('.workshops-toggle-btn');
-  for (var k = 0; k < workshopButtons.length; k++) {
-    workshopButtons[k].textContent = 'Voir ateliers';
-  }
-
+  for (var k = 0; k < workshopButtons.length; k++) { workshopButtons[k].textContent = 'Voir ateliers'; }
   var quizPanels = sectionDetail.querySelectorAll('.quiz-questions-panel');
-  for (var l = 0; l < quizPanels.length; l++) {
-    quizPanels[l].classList.remove('open');
-  }
-
+  for (var l = 0; l < quizPanels.length; l++) { quizPanels[l].classList.remove('open'); }
   var quizButtons = sectionDetail.querySelectorAll('.quiz-launch-btn');
-  for (var m = 0; m < quizButtons.length; m++) {
-    quizButtons[m].textContent = 'Passer quizz';
-  }
+  for (var m = 0; m < quizButtons.length; m++) { quizButtons[m].textContent = 'Passer quizz'; }
+  // Stop any playing audio when closing
+  stopDarijaSpeech();
 }
 
 // Toggles visibility for the requested section.
 function toggleAssociatedWorkshops(formationId)
 {
   var container = document.getElementById('associatedWorkshops' + String(formationId));
-  if (!container) {
-    return;
-  }
-
+  if (!container) { return; }
   var button = document.querySelector('.workshops-toggle-btn[data-formation-id="' + String(formationId) + '"]');
   var isOpen = container.classList.contains('open');
-
   if (isOpen) {
     container.classList.remove('open');
-    if (button) {
-      button.textContent = 'Voir ateliers';
-    }
+    if (button) { button.textContent = 'Voir ateliers'; }
   } else {
     container.classList.add('open');
-    if (button) {
-      button.textContent = 'Masquer ateliers';
-    }
+    if (button) { button.textContent = 'Masquer ateliers'; }
   }
 }
 
@@ -4418,23 +5142,15 @@ function toggleAssociatedWorkshops(formationId)
 function toggleQuizPanel(formationId)
 {
   var panel = document.getElementById('quizPanel' + String(formationId));
-  if (!panel) {
-    return;
-  }
-
+  if (!panel) { return; }
   var button = document.querySelector('.quiz-launch-btn[data-formation-id="' + String(formationId) + '"]');
   var isOpen = panel.classList.contains('open');
-
   if (isOpen) {
     panel.classList.remove('open');
-    if (button) {
-      button.textContent = 'Passer quizz';
-    }
+    if (button) { button.textContent = 'Passer quizz'; }
   } else {
     panel.classList.add('open');
-    if (button) {
-      button.textContent = 'Masquer quizz';
-    }
+    if (button) { button.textContent = 'Masquer quizz'; }
   }
 }
 
@@ -4443,11 +5159,8 @@ document.addEventListener('DOMContentLoaded', function ()
   var searchForm = document.getElementById('formRechercheFront');
   if (searchForm) {
     searchForm.addEventListener('submit', function (event) {
-      if (!validateSearchForm(searchForm)) {
-        event.preventDefault();
-      }
+      if (!validateSearchForm(searchForm)) { event.preventDefault(); }
     });
-
     var searchField = searchForm.querySelector('[name="q"]');
     if (searchField) {
       searchField.addEventListener('input', function () {
@@ -4456,15 +5169,11 @@ document.addEventListener('DOMContentLoaded', function ()
       });
     }
   }
-
   var filterForm = document.getElementById('formFiltresFront');
   if (filterForm) {
     filterForm.addEventListener('submit', function (event) {
-      if (!validateFilterForm(filterForm)) {
-        event.preventDefault();
-      }
+      if (!validateFilterForm(filterForm)) { event.preventDefault(); }
     });
-
     var filterFields = filterForm.querySelectorAll('select');
     for (var fs = 0; fs < filterFields.length; fs++) {
       (function (filterField) {
@@ -4475,27 +5184,17 @@ document.addEventListener('DOMContentLoaded', function ()
       })(filterFields[fs]);
     }
   }
-
   var quizSubmitForms = document.querySelectorAll('.quiz-submit-form');
   for (var qf = 0; qf < quizSubmitForms.length; qf++) {
     (function (quizForm) {
       quizForm.addEventListener('submit', function (event) {
-        if (!validateQuizSubmitForm(quizForm)) {
-          event.preventDefault();
-        }
+        if (!validateQuizSubmitForm(quizForm)) { event.preventDefault(); }
       });
-
       quizForm.addEventListener('change', function (event) {
         var target = event.target;
-        if (!target || (target.type !== 'radio' && target.type !== 'checkbox')) {
-          return;
-        }
-
+        if (!target || (target.type !== 'radio' && target.type !== 'checkbox')) { return; }
         var questionItem = target.closest('.quiz-question-item');
-        if (!questionItem) {
-          return;
-        }
-
+        if (!questionItem) { return; }
         var options = questionItem.querySelectorAll('input[type="radio"], input[type="checkbox"]');
         for (var i = 0; i < options.length; i++) {
           if (options[i].checked) {
@@ -4507,15 +5206,11 @@ document.addEventListener('DOMContentLoaded', function ()
       });
     })(quizSubmitForms[qf]);
   }
-
   var addFormationForm = document.getElementById('formAjoutFormationFront');
   if (addFormationForm) {
     addFormationForm.addEventListener('submit', function (event) {
-      if (!validateAddFormationForm(addFormationForm)) {
-        event.preventDefault();
-      }
+      if (!validateAddFormationForm(addFormationForm)) { event.preventDefault(); }
     });
-
     var addFormFields = addFormationForm.querySelectorAll('input, textarea, select');
     for (var af = 0; af < addFormFields.length; af++) {
       (function (fieldElement) {
@@ -4523,11 +5218,9 @@ document.addEventListener('DOMContentLoaded', function ()
         if (fieldElement.tagName === 'SELECT' || fieldElement.type === 'checkbox' || fieldElement.type === 'radio') {
           liveEventName = 'change';
         }
-
         fieldElement.addEventListener(liveEventName, function () {
           fieldElement.classList.remove('input-error');
           clearFormMessage(addFormationForm);
-
           var fieldName = fieldElement.getAttribute('name');
           if (fieldName !== null && fieldName !== '') {
             var staticAlert = addFormationForm.querySelector('[data-field-error-for="' + fieldName + '"]');
@@ -4536,15 +5229,11 @@ document.addEventListener('DOMContentLoaded', function ()
               staticAlert.classList.remove('show');
             }
           }
-
           var group = fieldElement.closest('.form-group');
           if (group) {
             var dynamicGroupAlert = group.querySelector('.field-alert.dynamic-field-alert');
-            if (dynamicGroupAlert) {
-              dynamicGroupAlert.remove();
-            }
+            if (dynamicGroupAlert) { dynamicGroupAlert.remove(); }
           }
-
           var nextDynamicAlert = fieldElement.nextElementSibling;
           if (nextDynamicAlert && nextDynamicAlert.classList.contains('field-alert') && nextDynamicAlert.classList.contains('dynamic-field-alert')) {
             nextDynamicAlert.remove();
@@ -4553,10 +5242,8 @@ document.addEventListener('DOMContentLoaded', function ()
       })(addFormFields[af]);
     }
   }
-
   refreshWorkshopBuilderLabels();
   refreshQuizBuilderQuestionLabels();
-
   var typeSelects = document.querySelectorAll('.quiz-builder-type-select');
   for (var ts = 0; ts < typeSelects.length; ts++) {
     var typeSelect = typeSelects[ts];
@@ -4565,49 +5252,90 @@ document.addEventListener('DOMContentLoaded', function ()
       onQuizBuilderTypeChange(typeSelect, questionIndex);
     }
   }
-
   var cartesFormations = document.querySelectorAll('.formation-card');
   for (var i = 0; i < cartesFormations.length; i++) {
     (function (carte) {
       var formationId = parseInt(carte.getAttribute('data-formation-id'), 10);
-
       carte.addEventListener('click', function (event) {
-        if (event.target && event.target.closest('.formation-detail-btn')) {
-          return;
-        }
-
-        if (formationId > 0) {
-          openFormationDetails(formationId);
-        }
+        if (event.target && event.target.closest('.formation-detail-btn')) { return; }
+        if (formationId > 0) { openFormationDetails(formationId); }
       });
-
       carte.addEventListener('keydown', function (event) {
         if ((event.key === 'Enter' || event.key === ' ') && formationId > 0) {
           event.preventDefault();
           openFormationDetails(formationId);
         }
       });
-
       var boutonDetail = carte.querySelector('.formation-detail-btn');
       if (boutonDetail) {
         boutonDetail.addEventListener('click', function (event) {
           event.preventDefault();
           event.stopPropagation();
-
-          if (formationId > 0) {
-            openFormationDetails(formationId);
-          }
+          if (formationId > 0) { openFormationDetails(formationId); }
         });
       }
     })(cartesFormations[i]);
   }
-
   var autoOpenId = <?php echo (string) ((int) $selectedFormationId); ?>;
-  if (autoOpenId > 0) {
-    openFormationDetails(autoOpenId);
-  }
+  if (autoOpenId > 0) { openFormationDetails(autoOpenId); }
 });
+// Alternative: Use Google TTS API (better Arabic voices)
+async function speakDarijaTextGoogle(buttonElement, text) {
+    // Stop any ongoing audio
+    const audioPlayer = document.getElementById('google-tts-player');
+    if (audioPlayer) {
+        audioPlayer.pause();
+    }
+    
+    const originalText = buttonElement.innerHTML;
+    buttonElement.innerHTML = '⏳ تشغيل...';
+    buttonElement.disabled = true;
+    
+    try {
+        // Google TTS API (free, no API key required for basic usage)
+        const url = 'https://translate.google.com/translate_tts?ie=UTF-8&q=' + 
+                    encodeURIComponent(text) + '&tl=ar&client=tw-ob';
+        
+        let player = document.getElementById('google-tts-player');
+        if (!player) {
+            player = document.createElement('audio');
+            player.id = 'google-tts-player';
+            player.style.display = 'none';
+            document.body.appendChild(player);
+        }
+        
+        player.src = url;
+        
+        player.onplay = function() {
+            buttonElement.innerHTML = '🔊 جاري القراءة...';
+            buttonElement.classList.add('playing');
+        };
+        
+        player.onended = function() {
+            buttonElement.innerHTML = originalText;
+            buttonElement.disabled = false;
+            buttonElement.classList.remove('playing');
+        };
+        
+        player.onerror = function() {
+            buttonElement.innerHTML = originalText;
+            buttonElement.disabled = false;
+            buttonElement.classList.remove('playing');
+            alert('عذرا، لم نتمكن من تشغيل الصوت. حاول مرة أخرى.');
+        };
+        
+        await player.play();
+        
+    } catch (error) {
+        console.error('Google TTS error:', error);
+        buttonElement.innerHTML = originalText;
+        buttonElement.disabled = false;
+        buttonElement.classList.remove('playing');
+        alert('عذرا، حدث خطأ في تشغيل الصوت.');
+    }
+}
 </script>
+
 <?php include 'ai_widget_front.php'; ?>
 </body>
 </html>

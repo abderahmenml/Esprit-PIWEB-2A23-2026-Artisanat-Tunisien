@@ -172,6 +172,266 @@ function normalizeFormationTitle($title)
   return trim((string) $value);
 }
 
+function coerceBool($value)
+{
+  if (is_bool($value)) {
+    return $value;
+  }
+
+  if (is_int($value) || is_float($value)) {
+    return ((int) $value) === 1;
+  }
+
+  $raw = strtolower(trim((string) $value));
+
+  return ($raw === '1' || $raw === 'true' || $raw === 'yes' || $raw === 'oui');
+}
+
+function callGroqChat(string $system, string $userMsg, int $tokens = 1200): string
+{
+  $apiKey = '';
+
+  if (defined('GROQ_API_KEY')) {
+    $apiKey = GROQ_API_KEY;
+  } elseif (getenv('GROQ_API_KEY') !== false) {
+    $apiKey = (string) getenv('GROQ_API_KEY');
+  }
+
+  if ($apiKey === '') {
+    throw new RuntimeException('GROQ_API_KEY non configurée.');
+  }
+
+  $payload = json_encode([
+    'model' => 'llama-3.3-70b-versatile',
+    'max_tokens' => $tokens,
+    'messages' => [
+      ['role' => 'system', 'content' => $system],
+      ['role' => 'user', 'content' => $userMsg]
+    ]
+  ]);
+
+  $ch = curl_init('https://api.groq.com/openai/v1/chat/completions');
+  curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => $payload,
+    CURLOPT_HTTPHEADER => [
+      'Content-Type: application/json',
+      'Authorization: Bearer ' . $apiKey,
+    ],
+    CURLOPT_TIMEOUT => 30,
+  ]);
+
+  $response = curl_exec($ch);
+  $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+  curl_close($ch);
+
+  if ($response === false || $httpCode !== 200) {
+    throw new RuntimeException('Erreur API Groq (HTTP ' . $httpCode . ').');
+  }
+
+  $decoded = json_decode($response, true);
+  if (!is_array($decoded) || !isset($decoded['choices'][0]['message']['content'])) {
+    throw new RuntimeException('Réponse API inattendue.');
+  }
+
+  return trim((string) $decoded['choices'][0]['message']['content']);
+}
+
+function normalizeGroqQuestionsForInsert(array $questions): array
+{
+  $result = [];
+
+  foreach ($questions as $question) {
+    if (!is_array($question)) {
+      continue;
+    }
+
+    $questionText = trim((string) ($question['enonce'] ?? $question['text'] ?? ''));
+    if ($questionText === '' || strlen($questionText) < 3) {
+      throw new RuntimeException('Chaque question du quiz doit contenir au moins 3 caractères.');
+    }
+
+    $questionType = trim((string) ($question['type'] ?? 'choix_unique'));
+    if ($questionType !== 'choix_unique' && $questionType !== 'choix_multiple' && $questionType !== 'vrai_faux') {
+      $questionType = 'choix_unique';
+    }
+
+    $questionPoints = 1;
+    if (isset($question['points']) && is_numeric($question['points']) && (int) $question['points'] > 0) {
+      $questionPoints = (int) $question['points'];
+    }
+
+    $rawAnswers = [];
+    if (isset($question['reponses']) && is_array($question['reponses'])) {
+      $rawAnswers = $question['reponses'];
+    } elseif (isset($question['answers']) && is_array($question['answers'])) {
+      $rawAnswers = $question['answers'];
+    }
+
+    if ($questionType === 'vrai_faux') {
+      $correctTrue = null;
+
+      for ($ai = 0; $ai < count($rawAnswers); $ai++) {
+        $answerRow = $rawAnswers[$ai];
+        if (!is_array($answerRow)) {
+          continue;
+        }
+        $answerTextRaw = trim((string) ($answerRow['texte'] ?? $answerRow['text'] ?? ''));
+        $answerText = strtolower($answerTextRaw);
+        $isCorrect = false;
+        if (array_key_exists('est_correcte', $answerRow)) {
+          $isCorrect = coerceBool($answerRow['est_correcte']);
+        } elseif (array_key_exists('is_correct', $answerRow)) {
+          $isCorrect = coerceBool($answerRow['is_correct']);
+        }
+        if ($isCorrect) {
+          if (strpos($answerText, 'vrai') !== false || strpos($answerText, 'true') !== false) {
+            $correctTrue = true;
+          } elseif (strpos($answerText, 'faux') !== false || strpos($answerText, 'false') !== false) {
+            $correctTrue = false;
+          }
+        }
+      }
+
+      if ($correctTrue === null) {
+        $correctTrue = true;
+      }
+
+      $result[] = [
+        'text' => $questionText,
+        'type' => 'vrai_faux',
+        'points' => $questionPoints,
+        'answers' => [
+          ['text' => 'True', 'is_correct' => $correctTrue],
+          ['text' => 'False', 'is_correct' => !$correctTrue]
+        ]
+      ];
+      continue;
+    }
+
+    $cleanAnswers = [];
+    $correctCount = 0;
+
+    for ($ai = 0; $ai < count($rawAnswers); $ai++) {
+      $answerRow = $rawAnswers[$ai];
+      if (!is_array($answerRow)) {
+        continue;
+      }
+      $answerText = trim((string) ($answerRow['texte'] ?? $answerRow['text'] ?? ''));
+      if ($answerText === '') {
+        continue;
+      }
+
+      $isCorrect = false;
+      if (array_key_exists('est_correcte', $answerRow)) {
+        $isCorrect = coerceBool($answerRow['est_correcte']);
+      } elseif (array_key_exists('is_correct', $answerRow)) {
+        $isCorrect = coerceBool($answerRow['is_correct']);
+      } elseif (array_key_exists('correct', $answerRow)) {
+        $isCorrect = coerceBool($answerRow['correct']);
+      }
+
+      if ($isCorrect) {
+        $correctCount += 1;
+      }
+
+      $cleanAnswers[] = [
+        'text' => $answerText,
+        'is_correct' => $isCorrect
+      ];
+    }
+
+    if (count($cleanAnswers) < 2) {
+      throw new RuntimeException('Chaque question (hors vrai/faux) doit contenir au moins 2 réponses.');
+    }
+
+    if ($correctCount <= 0) {
+      throw new RuntimeException('Chaque question doit avoir au moins une bonne réponse.');
+    }
+
+    if ($questionType === 'choix_unique' && $correctCount !== 1) {
+      throw new RuntimeException('Une question en choix unique doit avoir exactement une seule bonne réponse.');
+    }
+
+    $result[] = [
+      'text' => $questionText,
+      'type' => $questionType,
+      'points' => $questionPoints,
+      'answers' => $cleanAnswers
+    ];
+  }
+
+  if (count($result) === 0) {
+    throw new RuntimeException('Aucune question valide n\'a été générée.');
+  }
+
+  return $result;
+}
+
+function buildAutoQuizQuestions(array $formationRow, int $nbQuestions = 5): array
+{
+  $titre = trim((string) ($formationRow['domaine'] ?? ''));
+  if ($titre === '') {
+    throw new RuntimeException('Titre de formation introuvable.');
+  }
+
+  $niveauRaw = isset($formationRow['niveau']) ? (string) $formationRow['niveau'] : '';
+  $niveauNormalized = normalizeNiveau($niveauRaw);
+  if ($niveauNormalized === '') {
+    $niveauNormalized = 'debutant';
+  }
+  $niveauLabelValue = niveauLabel($niveauNormalized);
+
+  $description = trim((string) ($formationRow['description'] ?? ''));
+  $nb = (int) $nbQuestions;
+  if ($nb <= 0) {
+    $nb = 5;
+  }
+  if ($nb > 10) {
+    $nb = 10;
+  }
+
+  $system = <<<SYS
+Tu es un expert en pédagogie artisanale tunisienne pour CraftLink.
+Tu génères des questions de quiz pertinentes pour évaluer les connaissances acquises lors d'une formation.
+Réponds UNIQUEMENT avec un objet JSON valide (pas de markdown, pas de texte avant ou après).
+Format exact :
+{
+  "questions": [
+    {
+      "enonce": "Texte de la question ?",
+      "type": "choix_unique",
+      "points": 1,
+      "reponses": [
+        {"texte": "Réponse A", "est_correcte": true},
+        {"texte": "Réponse B", "est_correcte": false},
+        {"texte": "Réponse C", "est_correcte": false}
+      ]
+    }
+  ]
+}
+Types acceptés : choix_unique, choix_multiple, vrai_faux.
+Pour vrai_faux, les deux réponses sont "Vrai" et "Faux".
+SYS;
+
+  $descSnippet = $description !== '' ? "\nDescription : {$description}" : '';
+  $userMsg = "Formation : « {$titre} »\nNiveau : {$niveauLabelValue}{$descSnippet}\n\nGénère {$nb} questions de quiz variées et pertinentes (mix choix_unique, vrai_faux).";
+
+  $raw = callGroqChat($system, $userMsg, 1200);
+
+  $raw = preg_replace('/^```(?:json)?\s*/m', '', $raw);
+  $raw = preg_replace('/\s*```$/m', '', $raw);
+  $raw = trim($raw);
+
+  $parsed = json_decode($raw, true);
+  if (!is_array($parsed) || !isset($parsed['questions']) || !is_array($parsed['questions'])) {
+    throw new RuntimeException('Format JSON invalide retourné par l\'IA.');
+  }
+
+  return normalizeGroqQuestionsForInsert($parsed['questions']);
+}
+
 // Fetches one formation and its related quiz metadata by ID.
 function getFormationById($pdo, $idFormation)
 {
@@ -216,7 +476,7 @@ function getFormationById($pdo, $idFormation)
 
   $sqlFormation = '';
   if (count($quizLinksParts) > 0) {
-    $sqlFormation = 'SELECT f.id_formation, f.domaine, f.formateur, f.description, f.date_realisation, f.etat, f.duree, f.certification, f.niveau, f.prix,
+    $sqlFormation = 'SELECT f.id_formation, f.domaine, f.formateur, f.description, f.date_realisation, f.etat, f.duree, f.certification, f.niveau, f.prix, f.video_url,
                 qz.id_quizz AS quiz_id, qz.titre AS quiz_titre,
                 ' . $selectQuizDescriptionExpr . ',
                 ' . $selectQuizNotePassageExpr . ',
@@ -233,7 +493,7 @@ function getFormationById($pdo, $idFormation)
              LEFT JOIN quizz qz ON qz.id_quizz = lq.id_quizz
              WHERE f.id_formation = :id';
   } else {
-    $sqlFormation = 'SELECT f.id_formation, f.domaine, f.formateur, f.description, f.date_realisation, f.etat, f.duree, f.certification, f.niveau, f.prix,
+    $sqlFormation = 'SELECT f.id_formation, f.domaine, f.formateur, f.description, f.date_realisation, f.etat, f.duree, f.certification, f.niveau, f.prix, f.video_url,
                 NULL AS quiz_id, NULL AS quiz_titre,
                 NULL AS quiz_description,
                 NULL AS quiz_note_passage,
@@ -351,10 +611,19 @@ $hasQuizzNbTentativesColumn = columnExists($pdo, 'quizz', 'nb_tentatives');
 $hasQuizzDureeMinutesColumn = columnExists($pdo, 'quizz', 'duree_minutes');
 $hasQuizzDureeColumn = columnExists($pdo, 'quizz', 'duree');
 $hasQuizzFormationsTable = tableExists($pdo, 'quizz_formations');
+$hasQuizQuestionsTable = tableExists($pdo, 'questions');
+$hasQuizResponsesTable = tableExists($pdo, 'reponses');
+$quizQuestionsEnabled = $hasQuizQuestionsTable && $hasQuizResponsesTable;
 
 $erreur = '';
 $succes = '';
 $afficherFormUpdate = false;
+$openFormationModal = false;
+$openWorkshopModal = false;
+$openQuizModal = false;
+$editWorkshopId = 0;
+$editQuizId = 0;
+
 $updateForm = [
   'id_formation' => 0,
   'titre' => '',
@@ -382,16 +651,178 @@ $updateForm = [
   'quiz_titre' => '',
   'quiz_description' => '',
   'quiz_questions' => '',
-  'quiz_duree_minutes' => '20'
-
+  'quiz_duree_minutes' => '20',
+  'quiz_note_passage' => '60',
+  'quiz_nb_tentatives' => '3',
+  'formation_id' => 0
 ];
+
+$workshopForm = [
+  'id_workshop' => 0,
+  'titre' => '',
+  'description' => '',
+  'mentor_id' => '',
+  'duree' => '',
+  'date_atelier' => '',
+  'lieu' => '',
+  'places_max' => '',
+  'prix' => '',
+  'certification' => 'non',
+  'statut' => 'a_venir',
+  'formation_id' => 0
+];
+
+$quizForm = [
+  'id_quizz' => 0,
+  'titre' => '',
+  'description' => '',
+  'note_passage' => '60',
+  'nb_tentatives' => '3',
+  'duree_minutes' => '20',
+  'formation_id' => 0
+];
+
+$oldQuizBuilderQuestions = [];
+$nextQuizBuilderQuestionIndex = 0;
+
+function defaultQuizBuilderQuestions()
+{
+  return [
+    [
+      'key' => '0',
+      'text' => '',
+      'type' => 'choix_unique',
+      'points' => 1,
+      'tf_correct' => 'true',
+      'answers' => [
+        ['key' => '0', 'text' => '', 'is_correct' => false],
+        ['key' => '1', 'text' => '', 'is_correct' => false]
+      ]
+    ]
+  ];
+}
+
+function parseQuizBuilderQuestions($post)
+{
+  $result = [];
+
+  if (!isset($post['quiz_question_text']) || !is_array($post['quiz_question_text'])) {
+    return $result;
+  }
+
+  $questionTexts = $post['quiz_question_text'];
+
+  foreach ($questionTexts as $questionKey => $questionTextRaw) {
+    $questionKeyString = (string) $questionKey;
+    $questionText = trim((string) $questionTextRaw);
+
+    $questionType = 'choix_unique';
+    if (isset($post['quiz_question_type']) && isset($post['quiz_question_type'][$questionKey])) {
+      $typeRaw = trim((string) $post['quiz_question_type'][$questionKey]);
+      if ($typeRaw === 'choix_multiple' || $typeRaw === 'vrai_faux') {
+        $questionType = $typeRaw;
+      }
+    }
+
+    $questionPoints = 1;
+    if (isset($post['quiz_question_points']) && isset($post['quiz_question_points'][$questionKey])) {
+      $pointsRaw = trim((string) $post['quiz_question_points'][$questionKey]);
+      if (ctype_digit($pointsRaw) && (int) $pointsRaw > 0) {
+        $questionPoints = (int) $pointsRaw;
+      }
+    }
+
+    $tfCorrect = 'true';
+    if (isset($post['quiz_tf_correct']) && isset($post['quiz_tf_correct'][$questionKey])) {
+      $tfRaw = trim((string) $post['quiz_tf_correct'][$questionKey]);
+      if ($tfRaw === 'false') {
+        $tfCorrect = 'false';
+      }
+    }
+
+    $answers = [];
+
+    if ($questionType === 'vrai_faux') {
+      $answers[] = ['key' => '0', 'text' => 'True', 'is_correct' => ($tfCorrect === 'true')];
+      $answers[] = ['key' => '1', 'text' => 'False', 'is_correct' => ($tfCorrect === 'false')];
+    } else {
+      $answerTexts = [];
+      if (isset($post['quiz_answer_text']) && isset($post['quiz_answer_text'][$questionKey]) && is_array($post['quiz_answer_text'][$questionKey])) {
+        $answerTexts = $post['quiz_answer_text'][$questionKey];
+      }
+
+      $correctLookup = [];
+      if (isset($post['quiz_answer_correct']) && isset($post['quiz_answer_correct'][$questionKey]) && is_array($post['quiz_answer_correct'][$questionKey])) {
+        $correctValues = $post['quiz_answer_correct'][$questionKey];
+        for ($i = 0; $i < count($correctValues); $i++) {
+          $correctLookup[(string) $correctValues[$i]] = true;
+        }
+      }
+
+      foreach ($answerTexts as $answerKey => $answerTextRaw) {
+        $answerKeyString = (string) $answerKey;
+        $answers[] = [
+          'key' => $answerKeyString,
+          'text' => trim((string) $answerTextRaw),
+          'is_correct' => isset($correctLookup[$answerKeyString])
+        ];
+      }
+
+      if (count($answers) === 0) {
+        $answers[] = ['key' => '0', 'text' => '', 'is_correct' => false];
+        $answers[] = ['key' => '1', 'text' => '', 'is_correct' => false];
+      }
+    }
+
+    $result[] = [
+      'key' => $questionKeyString,
+      'text' => $questionText,
+      'type' => $questionType,
+      'points' => $questionPoints,
+      'tf_correct' => $tfCorrect,
+      'answers' => $answers
+    ];
+  }
+
+  return $result;
+}
 
 if (isset($_GET['updated']) && $_GET['updated'] === '1') {
   $succes = 'Formation mise à jour avec succès.';
 }
-
+if (isset($_GET['workshop_updated']) && $_GET['workshop_updated'] === '1') {
+  $succes = 'Workshop mis à jour avec succès.';
+}
+if (isset($_GET['quiz_updated']) && $_GET['quiz_updated'] === '1') {
+  $succes = 'Quiz mis à jour avec succès.';
+}
 if (isset($_GET['deleted']) && $_GET['deleted'] === '1') {
   $succes = 'Formation supprimée avec succès.';
+}
+if (isset($_GET['workshop_deleted']) && $_GET['workshop_deleted'] === '1') {
+  $succes = 'Workshop supprimé avec succès.';
+}
+if (isset($_GET['quiz_deleted']) && $_GET['quiz_deleted'] === '1') {
+  $succes = 'Quiz supprimé avec succès.';
+}
+if (isset($_GET['formation_ok']) && $_GET['formation_ok'] === '1') {
+  $succes = 'Formation ajoutée avec succès.';
+}
+if (isset($_GET['workshop_ok']) && $_GET['workshop_ok'] === '1') {
+  $succes = 'Workshop ajouté avec succès.';
+}
+if (isset($_GET['quiz_ok']) && $_GET['quiz_ok'] === '1') {
+  $succes = 'Quiz ajouté avec succès.';
+}
+
+if (isset($_GET['open_add_formation']) && $_GET['open_add_formation'] === '1') {
+  $openFormationModal = true;
+}
+if (isset($_GET['open_add_workshop']) && $_GET['open_add_workshop'] === '1') {
+  $openWorkshopModal = true;
+}
+if (isset($_GET['open_add_quiz']) && $_GET['open_add_quiz'] === '1') {
+  $openQuizModal = true;
 }
 
 $requestMethod = 'GET';
@@ -402,7 +833,8 @@ if (isset($_SERVER['REQUEST_METHOD'])) {
 if ($requestMethod === 'POST') {
   $action = isset($_POST['action']) ? trim($_POST['action']) : '';
 
-  if ($action === 'update') {
+  // UPDATE FORMATION
+  if ($action === 'update_formation') {
     $afficherFormUpdate = true;
 
     $updateForm['id_formation'] = isset($_POST['id_formation']) ? (int) $_POST['id_formation'] : 0;
@@ -416,36 +848,6 @@ if ($requestMethod === 'POST') {
     $updateForm['etat'] = isset($_POST['etat']) ? trim((string) $_POST['etat']) : 'Actif';
     $updateForm['lien_video'] = isset($_POST['lien_video']) ? trim((string) $_POST['lien_video']) : '';
     $updateForm['date_realisation'] = isset($_POST['date_realisation']) ? trim((string) $_POST['date_realisation']) : '';
-    $updateForm['workshop_id'] = isset($_POST['workshop_id']) ? (int) $_POST['workshop_id'] : 0;
-    $updateForm['workshop_titre'] = isset($_POST['workshop_titre']) ? trim((string) $_POST['workshop_titre']) : '';
-    $updateForm['workshop_description'] = isset($_POST['workshop_description']) ? trim((string) $_POST['workshop_description']) : '';
-    $updateForm['workshop_mentor_id'] = isset($_POST['workshop_mentor_id']) ? trim((string) $_POST['workshop_mentor_id']) : '';
-    $updateForm['workshop_duree'] = isset($_POST['workshop_duree']) ? trim((string) $_POST['workshop_duree']) : '';
-    $updateForm['workshop_date_atelier'] = isset($_POST['workshop_date_atelier']) ? trim((string) $_POST['workshop_date_atelier']) : '';
-    $updateForm['workshop_lieu'] = isset($_POST['workshop_lieu']) ? trim((string) $_POST['workshop_lieu']) : '';
-    $updateForm['workshop_places_max'] = isset($_POST['workshop_places_max']) ? trim((string) $_POST['workshop_places_max']) : '';
-    $updateForm['workshop_prix'] = isset($_POST['workshop_prix']) ? trim((string) $_POST['workshop_prix']) : '';
-    $updateForm['workshop_certification'] = isset($_POST['workshop_certification']) ? trim((string) $_POST['workshop_certification']) : 'non';
-    $updateForm['workshop_statut'] = isset($_POST['workshop_statut']) ? trim((string) $_POST['workshop_statut']) : 'a_venir';
-    $updateForm['quiz_id'] = isset($_POST['quiz_id']) ? (int) $_POST['quiz_id'] : 0;
-    $updateForm['quiz_titre'] = isset($_POST['quiz_titre']) ? trim((string) $_POST['quiz_titre']) : '';
-    $updateForm['quiz_description'] = isset($_POST['quiz_description']) ? trim((string) $_POST['quiz_description']) : '';
-    $updateForm['quiz_note_passage'] = isset($_POST['quiz_note_passage']) ? trim((string) $_POST['quiz_note_passage']) : '60';
-    $updateForm['quiz_questions'] = isset($_POST['quiz_questions']) ? trim((string) $_POST['quiz_questions']) : '';
-    $updateForm['quiz_nb_tentatives'] = isset($_POST['quiz_nb_tentatives']) ? trim((string) $_POST['quiz_nb_tentatives']) : '3';
-    $updateForm['quiz_duree_minutes'] = isset($_POST['quiz_duree_minutes']) ? trim((string) $_POST['quiz_duree_minutes']) : '20';
-
-    $hasWorkshopUpdateInput = (
-      $updateForm['workshop_id'] > 0 ||
-      $updateForm['workshop_titre'] !== '' ||
-      $updateForm['workshop_description'] !== '' ||
-      $updateForm['workshop_mentor_id'] !== '' ||
-      $updateForm['workshop_duree'] !== '' ||
-      $updateForm['workshop_date_atelier'] !== '' ||
-      $updateForm['workshop_lieu'] !== '' ||
-      $updateForm['workshop_places_max'] !== '' ||
-      $updateForm['workshop_prix'] !== ''
-    );
 
     if ($updateForm['id_formation'] <= 0) {
       $erreur = 'Identifiant de formation invalide.';
@@ -472,83 +874,6 @@ if ($requestMethod === 'POST') {
       $erreur = 'Le prix doit être un nombre valide.';
     }
 
-    if ($erreur === '' && ($updateForm['quiz_titre'] === '' || strlen($updateForm['quiz_titre']) < 3)) {
-      $erreur = 'Le titre du quiz doit contenir au moins 3 caractères.';
-    }
-
-    if ($erreur === '' && (!ctype_digit($updateForm['quiz_note_passage']) || (int) $updateForm['quiz_note_passage'] < 0 || (int) $updateForm['quiz_note_passage'] > 100)) {
-      $erreur = 'La note de passage du quiz doit être un entier entre 0 et 100.';
-    }
-
-    if ($erreur === '' && (!ctype_digit($updateForm['quiz_nb_tentatives']) || (int) $updateForm['quiz_nb_tentatives'] <= 0)) {
-      $erreur = 'Le nombre de tentatives du quiz doit être un entier supérieur à 0.';
-    }
-
-    if ($erreur === '' && (!ctype_digit($updateForm['quiz_duree_minutes']) || (int) $updateForm['quiz_duree_minutes'] <= 0)) {
-      $erreur = 'La durée du quiz doit être un entier supérieur à 0.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && !$hasWorkshopsTable) {
-      $erreur = 'La table workshops est introuvable en base de données.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && (int) $updateForm['workshop_id'] <= 0 && !$workshopsAssociationEnabled) {
-      $erreur = 'Aucune liaison formation-workshop n\'est disponible dans la base de données.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && strlen($updateForm['workshop_titre']) < 3) {
-      $erreur = 'Le titre du workshop doit contenir au moins 3 caractères.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && ($updateForm['workshop_description'] === '' || strlen($updateForm['workshop_description']) < 10)) {
-      $erreur = 'La description du workshop doit contenir au moins 10 caractères.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && $updateForm['workshop_mentor_id'] !== '' && (!ctype_digit($updateForm['workshop_mentor_id']) || (int) $updateForm['workshop_mentor_id'] <= 0)) {
-      $erreur = 'Le mentor_id du workshop doit être un entier positif.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && $updateForm['workshop_mentor_id'] !== '') {
-      $mentorIdWorkshop = (int) $updateForm['workshop_mentor_id'];
-
-      // Optional field: if id_user does not exist, save NULL to avoid FK errors.
-      if (!userExistsById($pdo, $mentorIdWorkshop)) {
-        $updateForm['workshop_mentor_id'] = '';
-      }
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && (!ctype_digit($updateForm['workshop_duree']) || (int) $updateForm['workshop_duree'] <= 0)) {
-      $erreur = 'La durée du workshop doit être un entier supérieur à 0.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && $updateForm['workshop_date_atelier'] !== '' && strtotime($updateForm['workshop_date_atelier']) === false) {
-      $erreur = 'La date atelier du workshop est invalide.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && ($updateForm['workshop_lieu'] === '' || strlen($updateForm['workshop_lieu']) < 2)) {
-      $erreur = 'Le lieu du workshop est obligatoire (min. 2 caractères).';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && (!ctype_digit($updateForm['workshop_places_max']) || (int) $updateForm['workshop_places_max'] <= 0)) {
-      $erreur = 'Le nombre de places max du workshop doit être un entier supérieur à 0.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && !is_numeric($updateForm['workshop_prix'])) {
-      $erreur = 'Le prix du workshop doit être un nombre valide.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && is_numeric($updateForm['workshop_prix']) && (float) $updateForm['workshop_prix'] < 0) {
-      $erreur = 'Le prix du workshop doit être supérieur ou égal à 0.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && $updateForm['workshop_certification'] !== 'oui' && $updateForm['workshop_certification'] !== 'non') {
-      $erreur = 'La certification du workshop est invalide.';
-    }
-
-    if ($erreur === '' && $hasWorkshopUpdateInput && $updateForm['workshop_statut'] !== 'a_venir' && $updateForm['workshop_statut'] !== 'en_cours' && $updateForm['workshop_statut'] !== 'termine' && $updateForm['workshop_statut'] !== 'annule') {
-      $erreur = 'Le statut du workshop est invalide.';
-    }
-
     if ($erreur === '' && $updateForm['certification'] !== 'oui' && $updateForm['certification'] !== 'non') {
       $erreur = 'La certification sélectionnée est invalide.';
     }
@@ -568,7 +893,6 @@ if ($requestMethod === 'POST') {
       try {
         $pdo->beginTransaction();
 
-
         $sqlUpdate = 'UPDATE formations
                       SET domaine = :domaine,
                           formateur = :formateur,
@@ -579,13 +903,13 @@ if ($requestMethod === 'POST') {
                           certification = :certification,
                           niveau = :niveau,
                           prix = :prix,
-                          lien_video = :lien_video
+                          video_url = :video_url
                       WHERE id_formation = :id_formation';
         $stmtUpdate = $pdo->prepare($sqlUpdate);
         $stmtUpdate->bindValue(':domaine', $updateForm['titre']);
         $stmtUpdate->bindValue(':formateur', $updateForm['mentor']);
         $stmtUpdate->bindValue(':description', $updateForm['description']);
-        $stmtUpdate->bindValue(':lien_video', $updateForm['lien_video']);
+        $stmtUpdate->bindValue(':video_url', $updateForm['lien_video']);
         if ($updateForm['date_realisation'] === '') {
           $stmtUpdate->bindValue(':date_realisation', null, PDO::PARAM_NULL);
         } else {
@@ -599,390 +923,6 @@ if ($requestMethod === 'POST') {
         $stmtUpdate->bindValue(':id_formation', $updateForm['id_formation'], PDO::PARAM_INT);
         $stmtUpdate->execute();
 
-        $quizIdUpdate = (int) $updateForm['quiz_id'];
-        $quizDescriptionUpdate = $updateForm['quiz_description'];
-        $quizQuestionUpdate = $quizDescriptionUpdate;
-        if ($quizQuestionUpdate === '') {
-          $quizQuestionUpdate = $updateForm['quiz_titre'];
-        }
-
-        if ($quizIdUpdate > 0) {
-          $quizSetParts = [];
-
-          if ($hasQuizzFormationIdColumn) {
-            $quizSetParts[] = 'formation_id = :formation_id';
-          }
-          if ($hasQuizzDomaineColumn) {
-            $quizSetParts[] = 'domaine = :domaine';
-          }
-          if ($hasQuizzTitreColumn) {
-            $quizSetParts[] = 'titre = :titre';
-          }
-          if ($hasQuizzDescriptionColumn) {
-            $quizSetParts[] = 'description = :description';
-          }
-          if ($hasQuizzQuestionColumn) {
-            $quizSetParts[] = 'question = :question';
-          }
-          if ($hasQuizzNotePassageColumn) {
-            $quizSetParts[] = 'note_passage = :note_passage';
-          } elseif ($hasQuizzScoreColumn) {
-            $quizSetParts[] = 'score = :score';
-          }
-          if ($hasQuizzNbTentativesColumn) {
-            $quizSetParts[] = 'nb_tentatives = :nb_tentatives';
-          }
-          if (columnExists($pdo, 'quizz', 'questions')) {
-            $quizSetParts[] = 'questions = :questions';
-          }
-          if ($hasQuizzDureeMinutesColumn) {
-            $quizSetParts[] = 'duree_minutes = :duree_minutes';
-          } elseif ($hasQuizzDureeColumn) {
-            $quizSetParts[] = 'duree = :duree';
-          }
-
-          if (count($quizSetParts) > 0) {
-            $sqlQuizUpdate = 'UPDATE quizz
-                              SET ' . implode(",\n                                  ", $quizSetParts) . '
-                              WHERE id_quizz = :id_quizz';
-            $stmtQuizUpdate = $pdo->prepare($sqlQuizUpdate);
-
-            if ($hasQuizzFormationIdColumn) {
-              $stmtQuizUpdate->bindValue(':formation_id', $updateForm['id_formation'], PDO::PARAM_INT);
-            }
-            if ($hasQuizzDomaineColumn) {
-              $stmtQuizUpdate->bindValue(':domaine', $updateForm['titre']);
-            }
-            if ($hasQuizzTitreColumn) {
-              $stmtQuizUpdate->bindValue(':titre', $updateForm['quiz_titre']);
-            }
-            if ($hasQuizzDescriptionColumn) {
-              if ($quizDescriptionUpdate === '') {
-                $stmtQuizUpdate->bindValue(':description', null, PDO::PARAM_NULL);
-              } else {
-                $stmtQuizUpdate->bindValue(':description', $quizDescriptionUpdate);
-              }
-            }
-            if ($hasQuizzQuestionColumn) {
-              $stmtQuizUpdate->bindValue(':question', $quizQuestionUpdate);
-            }
-            if ($hasQuizzNotePassageColumn) {
-              $stmtQuizUpdate->bindValue(':note_passage', (int) $updateForm['quiz_note_passage'], PDO::PARAM_INT);
-            } elseif ($hasQuizzScoreColumn) {
-              $stmtQuizUpdate->bindValue(':score', (int) $updateForm['quiz_note_passage'], PDO::PARAM_INT);
-            }
-            if ($hasQuizzNbTentativesColumn) {
-              $stmtQuizUpdate->bindValue(':nb_tentatives', (int) $updateForm['quiz_nb_tentatives'], PDO::PARAM_INT);
-            }
-            if (columnExists($pdo, 'quizz', 'questions')) {
-              $stmtQuizUpdate->bindValue(':questions', $updateForm['quiz_questions']);
-            }
-            if ($hasQuizzDureeMinutesColumn) {
-              $stmtQuizUpdate->bindValue(':duree_minutes', (int) $updateForm['quiz_duree_minutes'], PDO::PARAM_INT);
-            } elseif ($hasQuizzDureeColumn) {
-              $stmtQuizUpdate->bindValue(':duree', (int) $updateForm['quiz_duree_minutes'], PDO::PARAM_INT);
-            }
-
-            $stmtQuizUpdate->bindValue(':id_quizz', $quizIdUpdate, PDO::PARAM_INT);
-            $stmtQuizUpdate->execute();
-          }
-        } else {
-          $quizInsertColumns = [];
-          $quizInsertValues = [];
-
-          if ($hasQuizzFormationIdColumn) {
-            $quizInsertColumns[] = 'formation_id';
-            $quizInsertValues[] = ':formation_id';
-          }
-          if ($hasQuizzDomaineColumn) {
-            $quizInsertColumns[] = 'domaine';
-            $quizInsertValues[] = ':domaine';
-          }
-          if ($hasQuizzTitreColumn) {
-            $quizInsertColumns[] = 'titre';
-            $quizInsertValues[] = ':titre';
-          }
-          if ($hasQuizzDescriptionColumn) {
-            $quizInsertColumns[] = 'description';
-            $quizInsertValues[] = ':description';
-          }
-          if ($hasQuizzQuestionColumn) {
-            $quizInsertColumns[] = 'question';
-            $quizInsertValues[] = ':question';
-          }
-          if ($hasQuizzNotePassageColumn) {
-            $quizInsertColumns[] = 'note_passage';
-            $quizInsertValues[] = ':note_passage';
-          } elseif ($hasQuizzScoreColumn) {
-            $quizInsertColumns[] = 'score';
-            $quizInsertValues[] = ':score';
-          }
-          if ($hasQuizzNbTentativesColumn) {
-            $quizInsertColumns[] = 'nb_tentatives';
-            $quizInsertValues[] = ':nb_tentatives';
-          }
-          if ($hasQuizzDureeMinutesColumn) {
-            $quizInsertColumns[] = 'duree_minutes';
-            $quizInsertValues[] = ':duree_minutes';
-          } elseif ($hasQuizzDureeColumn) {
-            $quizInsertColumns[] = 'duree';
-            $quizInsertValues[] = ':duree';
-          }
-
-          if (count($quizInsertColumns) > 0) {
-            $sqlQuizInsert = 'INSERT INTO quizz (' . implode(', ', $quizInsertColumns) . ')
-                              VALUES (' . implode(', ', $quizInsertValues) . ')';
-            $stmtQuizInsert = $pdo->prepare($sqlQuizInsert);
-
-            if ($hasQuizzFormationIdColumn) {
-              $stmtQuizInsert->bindValue(':formation_id', $updateForm['id_formation'], PDO::PARAM_INT);
-            }
-            if ($hasQuizzDomaineColumn) {
-              $stmtQuizInsert->bindValue(':domaine', $updateForm['titre']);
-            }
-            if ($hasQuizzTitreColumn) {
-              $stmtQuizInsert->bindValue(':titre', $updateForm['quiz_titre']);
-            }
-            if ($hasQuizzDescriptionColumn) {
-              if ($quizDescriptionUpdate === '') {
-                $stmtQuizInsert->bindValue(':description', null, PDO::PARAM_NULL);
-              } else {
-                $stmtQuizInsert->bindValue(':description', $quizDescriptionUpdate);
-              }
-            }
-            if ($hasQuizzQuestionColumn) {
-              $stmtQuizInsert->bindValue(':question', $quizQuestionUpdate);
-            }
-            if ($hasQuizzNotePassageColumn) {
-              $stmtQuizInsert->bindValue(':note_passage', (int) $updateForm['quiz_note_passage'], PDO::PARAM_INT);
-            } elseif ($hasQuizzScoreColumn) {
-              $stmtQuizInsert->bindValue(':score', (int) $updateForm['quiz_note_passage'], PDO::PARAM_INT);
-            }
-            if ($hasQuizzNbTentativesColumn) {
-              $stmtQuizInsert->bindValue(':nb_tentatives', (int) $updateForm['quiz_nb_tentatives'], PDO::PARAM_INT);
-            }
-            if ($hasQuizzDureeMinutesColumn) {
-              $stmtQuizInsert->bindValue(':duree_minutes', (int) $updateForm['quiz_duree_minutes'], PDO::PARAM_INT);
-            } elseif ($hasQuizzDureeColumn) {
-              $stmtQuizInsert->bindValue(':duree', (int) $updateForm['quiz_duree_minutes'], PDO::PARAM_INT);
-            }
-
-            $stmtQuizInsert->execute();
-            $quizIdUpdate = (int) $pdo->lastInsertId();
-          }
-        }
-
-        if ($hasQuizzFormationsTable && $quizIdUpdate > 0) {
-          $sqlCheckLien = 'SELECT COUNT(*) AS total
-                           FROM quizz_formations
-                           WHERE id_formation = :id_formation AND id_quizz = :id_quizz';
-          $stmtCheckLien = $pdo->prepare($sqlCheckLien);
-          $stmtCheckLien->bindValue(':id_formation', $updateForm['id_formation'], PDO::PARAM_INT);
-          $stmtCheckLien->bindValue(':id_quizz', $quizIdUpdate, PDO::PARAM_INT);
-          $stmtCheckLien->execute();
-          $rowCheckLien = $stmtCheckLien->fetch();
-
-          $nbLiens = 0;
-          if ($rowCheckLien && isset($rowCheckLien['total']) && is_numeric($rowCheckLien['total'])) {
-            $nbLiens = (int) $rowCheckLien['total'];
-          }
-
-          if ($nbLiens === 0) {
-            $sqlInsertLien = 'INSERT INTO quizz_formations (id_formation, id_quizz)
-                              VALUES (:id_formation, :id_quizz)';
-            $stmtInsertLien = $pdo->prepare($sqlInsertLien);
-            $stmtInsertLien->bindValue(':id_formation', $updateForm['id_formation'], PDO::PARAM_INT);
-            $stmtInsertLien->bindValue(':id_quizz', $quizIdUpdate, PDO::PARAM_INT);
-            $stmtInsertLien->execute();
-          }
-        }
-
-        if ($hasWorkshopUpdateInput) {
-          $workshopIdUpdate = (int) $updateForm['workshop_id'];
-          $workshopDateAtelierSql = null;
-          if ($updateForm['workshop_date_atelier'] !== '') {
-            $workshopDateAtelierSql = date('Y-m-d H:i:s', strtotime($updateForm['workshop_date_atelier']));
-          }
-
-          if ($workshopIdUpdate > 0) {
-            $workshopUpdateColumns = [
-              'titre = :workshop_titre',
-              'description = :workshop_description',
-              'duree = :workshop_duree',
-              'lieu = :workshop_lieu',
-              'places_max = :workshop_places_max',
-              'prix = :workshop_prix',
-              'certification = :workshop_certification'
-            ];
-
-            if ($hasWorkshopsPlacesRestantesColumn) {
-              $workshopUpdateColumns[] = 'places_restantes = :workshop_places_restantes';
-            }
-            if ($hasWorkshopsMentorIdColumn) {
-              $workshopUpdateColumns[] = 'mentor_id = :workshop_mentor_id';
-            }
-            if ($hasWorkshopsDateAtelierColumn) {
-              $workshopUpdateColumns[] = 'date_atelier = :workshop_date_atelier';
-            }
-            if ($hasWorkshopsStatusColumn) {
-              $workshopUpdateColumns[] = 'statut = :workshop_statut';
-            }
-
-            $sqlWorkshopUpdate = 'UPDATE workshops
-                                  SET ' . implode(",\n                                      ", $workshopUpdateColumns) . '
-                                  WHERE id_workshop = :workshop_id';
-            $stmtWorkshopUpdate = $pdo->prepare($sqlWorkshopUpdate);
-            $stmtWorkshopUpdate->bindValue(':workshop_titre', $updateForm['workshop_titre']);
-            $stmtWorkshopUpdate->bindValue(':workshop_description', $updateForm['workshop_description']);
-            $stmtWorkshopUpdate->bindValue(':workshop_duree', (int) $updateForm['workshop_duree'], PDO::PARAM_INT);
-            $stmtWorkshopUpdate->bindValue(':workshop_lieu', $updateForm['workshop_lieu']);
-            $stmtWorkshopUpdate->bindValue(':workshop_places_max', (int) $updateForm['workshop_places_max'], PDO::PARAM_INT);
-            $stmtWorkshopUpdate->bindValue(':workshop_prix', (float) $updateForm['workshop_prix']);
-            $stmtWorkshopUpdate->bindValue(':workshop_certification', $updateForm['workshop_certification']);
-
-            if ($hasWorkshopsPlacesRestantesColumn) {
-              $stmtWorkshopUpdate->bindValue(':workshop_places_restantes', (int) $updateForm['workshop_places_max'], PDO::PARAM_INT);
-            }
-            if ($hasWorkshopsMentorIdColumn) {
-              if ($updateForm['workshop_mentor_id'] === '') {
-                $stmtWorkshopUpdate->bindValue(':workshop_mentor_id', null, PDO::PARAM_NULL);
-              } else {
-                $stmtWorkshopUpdate->bindValue(':workshop_mentor_id', (int) $updateForm['workshop_mentor_id'], PDO::PARAM_INT);
-              }
-            }
-            if ($hasWorkshopsDateAtelierColumn) {
-              if ($workshopDateAtelierSql === null) {
-                $stmtWorkshopUpdate->bindValue(':workshop_date_atelier', null, PDO::PARAM_NULL);
-              } else {
-                $stmtWorkshopUpdate->bindValue(':workshop_date_atelier', $workshopDateAtelierSql);
-              }
-            }
-            if ($hasWorkshopsStatusColumn) {
-              $stmtWorkshopUpdate->bindValue(':workshop_statut', $updateForm['workshop_statut']);
-            }
-
-            $stmtWorkshopUpdate->bindValue(':workshop_id', $workshopIdUpdate, PDO::PARAM_INT);
-            $stmtWorkshopUpdate->execute();
-          } else {
-            $workshopInsertColumns = ['titre', 'description', 'duree', 'lieu', 'places_max', 'prix', 'certification'];
-            $workshopInsertValues = [':workshop_titre', ':workshop_description', ':workshop_duree', ':workshop_lieu', ':workshop_places_max', ':workshop_prix', ':workshop_certification'];
-
-            if ($hasWorkshopsMentorIdColumn) {
-              $workshopInsertColumns[] = 'mentor_id';
-              $workshopInsertValues[] = ':workshop_mentor_id';
-            }
-            if ($hasWorkshopsDatePublicationColumn) {
-              $workshopInsertColumns[] = 'date_publication';
-              $workshopInsertValues[] = 'CURDATE()';
-            }
-            if ($hasWorkshopsDateAtelierColumn) {
-              $workshopInsertColumns[] = 'date_atelier';
-              $workshopInsertValues[] = ':workshop_date_atelier';
-            }
-            if ($hasWorkshopsPlacesRestantesColumn) {
-              $workshopInsertColumns[] = 'places_restantes';
-              $workshopInsertValues[] = ':workshop_places_restantes';
-            }
-            if ($hasWorkshopsStatusColumn) {
-              $workshopInsertColumns[] = 'statut';
-              $workshopInsertValues[] = ':workshop_statut';
-            }
-
-            $sqlWorkshopInsert = 'INSERT INTO workshops (' . implode(', ', $workshopInsertColumns) . ')
-                                  VALUES (' . implode(', ', $workshopInsertValues) . ')';
-            $stmtWorkshopInsert = $pdo->prepare($sqlWorkshopInsert);
-            $stmtWorkshopInsert->bindValue(':workshop_titre', $updateForm['workshop_titre']);
-            $stmtWorkshopInsert->bindValue(':workshop_description', $updateForm['workshop_description']);
-            $stmtWorkshopInsert->bindValue(':workshop_duree', (int) $updateForm['workshop_duree'], PDO::PARAM_INT);
-            $stmtWorkshopInsert->bindValue(':workshop_lieu', $updateForm['workshop_lieu']);
-            $stmtWorkshopInsert->bindValue(':workshop_places_max', (int) $updateForm['workshop_places_max'], PDO::PARAM_INT);
-            $stmtWorkshopInsert->bindValue(':workshop_prix', (float) $updateForm['workshop_prix']);
-            $stmtWorkshopInsert->bindValue(':workshop_certification', $updateForm['workshop_certification']);
-
-            if ($hasWorkshopsMentorIdColumn) {
-              if ($updateForm['workshop_mentor_id'] === '') {
-                $stmtWorkshopInsert->bindValue(':workshop_mentor_id', null, PDO::PARAM_NULL);
-              } else {
-                $stmtWorkshopInsert->bindValue(':workshop_mentor_id', (int) $updateForm['workshop_mentor_id'], PDO::PARAM_INT);
-              }
-            }
-            if ($hasWorkshopsDateAtelierColumn) {
-              if ($workshopDateAtelierSql === null) {
-                $stmtWorkshopInsert->bindValue(':workshop_date_atelier', null, PDO::PARAM_NULL);
-              } else {
-                $stmtWorkshopInsert->bindValue(':workshop_date_atelier', $workshopDateAtelierSql);
-              }
-            }
-            if ($hasWorkshopsPlacesRestantesColumn) {
-              $stmtWorkshopInsert->bindValue(':workshop_places_restantes', (int) $updateForm['workshop_places_max'], PDO::PARAM_INT);
-            }
-            if ($hasWorkshopsStatusColumn) {
-              $stmtWorkshopInsert->bindValue(':workshop_statut', $updateForm['workshop_statut']);
-            }
-
-            $stmtWorkshopInsert->execute();
-            $workshopIdUpdate = (int) $pdo->lastInsertId();
-          }
-
-          if ($workshopIdUpdate > 0) {
-            if ($hasWorkshopsFormationTable) {
-              $sqlWorkshopLinkCheck = 'SELECT COUNT(*) AS total
-                                       FROM workshops_formation
-                                       WHERE id_formation = :id_formation AND id_workshop = :id_workshop';
-              $stmtWorkshopLinkCheck = $pdo->prepare($sqlWorkshopLinkCheck);
-              $stmtWorkshopLinkCheck->bindValue(':id_formation', $updateForm['id_formation'], PDO::PARAM_INT);
-              $stmtWorkshopLinkCheck->bindValue(':id_workshop', $workshopIdUpdate, PDO::PARAM_INT);
-              $stmtWorkshopLinkCheck->execute();
-              $workshopLinkRow = $stmtWorkshopLinkCheck->fetch();
-
-              $workshopLinkCount = 0;
-              if ($workshopLinkRow && isset($workshopLinkRow['total']) && is_numeric($workshopLinkRow['total'])) {
-                $workshopLinkCount = (int) $workshopLinkRow['total'];
-              }
-
-              if ($workshopLinkCount === 0) {
-                $sqlWorkshopLinkInsert = 'INSERT INTO workshops_formation (id_formation, id_workshop)
-                                          VALUES (:id_formation, :id_workshop)';
-                $stmtWorkshopLinkInsert = $pdo->prepare($sqlWorkshopLinkInsert);
-                $stmtWorkshopLinkInsert->bindValue(':id_formation', $updateForm['id_formation'], PDO::PARAM_INT);
-                $stmtWorkshopLinkInsert->bindValue(':id_workshop', $workshopIdUpdate, PDO::PARAM_INT);
-                $stmtWorkshopLinkInsert->execute();
-              }
-            } elseif ($hasFormationsWorkshopsTable) {
-              $sqlWorkshopLinkCheck = 'SELECT COUNT(*) AS total
-                                       FROM formations_workshops
-                                       WHERE id_formation = :id_formation AND id_workshop = :id_workshop';
-              $stmtWorkshopLinkCheck = $pdo->prepare($sqlWorkshopLinkCheck);
-              $stmtWorkshopLinkCheck->bindValue(':id_formation', $updateForm['id_formation'], PDO::PARAM_INT);
-              $stmtWorkshopLinkCheck->bindValue(':id_workshop', $workshopIdUpdate, PDO::PARAM_INT);
-              $stmtWorkshopLinkCheck->execute();
-              $workshopLinkRow = $stmtWorkshopLinkCheck->fetch();
-
-              $workshopLinkCount = 0;
-              if ($workshopLinkRow && isset($workshopLinkRow['total']) && is_numeric($workshopLinkRow['total'])) {
-                $workshopLinkCount = (int) $workshopLinkRow['total'];
-              }
-
-              if ($workshopLinkCount === 0) {
-                $sqlWorkshopLinkInsert = 'INSERT INTO formations_workshops (id_formation, id_workshop)
-                                          VALUES (:id_formation, :id_workshop)';
-                $stmtWorkshopLinkInsert = $pdo->prepare($sqlWorkshopLinkInsert);
-                $stmtWorkshopLinkInsert->bindValue(':id_formation', $updateForm['id_formation'], PDO::PARAM_INT);
-                $stmtWorkshopLinkInsert->bindValue(':id_workshop', $workshopIdUpdate, PDO::PARAM_INT);
-                $stmtWorkshopLinkInsert->execute();
-              }
-            } elseif ($hasWorkshopsFormationId) {
-              $sqlWorkshopLinkUpdate = 'UPDATE workshops
-                                        SET id_formation = :id_formation
-                                        WHERE id_workshop = :id_workshop';
-              $stmtWorkshopLinkUpdate = $pdo->prepare($sqlWorkshopLinkUpdate);
-              $stmtWorkshopLinkUpdate->bindValue(':id_formation', $updateForm['id_formation'], PDO::PARAM_INT);
-              $stmtWorkshopLinkUpdate->bindValue(':id_workshop', $workshopIdUpdate, PDO::PARAM_INT);
-              $stmtWorkshopLinkUpdate->execute();
-            }
-          }
-        }
-
         $pdo->commit();
 
         header('Location: back.php?updated=1');
@@ -994,11 +934,902 @@ if ($requestMethod === 'POST') {
         $erreur = 'Erreur base de données pendant la mise à jour.';
       }
     }
-  } elseif ($action === 'delete') {
-    $idFormation = 0;
-    if (isset($_POST['id_formation'])) {
-      $idFormation = (int) $_POST['id_formation'];
+  }
+  // ADD FORMATION
+  elseif ($action === 'add_formation') {
+    $titre = isset($_POST['titre']) ? trim((string) $_POST['titre']) : '';
+    $description = isset($_POST['description']) ? trim((string) $_POST['description']) : '';
+    $mentor = isset($_POST['mentor']) ? trim((string) $_POST['mentor']) : '';
+    $niveau = isset($_POST['niveau']) ? trim((string) $_POST['niveau']) : 'debutant';
+    $duree = isset($_POST['duree']) ? trim((string) $_POST['duree']) : '';
+    $prix = isset($_POST['prix']) ? trim((string) $_POST['prix']) : '';
+    $certification = isset($_POST['certification']) ? trim((string) $_POST['certification']) : 'oui';
+    $etat = isset($_POST['etat']) ? trim((string) $_POST['etat']) : 'Actif';
+    $date_realisation = isset($_POST['date_realisation']) ? trim((string) $_POST['date_realisation']) : '';
+    $lien_video = isset($_POST['lien_video']) ? trim((string) $_POST['lien_video']) : '';
+
+    if ($titre === '' || strlen($titre) < 3) {
+      $erreur = 'Le titre doit contenir au moins 3 caractères.';
+    } elseif ($mentor === '') {
+      $erreur = 'Le mentor est obligatoire.';
+    } else {
+      $niveauDb = normalizeNiveau($niveau);
+      if ($niveauDb === '') {
+        $erreur = 'Le niveau sélectionné est invalide.';
+      } elseif ($duree === '' || !ctype_digit($duree) || (int) $duree <= 0) {
+        $erreur = 'La durée doit être un nombre entier supérieur à 0.';
+      } elseif (!is_numeric($prix)) {
+        $erreur = 'Le prix doit être un nombre valide.';
+      } elseif ($certification !== 'oui' && $certification !== 'non') {
+        $erreur = 'La certification sélectionnée est invalide.';
+      } elseif ($etat !== 'Actif' && $etat !== 'Inactif' && $etat !== 'Brouillon') {
+        $erreur = 'Le statut sélectionné est invalide.';
+      } elseif ($date_realisation !== '' && strtotime($date_realisation) === false) {
+        $erreur = 'La date de réalisation est invalide.';
+      } else {
+        try {
+          $sqlInsert = 'INSERT INTO formations (domaine, formateur, description, date_realisation, etat, duree, certification, niveau, prix, video_url)
+                        VALUES (:domaine, :formateur, :description, :date_realisation, :etat, :duree, :certification, :niveau, :prix, :video_url)';
+          $stmtInsert = $pdo->prepare($sqlInsert);
+          $stmtInsert->bindValue(':domaine', $titre);
+          $stmtInsert->bindValue(':formateur', $mentor);
+          $stmtInsert->bindValue(':description', $description);
+          $stmtInsert->bindValue(':video_url', $lien_video);
+          if ($date_realisation === '') {
+            $stmtInsert->bindValue(':date_realisation', null, PDO::PARAM_NULL);
+          } else {
+            $stmtInsert->bindValue(':date_realisation', $date_realisation);
+          }
+          $stmtInsert->bindValue(':etat', $etat);
+          $stmtInsert->bindValue(':duree', (int) $duree, PDO::PARAM_INT);
+          $stmtInsert->bindValue(':certification', $certification);
+          $stmtInsert->bindValue(':niveau', $niveauDb);
+          $stmtInsert->bindValue(':prix', (float) $prix);
+          $stmtInsert->execute();
+
+          header('Location: back.php?formation_ok=1');
+          exit;
+        } catch (PDOException $e) {
+          $erreur = 'Erreur base de données pendant l\'ajout.';
+        }
+      }
     }
+    if ($erreur !== '') {
+      $openFormationModal = true;
+    }
+  }
+  // UPDATE WORKSHOP
+  elseif ($action === 'update_workshop') {
+    $workshopForm['id_workshop'] = isset($_POST['id_workshop']) ? (int) $_POST['id_workshop'] : 0;
+    $workshopForm['titre'] = isset($_POST['titre']) ? trim((string) $_POST['titre']) : '';
+    $workshopForm['description'] = isset($_POST['description']) ? trim((string) $_POST['description']) : '';
+    $workshopForm['mentor_id'] = isset($_POST['mentor_id']) ? trim((string) $_POST['mentor_id']) : '';
+    $workshopForm['duree'] = isset($_POST['duree']) ? trim((string) $_POST['duree']) : '';
+    $workshopForm['date_atelier'] = isset($_POST['date_atelier']) ? trim((string) $_POST['date_atelier']) : '';
+    $workshopForm['lieu'] = isset($_POST['lieu']) ? trim((string) $_POST['lieu']) : '';
+    $workshopForm['places_max'] = isset($_POST['places_max']) ? trim((string) $_POST['places_max']) : '';
+    $workshopForm['prix'] = isset($_POST['prix']) ? trim((string) $_POST['prix']) : '';
+    $workshopForm['certification'] = isset($_POST['certification']) ? trim((string) $_POST['certification']) : 'non';
+    $workshopForm['statut'] = isset($_POST['statut']) ? trim((string) $_POST['statut']) : 'a_venir';
+    $workshopForm['formation_id'] = isset($_POST['formation_id']) ? (int) $_POST['formation_id'] : 0;
+
+    if ($workshopForm['id_workshop'] <= 0) {
+      $erreur = 'Identifiant de workshop invalide.';
+    }
+
+    if ($erreur === '' && ($workshopForm['titre'] === '' || strlen($workshopForm['titre']) < 3)) {
+      $erreur = 'Le titre doit contenir au moins 3 caractères.';
+    }
+
+    if ($erreur === '' && ($workshopForm['description'] === '' || strlen($workshopForm['description']) < 10)) {
+      $erreur = 'La description doit contenir au moins 10 caractères.';
+    }
+
+    if ($erreur === '' && $workshopForm['mentor_id'] !== '' && (!ctype_digit($workshopForm['mentor_id']) || (int) $workshopForm['mentor_id'] <= 0)) {
+      $erreur = 'Le mentor_id doit être un entier positif.';
+    }
+
+    if ($erreur === '' && $workshopForm['mentor_id'] !== '') {
+      $mentorIdWorkshop = (int) $workshopForm['mentor_id'];
+      if (!userExistsById($pdo, $mentorIdWorkshop)) {
+        $workshopForm['mentor_id'] = '';
+      }
+    }
+
+    if ($erreur === '' && (!ctype_digit($workshopForm['duree']) || (int) $workshopForm['duree'] <= 0)) {
+      $erreur = 'La durée doit être un entier supérieur à 0.';
+    }
+
+    if ($erreur === '' && $workshopForm['date_atelier'] !== '' && strtotime($workshopForm['date_atelier']) === false) {
+      $erreur = 'La date atelier est invalide.';
+    }
+
+    if ($erreur === '' && ($workshopForm['lieu'] === '' || strlen($workshopForm['lieu']) < 2)) {
+      $erreur = 'Le lieu est obligatoire (min. 2 caractères).';
+    }
+
+    if ($erreur === '' && (!ctype_digit($workshopForm['places_max']) || (int) $workshopForm['places_max'] <= 0)) {
+      $erreur = 'Le nombre de places max doit être un entier supérieur à 0.';
+    }
+
+    if ($erreur === '' && !is_numeric($workshopForm['prix'])) {
+      $erreur = 'Le prix doit être un nombre valide.';
+    } elseif ($erreur === '' && is_numeric($workshopForm['prix']) && (float) $workshopForm['prix'] < 0) {
+      $erreur = 'Le prix doit être supérieur ou égal à 0.';
+    }
+
+    if ($erreur === '' && $workshopForm['certification'] !== 'oui' && $workshopForm['certification'] !== 'non') {
+      $erreur = 'La certification est invalide.';
+    }
+
+    if ($erreur === '' && $workshopForm['statut'] !== 'a_venir' && $workshopForm['statut'] !== 'en_cours' && $workshopForm['statut'] !== 'termine' && $workshopForm['statut'] !== 'annule') {
+      $erreur = 'Le statut est invalide.';
+    }
+
+    if ($erreur === '') {
+      try {
+        $workshopDateAtelierSql = null;
+        if ($workshopForm['date_atelier'] !== '') {
+          $workshopDateAtelierSql = date('Y-m-d H:i:s', strtotime($workshopForm['date_atelier']));
+        }
+
+        $sqlUpdate = 'UPDATE workshops
+                      SET titre = :titre,
+                          description = :description,
+                          mentor_id = :mentor_id,
+                          duree = :duree,
+                          date_atelier = :date_atelier,
+                          lieu = :lieu,
+                          places_max = :places_max,
+                          prix = :prix,
+                          certification = :certification,
+                          statut = :statut
+                      WHERE id_workshop = :id_workshop';
+        $stmtUpdate = $pdo->prepare($sqlUpdate);
+        $stmtUpdate->bindValue(':titre', $workshopForm['titre']);
+        $stmtUpdate->bindValue(':description', $workshopForm['description']);
+        if ($workshopForm['mentor_id'] === '') {
+          $stmtUpdate->bindValue(':mentor_id', null, PDO::PARAM_NULL);
+        } else {
+          $stmtUpdate->bindValue(':mentor_id', (int) $workshopForm['mentor_id'], PDO::PARAM_INT);
+        }
+        $stmtUpdate->bindValue(':duree', (int) $workshopForm['duree'], PDO::PARAM_INT);
+        if ($workshopDateAtelierSql === null) {
+          $stmtUpdate->bindValue(':date_atelier', null, PDO::PARAM_NULL);
+        } else {
+          $stmtUpdate->bindValue(':date_atelier', $workshopDateAtelierSql);
+        }
+        $stmtUpdate->bindValue(':lieu', $workshopForm['lieu']);
+        $stmtUpdate->bindValue(':places_max', (int) $workshopForm['places_max'], PDO::PARAM_INT);
+        $stmtUpdate->bindValue(':prix', (float) $workshopForm['prix']);
+        $stmtUpdate->bindValue(':certification', $workshopForm['certification']);
+        $stmtUpdate->bindValue(':statut', $workshopForm['statut']);
+        $stmtUpdate->bindValue(':id_workshop', $workshopForm['id_workshop'], PDO::PARAM_INT);
+        $stmtUpdate->execute();
+
+        // Update workshop-formation relationship
+        if ($workshopForm['formation_id'] > 0) {
+            // First delete existing relationship
+            if (tableExists($pdo, 'workshops_formation')) {
+                $stmtDel = $pdo->prepare('DELETE FROM workshops_formation WHERE id_workshop = :id_workshop');
+                $stmtDel->bindValue(':id_workshop', $workshopForm['id_workshop'], PDO::PARAM_INT);
+                $stmtDel->execute();
+                
+                $stmtLink = $pdo->prepare('INSERT INTO workshops_formation (id_workshop, id_formation) VALUES (:id_workshop, :id_formation)');
+                $stmtLink->bindValue(':id_workshop', $workshopForm['id_workshop'], PDO::PARAM_INT);
+                $stmtLink->bindValue(':id_formation', $workshopForm['formation_id'], PDO::PARAM_INT);
+                $stmtLink->execute();
+            } elseif (tableExists($pdo, 'formations_workshops')) {
+                $stmtDel = $pdo->prepare('DELETE FROM formations_workshops WHERE id_workshop = :id_workshop');
+                $stmtDel->bindValue(':id_workshop', $workshopForm['id_workshop'], PDO::PARAM_INT);
+                $stmtDel->execute();
+                
+                $stmtLink = $pdo->prepare('INSERT INTO formations_workshops (id_workshop, id_formation) VALUES (:id_workshop, :id_formation)');
+                $stmtLink->bindValue(':id_workshop', $workshopForm['id_workshop'], PDO::PARAM_INT);
+                $stmtLink->bindValue(':id_formation', $workshopForm['formation_id'], PDO::PARAM_INT);
+                $stmtLink->execute();
+            }
+        }
+
+        header('Location: back.php?workshop_updated=1');
+        exit;
+      } catch (PDOException $e) {
+        $erreur = 'Erreur base de données pendant la mise à jour du workshop.';
+      }
+    }
+  }
+  // ADD WORKSHOP
+  elseif ($action === 'add_workshop') {
+    $workshopForm['titre'] = isset($_POST['titre']) ? trim((string) $_POST['titre']) : '';
+    $workshopForm['description'] = isset($_POST['description']) ? trim((string) $_POST['description']) : '';
+    $workshopForm['mentor_id'] = isset($_POST['mentor_id']) ? trim((string) $_POST['mentor_id']) : '';
+    $workshopForm['duree'] = isset($_POST['duree']) ? trim((string) $_POST['duree']) : '';
+    $workshopForm['date_atelier'] = isset($_POST['date_atelier']) ? trim((string) $_POST['date_atelier']) : '';
+    $workshopForm['lieu'] = isset($_POST['lieu']) ? trim((string) $_POST['lieu']) : '';
+    $workshopForm['places_max'] = isset($_POST['places_max']) ? trim((string) $_POST['places_max']) : '';
+    $workshopForm['prix'] = isset($_POST['prix']) ? trim((string) $_POST['prix']) : '';
+    $workshopForm['certification'] = isset($_POST['certification']) ? trim((string) $_POST['certification']) : 'non';
+    $workshopForm['statut'] = isset($_POST['statut']) ? trim((string) $_POST['statut']) : 'a_venir';
+    $workshopForm['formation_id'] = isset($_POST['formation_id']) ? (int) $_POST['formation_id'] : 0;
+
+    if ($workshopForm['titre'] === '' || strlen($workshopForm['titre']) < 3) {
+      $erreur = 'Le titre doit contenir au moins 3 caractères.';
+    }
+    if ($erreur === '' && ($workshopForm['description'] === '' || strlen($workshopForm['description']) < 10)) {
+      $erreur = 'La description doit contenir au moins 10 caractères.';
+    }
+    if ($erreur === '' && $workshopForm['mentor_id'] !== '' && (!ctype_digit($workshopForm['mentor_id']) || (int) $workshopForm['mentor_id'] <= 0)) {
+      $erreur = 'Le mentor_id doit être un entier positif.';
+    }
+    if ($erreur === '' && $workshopForm['mentor_id'] !== '') {
+      $mentorIdWorkshop = (int) $workshopForm['mentor_id'];
+      if (!userExistsById($pdo, $mentorIdWorkshop)) {
+        $workshopForm['mentor_id'] = '';
+      }
+    }
+    if ($erreur === '' && (!ctype_digit($workshopForm['duree']) || (int) $workshopForm['duree'] <= 0)) {
+      $erreur = 'La durée doit être un entier supérieur à 0.';
+    }
+    if ($erreur === '' && $workshopForm['date_atelier'] !== '' && strtotime($workshopForm['date_atelier']) === false) {
+      $erreur = 'La date atelier est invalide.';
+    }
+    if ($erreur === '' && ($workshopForm['lieu'] === '' || strlen($workshopForm['lieu']) < 2)) {
+      $erreur = 'Le lieu est obligatoire (min. 2 caractères).';
+    }
+    if ($erreur === '' && (!ctype_digit($workshopForm['places_max']) || (int) $workshopForm['places_max'] <= 0)) {
+      $erreur = 'Le nombre de places max doit être un entier supérieur à 0.';
+    }
+    if ($erreur === '' && !is_numeric($workshopForm['prix'])) {
+      $erreur = 'Le prix doit être un nombre valide.';
+    }
+    if ($erreur === '' && is_numeric($workshopForm['prix']) && (float) $workshopForm['prix'] < 0) {
+      $erreur = 'Le prix doit être supérieur ou égal à 0.';
+    }
+    if ($erreur === '' && $workshopForm['certification'] !== 'oui' && $workshopForm['certification'] !== 'non') {
+      $erreur = 'La certification est invalide.';
+    }
+    if ($erreur === '' && $workshopForm['statut'] !== 'a_venir' && $workshopForm['statut'] !== 'en_cours' && $workshopForm['statut'] !== 'termine' && $workshopForm['statut'] !== 'annule') {
+      $erreur = 'Le statut est invalide.';
+    }
+    if ($erreur === '' && $workshopForm['formation_id'] <= 0) {
+      $erreur = 'La formation associée est obligatoire.';
+    }
+    if ($erreur === '') {
+      try {
+        $workshopDateAtelierSql = null;
+        if ($workshopForm['date_atelier'] !== '') {
+          $workshopDateAtelierSql = date('Y-m-d H:i:s', strtotime($workshopForm['date_atelier']));
+        }
+
+        $sqlInsert = 'INSERT INTO workshops (titre, description, mentor_id, duree, date_publication, date_atelier, lieu, places_max, places_restantes, prix, certification, statut)
+                      VALUES (:titre, :description, :mentor_id, :duree, CURDATE(), :date_atelier, :lieu, :places_max, :places_restantes, :prix, :certification, :statut)';
+        $stmtInsert = $pdo->prepare($sqlInsert);
+        $stmtInsert->bindValue(':titre', $workshopForm['titre']);
+        $stmtInsert->bindValue(':description', $workshopForm['description']);
+        if ($workshopForm['mentor_id'] === '') {
+          $stmtInsert->bindValue(':mentor_id', null, PDO::PARAM_NULL);
+        } else {
+          $stmtInsert->bindValue(':mentor_id', (int) $workshopForm['mentor_id'], PDO::PARAM_INT);
+        }
+        $stmtInsert->bindValue(':duree', (int) $workshopForm['duree'], PDO::PARAM_INT);
+        if ($workshopDateAtelierSql === null) {
+          $stmtInsert->bindValue(':date_atelier', null, PDO::PARAM_NULL);
+        } else {
+          $stmtInsert->bindValue(':date_atelier', $workshopDateAtelierSql);
+        }
+        $stmtInsert->bindValue(':lieu', $workshopForm['lieu']);
+        $stmtInsert->bindValue(':places_max', (int) $workshopForm['places_max'], PDO::PARAM_INT);
+        $stmtInsert->bindValue(':places_restantes', (int) $workshopForm['places_max'], PDO::PARAM_INT);
+        $stmtInsert->bindValue(':prix', (float) $workshopForm['prix']);
+        $stmtInsert->bindValue(':certification', $workshopForm['certification']);
+        $stmtInsert->bindValue(':statut', $workshopForm['statut']);
+        $stmtInsert->execute();
+        
+        $newWorkshopId = (int) $pdo->lastInsertId();
+        
+        // Link workshop to formation
+        if ($workshopForm['formation_id'] > 0 && $newWorkshopId > 0) {
+            if (tableExists($pdo, 'workshops_formation')) {
+                $sqlLink = 'INSERT INTO workshops_formation (id_workshop, id_formation) VALUES (:id_workshop, :id_formation)';
+                $stmtLink = $pdo->prepare($sqlLink);
+                $stmtLink->bindValue(':id_workshop', $newWorkshopId, PDO::PARAM_INT);
+                $stmtLink->bindValue(':id_formation', $workshopForm['formation_id'], PDO::PARAM_INT);
+                $stmtLink->execute();
+            } elseif (tableExists($pdo, 'formations_workshops')) {
+                $sqlLink = 'INSERT INTO formations_workshops (id_workshop, id_formation) VALUES (:id_workshop, :id_formation)';
+                $stmtLink = $pdo->prepare($sqlLink);
+                $stmtLink->bindValue(':id_workshop', $newWorkshopId, PDO::PARAM_INT);
+                $stmtLink->bindValue(':id_formation', $workshopForm['formation_id'], PDO::PARAM_INT);
+                $stmtLink->execute();
+            }
+        }
+
+        header('Location: back.php?workshop_ok=1');
+        exit;
+      } catch (PDOException $e) {
+        $erreur = 'Erreur base de données pendant l\'ajout du workshop.';
+      }
+    }
+    if ($erreur !== '') {
+      $openWorkshopModal = true;
+    }
+  }
+  // UPDATE QUIZ
+  elseif ($action === 'update_quiz') {
+    $quizForm['id_quizz'] = isset($_POST['id_quizz']) ? (int) $_POST['id_quizz'] : 0;
+    $quizForm['titre'] = isset($_POST['titre']) ? trim((string) $_POST['titre']) : '';
+    $quizForm['description'] = isset($_POST['description']) ? trim((string) $_POST['description']) : '';
+    $quizForm['note_passage'] = isset($_POST['note_passage']) ? trim((string) $_POST['note_passage']) : '60';
+    $quizForm['nb_tentatives'] = isset($_POST['nb_tentatives']) ? trim((string) $_POST['nb_tentatives']) : '3';
+    $quizForm['duree_minutes'] = isset($_POST['duree_minutes']) ? trim((string) $_POST['duree_minutes']) : '20';
+    $quizForm['formation_id'] = isset($_POST['formation_id']) ? (int) $_POST['formation_id'] : 0;
+
+    $autoGenerateQuiz = !isset($_POST['quiz_question_text']);
+    $quizBuilderQuestionsInput = [];
+    $quizQuestionsToInsert = [];
+
+    if (!$autoGenerateQuiz) {
+      $quizBuilderQuestionsInput = parseQuizBuilderQuestions($_POST);
+    }
+
+    if ($quizForm['id_quizz'] <= 0) {
+      $erreur = 'Identifiant de quiz invalide.';
+    }
+
+    if ($erreur === '' && $quizForm['formation_id'] <= 0) {
+      $erreur = 'La formation associée est obligatoire.';
+    }
+
+    if ($erreur === '' && !$quizQuestionsEnabled) {
+      $erreur = 'Les tables questions/reponses sont nécessaires pour modifier les questions du quiz.';
+    }
+
+    if ($erreur === '' && !$autoGenerateQuiz) {
+      if ($quizForm['titre'] === '' || strlen($quizForm['titre']) < 3) {
+        $erreur = 'Le titre doit contenir au moins 3 caractères.';
+      }
+
+      if ($erreur === '' && (!ctype_digit($quizForm['duree_minutes']) || (int) $quizForm['duree_minutes'] <= 0)) {
+        $erreur = 'La durée doit être un entier supérieur à 0.';
+      }
+
+      if ($erreur === '' && (!ctype_digit($quizForm['note_passage']) || (int) $quizForm['note_passage'] < 0 || (int) $quizForm['note_passage'] > 100)) {
+        $erreur = 'La note de passage doit être un entier entre 0 et 100.';
+      }
+
+      if ($erreur === '' && (!ctype_digit($quizForm['nb_tentatives']) || (int) $quizForm['nb_tentatives'] <= 0)) {
+        $erreur = 'Le nombre de tentatives doit être un entier supérieur à 0.';
+      }
+
+      if ($erreur === '' && count($quizBuilderQuestionsInput) === 0) {
+        $erreur = 'Ajoutez au moins une question au quiz.';
+      }
+
+      if ($erreur === '') {
+        for ($q = 0; $q < count($quizBuilderQuestionsInput); $q++) {
+          $questionInput = $quizBuilderQuestionsInput[$q];
+          $questionText = trim((string) $questionInput['text']);
+          $questionType = trim((string) $questionInput['type']);
+          $questionPoints = 1;
+
+          if (isset($questionInput['points']) && is_numeric($questionInput['points']) && (int) $questionInput['points'] > 0) {
+            $questionPoints = (int) $questionInput['points'];
+          }
+
+          if ($questionText === '' || strlen($questionText) < 3) {
+            $erreur = 'Chaque question du quiz doit contenir au moins 3 caractères.';
+            break;
+          }
+
+          if ($questionType !== 'choix_unique' && $questionType !== 'choix_multiple' && $questionType !== 'vrai_faux') {
+            $questionType = 'choix_unique';
+          }
+
+          if ($questionType === 'vrai_faux') {
+            $tfCorrectRaw = 'true';
+            if (isset($questionInput['tf_correct']) && trim((string) $questionInput['tf_correct']) === 'false') {
+              $tfCorrectRaw = 'false';
+            }
+
+            $quizQuestionsToInsert[] = [
+              'text' => $questionText,
+              'type' => 'vrai_faux',
+              'points' => $questionPoints,
+              'answers' => [
+                ['text' => 'True', 'is_correct' => ($tfCorrectRaw === 'true')],
+                ['text' => 'False', 'is_correct' => ($tfCorrectRaw === 'false')]
+              ]
+            ];
+            continue;
+          }
+
+          $rawAnswers = [];
+          if (isset($questionInput['answers']) && is_array($questionInput['answers'])) {
+            $rawAnswers = $questionInput['answers'];
+          }
+
+          $cleanAnswers = [];
+          $correctCount = 0;
+
+          for ($a = 0; $a < count($rawAnswers); $a++) {
+            $answerInput = $rawAnswers[$a];
+            $answerText = trim((string) $answerInput['text']);
+            if ($answerText === '') {
+              continue;
+            }
+
+            $isCorrect = isset($answerInput['is_correct']) && $answerInput['is_correct'];
+            if ($isCorrect) {
+              $correctCount += 1;
+            }
+
+            $cleanAnswers[] = [
+              'text' => $answerText,
+              'is_correct' => $isCorrect
+            ];
+          }
+
+          if (count($cleanAnswers) < 2) {
+            $erreur = 'Chaque question (hors vrai/faux) doit contenir au moins 2 réponses.';
+            break;
+          }
+
+          if ($correctCount <= 0) {
+            $erreur = 'Chaque question doit avoir au moins une bonne réponse.';
+            break;
+          }
+
+          if ($questionType === 'choix_unique' && $correctCount !== 1) {
+            $erreur = 'Une question en choix unique doit avoir exactement une seule bonne réponse.';
+            break;
+          }
+
+          $quizQuestionsToInsert[] = [
+            'text' => $questionText,
+            'type' => $questionType,
+            'points' => $questionPoints,
+            'answers' => $cleanAnswers
+          ];
+        }
+      }
+    }
+
+    if ($erreur === '' && $autoGenerateQuiz) {
+      try {
+        $formationRow = getFormationById($pdo, $quizForm['formation_id']);
+        if (!$formationRow) {
+          $erreur = 'Formation associée introuvable.';
+        } else {
+          $formationTitle = trim((string) $formationRow['domaine']);
+          $quizForm['titre'] = $formationTitle !== '' ? ('Quiz - ' . $formationTitle) : 'Quiz automatique';
+          $quizForm['description'] = '';
+          $quizQuestionsToInsert = buildAutoQuizQuestions($formationRow, 5);
+        }
+      } catch (RuntimeException $e) {
+        $erreur = $e->getMessage();
+      }
+    }
+
+    if ($erreur === '') {
+      try {
+        $pdo->beginTransaction();
+
+        $quizSetParts = [];
+
+        if ($hasQuizzTitreColumn) {
+          $quizSetParts[] = 'titre = :titre';
+        }
+        if (!$autoGenerateQuiz && $hasQuizzDescriptionColumn) {
+          $quizSetParts[] = 'description = :description';
+        }
+        if ($hasQuizzFormationIdColumn) {
+          $quizSetParts[] = 'formation_id = :formation_id';
+        }
+        if (!$autoGenerateQuiz && $hasQuizzNotePassageColumn) {
+          $quizSetParts[] = 'note_passage = :note_passage';
+        } elseif (!$autoGenerateQuiz && $hasQuizzScoreColumn) {
+          $quizSetParts[] = 'score = :score';
+        }
+        if (!$autoGenerateQuiz && $hasQuizzNbTentativesColumn) {
+          $quizSetParts[] = 'nb_tentatives = :nb_tentatives';
+        }
+        if (!$autoGenerateQuiz && $hasQuizzDureeMinutesColumn) {
+          $quizSetParts[] = 'duree_minutes = :duree_minutes';
+        } elseif (!$autoGenerateQuiz && $hasQuizzDureeColumn) {
+          $quizSetParts[] = 'duree = :duree';
+        }
+
+        if (count($quizSetParts) > 0) {
+          $sqlQuizUpdate = 'UPDATE quizz
+                            SET ' . implode(",\n                                  ", $quizSetParts) . '
+                            WHERE id_quizz = :id_quizz';
+          $stmtQuizUpdate = $pdo->prepare($sqlQuizUpdate);
+
+          if ($hasQuizzTitreColumn) {
+            $stmtQuizUpdate->bindValue(':titre', $quizForm['titre']);
+          }
+          if (!$autoGenerateQuiz && $hasQuizzDescriptionColumn) {
+            if ($quizForm['description'] === '') {
+              $stmtQuizUpdate->bindValue(':description', null, PDO::PARAM_NULL);
+            } else {
+              $stmtQuizUpdate->bindValue(':description', $quizForm['description']);
+            }
+          }
+          if ($hasQuizzFormationIdColumn) {
+            $stmtQuizUpdate->bindValue(':formation_id', $quizForm['formation_id'], PDO::PARAM_INT);
+          }
+          if (!$autoGenerateQuiz && $hasQuizzNotePassageColumn) {
+            $stmtQuizUpdate->bindValue(':note_passage', (int) $quizForm['note_passage'], PDO::PARAM_INT);
+          } elseif (!$autoGenerateQuiz && $hasQuizzScoreColumn) {
+            $stmtQuizUpdate->bindValue(':score', (int) $quizForm['note_passage'], PDO::PARAM_INT);
+          }
+          if (!$autoGenerateQuiz && $hasQuizzNbTentativesColumn) {
+            $stmtQuizUpdate->bindValue(':nb_tentatives', (int) $quizForm['nb_tentatives'], PDO::PARAM_INT);
+          }
+          if (!$autoGenerateQuiz && $hasQuizzDureeMinutesColumn) {
+            $stmtQuizUpdate->bindValue(':duree_minutes', (int) $quizForm['duree_minutes'], PDO::PARAM_INT);
+          } elseif (!$autoGenerateQuiz && $hasQuizzDureeColumn) {
+            $stmtQuizUpdate->bindValue(':duree', (int) $quizForm['duree_minutes'], PDO::PARAM_INT);
+          }
+
+          $stmtQuizUpdate->bindValue(':id_quizz', $quizForm['id_quizz'], PDO::PARAM_INT);
+          $stmtQuizUpdate->execute();
+        }
+
+        if ($hasQuizzFormationsTable) {
+          $stmtDel = $pdo->prepare('DELETE FROM quizz_formations WHERE id_quizz = :id_quizz');
+          $stmtDel->bindValue(':id_quizz', $quizForm['id_quizz'], PDO::PARAM_INT);
+          $stmtDel->execute();
+
+          if ($quizForm['formation_id'] > 0) {
+            $stmtLink = $pdo->prepare('INSERT INTO quizz_formations (id_formation, id_quizz) VALUES (:id_formation, :id_quizz)');
+            $stmtLink->bindValue(':id_formation', $quizForm['formation_id'], PDO::PARAM_INT);
+            $stmtLink->bindValue(':id_quizz', $quizForm['id_quizz'], PDO::PARAM_INT);
+            $stmtLink->execute();
+          }
+        }
+
+        // Delete existing questions and answers
+        $sqlDeleteQuestions = 'DELETE FROM questions WHERE id_quizz = :id_quizz';
+        $stmtDeleteQuestions = $pdo->prepare($sqlDeleteQuestions);
+        $stmtDeleteQuestions->bindValue(':id_quizz', $quizForm['id_quizz'], PDO::PARAM_INT);
+        $stmtDeleteQuestions->execute();
+
+        // Insert new questions and answers
+        $sqlQuestionInsert = 'INSERT INTO questions (id_quizz, enonce, type, points, ordre)
+                              VALUES (:id_quizz, :enonce, :type, :points, :ordre)';
+        $stmtQuestionInsert = $pdo->prepare($sqlQuestionInsert);
+
+        $sqlAnswerInsert = 'INSERT INTO reponses (id_question, texte, est_correcte)
+                            VALUES (:id_question, :texte, :est_correcte)';
+        $stmtAnswerInsert = $pdo->prepare($sqlAnswerInsert);
+
+        for ($q = 0; $q < count($quizQuestionsToInsert); $q++) {
+          $questionToSave = $quizQuestionsToInsert[$q];
+          $order = $q + 1;
+
+          $stmtQuestionInsert->bindValue(':id_quizz', $quizForm['id_quizz'], PDO::PARAM_INT);
+          $stmtQuestionInsert->bindValue(':enonce', $questionToSave['text']);
+          $stmtQuestionInsert->bindValue(':type', $questionToSave['type']);
+          $stmtQuestionInsert->bindValue(':points', (int) $questionToSave['points'], PDO::PARAM_INT);
+          $stmtQuestionInsert->bindValue(':ordre', $order, PDO::PARAM_INT);
+          $stmtQuestionInsert->execute();
+
+          $idQuestionCree = (int) $pdo->lastInsertId();
+          $answersToSave = $questionToSave['answers'];
+
+          for ($a = 0; $a < count($answersToSave); $a++) {
+            $answerToSave = $answersToSave[$a];
+            $stmtAnswerInsert->bindValue(':id_question', $idQuestionCree, PDO::PARAM_INT);
+            $stmtAnswerInsert->bindValue(':texte', $answerToSave['text']);
+            $stmtAnswerInsert->bindValue(':est_correcte', ($answerToSave['is_correct'] ? 1 : 0), PDO::PARAM_INT);
+            $stmtAnswerInsert->execute();
+          }
+        }
+
+        $pdo->commit();
+
+        header('Location: back.php?quiz_updated=1&type=quizzes');
+        exit;
+      } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+          $pdo->rollBack();
+        }
+        $erreur = 'Erreur base de données pendant la mise à jour du quiz.';
+      }
+    }
+  }
+  // ADD QUIZ
+  elseif ($action === 'add_quiz') {
+    $quizForm['titre'] = isset($_POST['titre']) ? trim((string) $_POST['titre']) : '';
+    $quizForm['description'] = isset($_POST['description']) ? trim((string) $_POST['description']) : '';
+    $quizForm['note_passage'] = isset($_POST['note_passage']) ? trim((string) $_POST['note_passage']) : '60';
+    $quizForm['nb_tentatives'] = isset($_POST['nb_tentatives']) ? trim((string) $_POST['nb_tentatives']) : '3';
+    $quizForm['duree_minutes'] = isset($_POST['duree_minutes']) ? trim((string) $_POST['duree_minutes']) : '20';
+    $quizForm['formation_id'] = isset($_POST['formation_id']) ? (int) $_POST['formation_id'] : 0;
+
+    $autoGenerateQuiz = !isset($_POST['quiz_question_text']);
+    $quizQuestionsToInsert = [];
+
+    if ($erreur === '' && $quizForm['formation_id'] <= 0) {
+      $erreur = 'La formation associée est obligatoire.';
+    }
+
+    if ($erreur === '' && !$quizQuestionsEnabled) {
+      $erreur = 'Les tables questions/reponses sont nécessaires pour ajouter des questions au quiz.';
+    }
+
+    if ($erreur === '' && !$autoGenerateQuiz) {
+      $quizBuilderQuestionsInput = parseQuizBuilderQuestions($_POST);
+
+      if ($quizForm['titre'] === '' || strlen($quizForm['titre']) < 3) {
+        $erreur = 'Le titre doit contenir au moins 3 caractères.';
+      } elseif (!ctype_digit($quizForm['duree_minutes']) || (int) $quizForm['duree_minutes'] <= 0) {
+        $erreur = 'La durée doit être un entier supérieur à 0.';
+      } elseif (!ctype_digit($quizForm['note_passage']) || (int) $quizForm['note_passage'] < 0 || (int) $quizForm['note_passage'] > 100) {
+        $erreur = 'La note de passage doit être un entier entre 0 et 100.';
+      } elseif (!ctype_digit($quizForm['nb_tentatives']) || (int) $quizForm['nb_tentatives'] <= 0) {
+        $erreur = 'Le nombre de tentatives doit être un entier supérieur à 0.';
+      } elseif (count($quizBuilderQuestionsInput) === 0) {
+        $erreur = 'Ajoutez au moins une question au quiz.';
+      } else {
+        for ($q = 0; $q < count($quizBuilderQuestionsInput); $q++) {
+          $questionInput = $quizBuilderQuestionsInput[$q];
+          $questionText = trim((string) $questionInput['text']);
+          $questionType = trim((string) $questionInput['type']);
+          $questionPoints = 1;
+
+          if (isset($questionInput['points']) && is_numeric($questionInput['points']) && (int) $questionInput['points'] > 0) {
+            $questionPoints = (int) $questionInput['points'];
+          }
+
+          if ($questionText === '' || strlen($questionText) < 3) {
+            $erreur = 'Chaque question du quiz doit contenir au moins 3 caractères.';
+            break;
+          }
+
+          if ($questionType !== 'choix_unique' && $questionType !== 'choix_multiple' && $questionType !== 'vrai_faux') {
+            $questionType = 'choix_unique';
+          }
+
+          if ($questionType === 'vrai_faux') {
+            $tfCorrectRaw = 'true';
+            if (isset($questionInput['tf_correct']) && trim((string) $questionInput['tf_correct']) === 'false') {
+              $tfCorrectRaw = 'false';
+            }
+
+            $quizQuestionsToInsert[] = [
+              'text' => $questionText,
+              'type' => 'vrai_faux',
+              'points' => $questionPoints,
+              'answers' => [
+                ['text' => 'True', 'is_correct' => ($tfCorrectRaw === 'true')],
+                ['text' => 'False', 'is_correct' => ($tfCorrectRaw === 'false')]
+              ]
+            ];
+            continue;
+          }
+
+          $rawAnswers = [];
+          if (isset($questionInput['answers']) && is_array($questionInput['answers'])) {
+            $rawAnswers = $questionInput['answers'];
+          }
+
+          $cleanAnswers = [];
+          $correctCount = 0;
+
+          for ($a = 0; $a < count($rawAnswers); $a++) {
+            $answerInput = $rawAnswers[$a];
+            $answerText = trim((string) $answerInput['text']);
+            if ($answerText === '') {
+              continue;
+            }
+
+            $isCorrect = isset($answerInput['is_correct']) && $answerInput['is_correct'];
+            if ($isCorrect) {
+              $correctCount += 1;
+            }
+
+            $cleanAnswers[] = [
+              'text' => $answerText,
+              'is_correct' => $isCorrect
+            ];
+          }
+
+          if (count($cleanAnswers) < 2) {
+            $erreur = 'Chaque question (hors vrai/faux) doit contenir au moins 2 réponses.';
+            break;
+          }
+
+          if ($correctCount <= 0) {
+            $erreur = 'Chaque question doit avoir au moins une bonne réponse.';
+            break;
+          }
+
+          if ($questionType === 'choix_unique' && $correctCount !== 1) {
+            $erreur = 'Une question en choix unique doit avoir exactement une seule bonne réponse.';
+            break;
+          }
+
+          $quizQuestionsToInsert[] = [
+            'text' => $questionText,
+            'type' => $questionType,
+            'points' => $questionPoints,
+            'answers' => $cleanAnswers
+          ];
+        }
+      }
+    }
+
+    if ($erreur === '' && $autoGenerateQuiz) {
+      try {
+        $formationRow = getFormationById($pdo, $quizForm['formation_id']);
+        if (!$formationRow) {
+          $erreur = 'Formation associée introuvable.';
+        } else {
+          $formationTitle = trim((string) $formationRow['domaine']);
+          $quizForm['titre'] = $formationTitle !== '' ? ('Quiz - ' . $formationTitle) : 'Quiz automatique';
+          $quizForm['description'] = '';
+          $quizQuestionsToInsert = buildAutoQuizQuestions($formationRow, 5);
+        }
+      } catch (RuntimeException $e) {
+        $erreur = $e->getMessage();
+      }
+    }
+
+    if ($erreur === '') {
+      try {
+        $pdo->beginTransaction();
+
+        $quizInsertColumns = [];
+        $quizInsertValues = [];
+
+        if ($hasQuizzFormationIdColumn) {
+          $quizInsertColumns[] = 'formation_id';
+          $quizInsertValues[] = ':formation_id';
+        }
+        if ($hasQuizzDomaineColumn) {
+          $quizInsertColumns[] = 'domaine';
+          $quizInsertValues[] = ':domaine';
+        }
+        if ($hasQuizzTitreColumn) {
+          $quizInsertColumns[] = 'titre';
+          $quizInsertValues[] = ':titre';
+        }
+        if ($hasQuizzDescriptionColumn) {
+          $quizInsertColumns[] = 'description';
+          $quizInsertValues[] = ':description';
+        }
+        if ($hasQuizzQuestionColumn) {
+          $quizInsertColumns[] = 'question';
+          $quizInsertValues[] = ':question';
+        }
+        if ($hasQuizzNotePassageColumn) {
+          $quizInsertColumns[] = 'note_passage';
+          $quizInsertValues[] = ':note_passage';
+        } elseif ($hasQuizzScoreColumn) {
+          $quizInsertColumns[] = 'score';
+          $quizInsertValues[] = ':score';
+        }
+        if ($hasQuizzNbTentativesColumn) {
+          $quizInsertColumns[] = 'nb_tentatives';
+          $quizInsertValues[] = ':nb_tentatives';
+        }
+        if ($hasQuizzDureeMinutesColumn) {
+          $quizInsertColumns[] = 'duree_minutes';
+          $quizInsertValues[] = ':duree_minutes';
+        } elseif ($hasQuizzDureeColumn) {
+          $quizInsertColumns[] = 'duree';
+          $quizInsertValues[] = ':duree';
+        }
+
+        if (count($quizInsertColumns) === 0) {
+          throw new PDOException('Aucune colonne disponible pour insertion dans quizz.');
+        }
+
+        $sqlQuizInsert = 'INSERT INTO quizz (' . implode(', ', $quizInsertColumns) . ')
+                          VALUES (' . implode(', ', $quizInsertValues) . ')';
+        $stmtQuizInsert = $pdo->prepare($sqlQuizInsert);
+
+        if ($hasQuizzFormationIdColumn) {
+          $stmtQuizInsert->bindValue(':formation_id', $quizForm['formation_id'], PDO::PARAM_INT);
+        }
+        if ($hasQuizzDomaineColumn) {
+          $stmtQuizInsert->bindValue(':domaine', '');
+        }
+        if ($hasQuizzTitreColumn) {
+          $stmtQuizInsert->bindValue(':titre', $quizForm['titre']);
+        }
+        if ($hasQuizzDescriptionColumn) {
+          if ($quizForm['description'] === '') {
+            $stmtQuizInsert->bindValue(':description', null, PDO::PARAM_NULL);
+          } else {
+            $stmtQuizInsert->bindValue(':description', $quizForm['description']);
+          }
+        }
+        if ($hasQuizzQuestionColumn) {
+          if ($quizForm['description'] === '') {
+            $stmtQuizInsert->bindValue(':question', $quizForm['titre']);
+          } else {
+            $stmtQuizInsert->bindValue(':question', $quizForm['description']);
+          }
+        }
+        if ($hasQuizzNotePassageColumn) {
+          $stmtQuizInsert->bindValue(':note_passage', (int) $quizForm['note_passage'], PDO::PARAM_INT);
+        } elseif ($hasQuizzScoreColumn) {
+          $stmtQuizInsert->bindValue(':score', (int) $quizForm['note_passage'], PDO::PARAM_INT);
+        }
+        if ($hasQuizzNbTentativesColumn) {
+          $stmtQuizInsert->bindValue(':nb_tentatives', (int) $quizForm['nb_tentatives'], PDO::PARAM_INT);
+        }
+        if ($hasQuizzDureeMinutesColumn) {
+          $stmtQuizInsert->bindValue(':duree_minutes', (int) $quizForm['duree_minutes'], PDO::PARAM_INT);
+        } elseif ($hasQuizzDureeColumn) {
+          $stmtQuizInsert->bindValue(':duree', (int) $quizForm['duree_minutes'], PDO::PARAM_INT);
+        }
+
+        $stmtQuizInsert->execute();
+
+        $idQuizCree = (int) $pdo->lastInsertId();
+
+        if ($hasQuizzFormationsTable && $idQuizCree > 0) {
+          $sqlLienQuizFormation = 'INSERT INTO quizz_formations (id_formation, id_quizz)
+                                   VALUES (:id_formation, :id_quizz)';
+          $stmtLienQuizFormation = $pdo->prepare($sqlLienQuizFormation);
+          $stmtLienQuizFormation->bindValue(':id_formation', $quizForm['formation_id'], PDO::PARAM_INT);
+          $stmtLienQuizFormation->bindValue(':id_quizz', $idQuizCree, PDO::PARAM_INT);
+          $stmtLienQuizFormation->execute();
+        }
+
+        $sqlQuestionInsert = 'INSERT INTO questions (id_quizz, enonce, type, points, ordre)
+                              VALUES (:id_quizz, :enonce, :type, :points, :ordre)';
+        $stmtQuestionInsert = $pdo->prepare($sqlQuestionInsert);
+
+        $sqlAnswerInsert = 'INSERT INTO reponses (id_question, texte, est_correcte)
+                            VALUES (:id_question, :texte, :est_correcte)';
+        $stmtAnswerInsert = $pdo->prepare($sqlAnswerInsert);
+
+        for ($q = 0; $q < count($quizQuestionsToInsert); $q++) {
+          $questionToSave = $quizQuestionsToInsert[$q];
+          $order = $q + 1;
+
+          $stmtQuestionInsert->bindValue(':id_quizz', $idQuizCree, PDO::PARAM_INT);
+          $stmtQuestionInsert->bindValue(':enonce', $questionToSave['text']);
+          $stmtQuestionInsert->bindValue(':type', $questionToSave['type']);
+          $stmtQuestionInsert->bindValue(':points', (int) $questionToSave['points'], PDO::PARAM_INT);
+          $stmtQuestionInsert->bindValue(':ordre', $order, PDO::PARAM_INT);
+          $stmtQuestionInsert->execute();
+
+          $idQuestionCree = (int) $pdo->lastInsertId();
+          $answersToSave = $questionToSave['answers'];
+
+          for ($a = 0; $a < count($answersToSave); $a++) {
+            $answerToSave = $answersToSave[$a];
+            $stmtAnswerInsert->bindValue(':id_question', $idQuestionCree, PDO::PARAM_INT);
+            $stmtAnswerInsert->bindValue(':texte', $answerToSave['text']);
+            $stmtAnswerInsert->bindValue(':est_correcte', ($answerToSave['is_correct'] ? 1 : 0), PDO::PARAM_INT);
+            $stmtAnswerInsert->execute();
+          }
+        }
+
+        $pdo->commit();
+
+        header('Location: back.php?quiz_ok=1&type=quizzes');
+        exit;
+      } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+          $pdo->rollBack();
+        }
+        $erreur = 'Erreur base de données pendant l\'ajout du quiz.';
+      }
+    }
+    if ($erreur !== '') {
+      $openQuizModal = true;
+    }
+  }
+  // DELETE FORMATION
+  elseif ($action === 'delete_formation') {
+    $idFormation = isset($_POST['id_formation']) ? (int) $_POST['id_formation'] : 0;
 
     if ($idFormation <= 0) {
       $erreur = 'Identifiant de formation invalide.';
@@ -1018,104 +1849,189 @@ if ($requestMethod === 'POST') {
       }
     }
   }
-}
+  // DELETE WORKSHOP
+  elseif ($action === 'delete_workshop') {
+    $idWorkshop = isset($_POST['id_workshop']) ? (int) $_POST['id_workshop'] : 0;
 
-if ($afficherFormUpdate === false) {
-  $idFormationEditGet = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
+    if ($idWorkshop <= 0) {
+      $erreur = 'Identifiant de workshop invalide.';
+    }
 
-  if ($idFormationEditGet > 0) {
-    try {
-      $formationEdit = getFormationById($pdo, $idFormationEditGet);
+    if ($erreur === '') {
+      try {
+        $sqlDelete = 'DELETE FROM workshops WHERE id_workshop = :id';
+        $stmtDelete = $pdo->prepare($sqlDelete);
+        $stmtDelete->bindValue(':id', $idWorkshop, PDO::PARAM_INT);
+        $stmtDelete->execute();
 
-      if ($formationEdit) {
-        $niveauEdit = normalizeNiveau((string) $formationEdit['niveau']);
-        if ($niveauEdit === '') {
-          $niveauEdit = 'debutant';
-        }
-
-        $afficherFormUpdate = true;
-        $updateForm['id_formation'] = (int) $formationEdit['id_formation'];
-        $updateForm['titre'] = trim((string) $formationEdit['domaine']);
-        $updateForm['description'] = trim((string) $formationEdit['description']);
-        $updateForm['mentor'] = trim((string) $formationEdit['formateur']);
-        $updateForm['niveau'] = $niveauEdit;
-        $updateForm['duree'] = (string) ((int) $formationEdit['duree']);
-        $updateForm['prix'] = (string) $formationEdit['prix'];
-        $updateForm['quiz_questions'] = trim((string) ($formationEdit['quiz_questions'] ?? ''));
-        $updateForm['certification'] = certifOui($formationEdit['certification']) ? 'oui' : 'non';
-        $updateForm['etat'] = trim((string) $formationEdit['etat']);
-        if ($updateForm['etat'] !== 'Actif' && $updateForm['etat'] !== 'Inactif' && $updateForm['etat'] !== 'Brouillon') {
-          $updateForm['etat'] = 'Actif';
-        }
-        $updateForm['date_realisation'] = trim((string) $formationEdit['date_realisation']);
-        $updateForm['quiz_id'] = 0;
-        if (isset($formationEdit['quiz_id']) && is_numeric($formationEdit['quiz_id'])) {
-          $updateForm['quiz_id'] = (int) $formationEdit['quiz_id'];
-        }
-        $updateForm['quiz_titre'] = trim((string) $formationEdit['quiz_titre']);
-        $updateForm['quiz_description'] = trim((string) $formationEdit['quiz_description']);
-        $updateForm['quiz_note_passage'] = '60';
-        if (isset($formationEdit['quiz_note_passage']) && is_numeric($formationEdit['quiz_note_passage'])) {
-          $updateForm['quiz_note_passage'] = (string) ((int) $formationEdit['quiz_note_passage']);
-        }
-        $updateForm['quiz_nb_tentatives'] = '3';
-        if (isset($formationEdit['quiz_nb_tentatives']) && is_numeric($formationEdit['quiz_nb_tentatives'])) {
-          $updateForm['quiz_nb_tentatives'] = (string) ((int) $formationEdit['quiz_nb_tentatives']);
-        }
-        $updateForm['quiz_duree_minutes'] = '20';
-        if (isset($formationEdit['quiz_duree_minutes']) && is_numeric($formationEdit['quiz_duree_minutes'])) {
-          $updateForm['quiz_duree_minutes'] = (string) ((int) $formationEdit['quiz_duree_minutes']);
-        }
-
-        $workshopEdit = getWorkshopByFormationId($pdo, $idFormationEditGet);
-        if ($workshopEdit) {
-          $updateForm['workshop_id'] = (int) $workshopEdit['id_workshop'];
-          $updateForm['workshop_titre'] = trim((string) $workshopEdit['titre']);
-          $updateForm['workshop_description'] = trim((string) $workshopEdit['description']);
-          $updateForm['workshop_mentor_id'] = '';
-          if (isset($workshopEdit['mentor_id']) && is_numeric($workshopEdit['mentor_id']) && (int) $workshopEdit['mentor_id'] > 0) {
-            $updateForm['workshop_mentor_id'] = (string) ((int) $workshopEdit['mentor_id']);
-          }
-          $updateForm['workshop_duree'] = '';
-          if (isset($workshopEdit['duree']) && is_numeric($workshopEdit['duree']) && (int) $workshopEdit['duree'] > 0) {
-            $updateForm['workshop_duree'] = (string) ((int) $workshopEdit['duree']);
-          }
-          $updateForm['lien_video'] = trim((string) ($formationEdit['lien_video'] ?? ''));
-          $updateForm['workshop_date_atelier'] = '';
-          $workshopDateAtelier = trim((string) $workshopEdit['date_atelier']);
-          if ($workshopDateAtelier !== '') {
-            $workshopDateTimestamp = strtotime($workshopDateAtelier);
-            if ($workshopDateTimestamp !== false) {
-              $updateForm['workshop_date_atelier'] = date('Y-m-d\TH:i', $workshopDateTimestamp);
-            }
-          }
-          $updateForm['workshop_lieu'] = trim((string) $workshopEdit['lieu']);
-          $updateForm['workshop_places_max'] = '';
-          if (isset($workshopEdit['places_max']) && is_numeric($workshopEdit['places_max']) && (int) $workshopEdit['places_max'] > 0) {
-            $updateForm['workshop_places_max'] = (string) ((int) $workshopEdit['places_max']);
-          }
-          $updateForm['workshop_prix'] = '';
-          if (isset($workshopEdit['prix']) && is_numeric($workshopEdit['prix'])) {
-            $updateForm['workshop_prix'] = (string) ((float) $workshopEdit['prix']);
-          }
-          $updateForm['workshop_certification'] = certifOui($workshopEdit['certification']) ? 'oui' : 'non';
-          $updateForm['workshop_statut'] = trim((string) $workshopEdit['statut']);
-          if ($updateForm['workshop_statut'] !== 'a_venir' && $updateForm['workshop_statut'] !== 'en_cours' && $updateForm['workshop_statut'] !== 'termine' && $updateForm['workshop_statut'] !== 'annule') {
-            $updateForm['workshop_statut'] = 'a_venir';
-          }
-        }
-      } else {
-        $erreur = 'Formation introuvable pour modification.';
+        header('Location: back.php?workshop_deleted=1');
+        exit;
+      } catch (PDOException $e) {
+        $erreur = 'Erreur base de données pendant la suppression.';
       }
-    } catch (PDOException $e) {
-      $erreur = 'Erreur base de données lors du chargement de la formation.';
     }
   }
+  // DELETE QUIZ
+  elseif ($action === 'delete_quiz') {
+    $idQuiz = isset($_POST['id_quiz']) ? (int) $_POST['id_quiz'] : 0;
+
+    if ($idQuiz <= 0) {
+      $erreur = 'Identifiant de quiz invalide.';
+    }
+
+    if ($erreur === '') {
+      try {
+        $sqlDelete = 'DELETE FROM quizz WHERE id_quizz = :id';
+        $stmtDelete = $pdo->prepare($sqlDelete);
+        $stmtDelete->bindValue(':id', $idQuiz, PDO::PARAM_INT);
+        $stmtDelete->execute();
+
+        header('Location: back.php?quiz_deleted=1&type=quizzes');
+        exit;
+      } catch (PDOException $e) {
+        $erreur = 'Erreur base de données pendant la suppression.';
+      }
+    }
+  }
+}
+
+// Load data for edit mode
+if ($afficherFormUpdate === false && isset($_GET['edit_formation']) && is_numeric($_GET['edit_formation'])) {
+  $idFormationEditGet = (int) $_GET['edit_formation'];
+  try {
+    $formationEdit = getFormationById($pdo, $idFormationEditGet);
+    if ($formationEdit) {
+      $niveauEdit = normalizeNiveau((string) $formationEdit['niveau']);
+      if ($niveauEdit === '') {
+        $niveauEdit = 'debutant';
+      }
+      $afficherFormUpdate = true;
+      $updateForm['id_formation'] = (int) $formationEdit['id_formation'];
+      $updateForm['titre'] = trim((string) $formationEdit['domaine']);
+      $updateForm['description'] = trim((string) $formationEdit['description']);
+      $updateForm['mentor'] = trim((string) $formationEdit['formateur']);
+      $updateForm['niveau'] = $niveauEdit;
+      $updateForm['duree'] = (string) ((int) $formationEdit['duree']);
+      $updateForm['prix'] = (string) $formationEdit['prix'];
+      $updateForm['certification'] = certifOui($formationEdit['certification']) ? 'oui' : 'non';
+      $updateForm['etat'] = trim((string) $formationEdit['etat']);
+      if ($updateForm['etat'] !== 'Actif' && $updateForm['etat'] !== 'Inactif' && $updateForm['etat'] !== 'Brouillon') {
+        $updateForm['etat'] = 'Actif';
+      }
+      $updateForm['date_realisation'] = trim((string) $formationEdit['date_realisation']);
+      $updateForm['lien_video'] = trim((string) ($formationEdit['video_url'] ?? ''));
+    } else {
+      $erreur = 'Formation introuvable pour modification.';
+    }
+  } catch (PDOException $e) {
+    $erreur = 'Erreur base de données lors du chargement de la formation.';
+  }
+}
+
+if (isset($_GET['edit_workshop']) && is_numeric($_GET['edit_workshop'])) {
+  $editWorkshopId = (int) $_GET['edit_workshop'];
+  try {
+    $sql = 'SELECT w.id_workshop, w.titre, w.description, w.mentor_id, w.duree, w.date_atelier, w.lieu, w.places_max, w.prix, w.certification, w.statut, wf.id_formation
+            FROM workshops w
+            LEFT JOIN workshops_formation wf ON wf.id_workshop = w.id_workshop
+            WHERE w.id_workshop = :id';
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(':id', $editWorkshopId, PDO::PARAM_INT);
+    $stmt->execute();
+    $workshopData = $stmt->fetch();
+    if ($workshopData) {
+      $workshopForm['id_workshop'] = (int) $workshopData['id_workshop'];
+      $workshopForm['titre'] = trim((string) $workshopData['titre']);
+      $workshopForm['description'] = trim((string) $workshopData['description']);
+      $workshopForm['mentor_id'] = $workshopData['mentor_id'] ? (string) $workshopData['mentor_id'] : '';
+      $workshopForm['duree'] = (string) ((int) $workshopData['duree']);
+      $workshopForm['date_atelier'] = $workshopData['date_atelier'] ? date('Y-m-d\TH:i', strtotime($workshopData['date_atelier'])) : '';
+      $workshopForm['lieu'] = trim((string) $workshopData['lieu']);
+      $workshopForm['places_max'] = (string) ((int) $workshopData['places_max']);
+      $workshopForm['prix'] = (string) $workshopData['prix'];
+      $workshopForm['certification'] = certifOui($workshopData['certification']) ? 'oui' : 'non';
+      $workshopForm['statut'] = trim((string) $workshopData['statut']);
+      $workshopForm['formation_id'] = (int) ($workshopData['id_formation'] ?? 0);
+      $openWorkshopModal = true;
+    }
+  } catch (PDOException $e) {}
+}
+
+if (isset($_GET['edit_quiz']) && is_numeric($_GET['edit_quiz'])) {
+  $editQuizId = (int) $_GET['edit_quiz'];
+  try {
+    // Build SELECT dynamically based on available columns
+    $editQuizNoteCol = $hasQuizzNotePassageColumn ? 'note_passage' : ($hasQuizzScoreColumn ? 'score AS note_passage' : 'NULL AS note_passage');
+    $editQuizTentCol = $hasQuizzNbTentativesColumn ? 'nb_tentatives' : 'NULL AS nb_tentatives';
+    $editQuizDureeCol = $hasQuizzDureeMinutesColumn ? 'duree_minutes' : ($hasQuizzDureeColumn ? 'duree AS duree_minutes' : 'NULL AS duree_minutes');
+    $editQuizDescCol = $hasQuizzDescriptionColumn ? 'description' : 'NULL AS description';
+    $editQuizFormationCol = $hasQuizzFormationIdColumn ? 'formation_id' : 'NULL AS formation_id';
+
+    $sql = 'SELECT id_quizz, titre, ' . $editQuizDescCol . ', ' . $editQuizNoteCol . ', '
+         . $editQuizTentCol . ', ' . $editQuizDureeCol . ', ' . $editQuizFormationCol
+         . ' FROM quizz WHERE id_quizz = :id';
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(':id', $editQuizId, PDO::PARAM_INT);
+    $stmt->execute();
+    $quizData = $stmt->fetch();
+    if ($quizData) {
+      $quizForm['id_quizz'] = (int) $quizData['id_quizz'];
+      $quizForm['titre'] = trim((string) $quizData['titre']);
+      $quizForm['description'] = trim((string) $quizData['description']);
+      $quizForm['note_passage'] = (string) ((int) $quizData['note_passage']);
+      $quizForm['nb_tentatives'] = (string) ((int) $quizData['nb_tentatives']);
+      $quizForm['duree_minutes'] = (string) ((int) $quizData['duree_minutes']);
+      $quizForm['formation_id'] = (int) $quizData['formation_id'];
+      
+      // Load existing questions for editing
+      $sqlQuestions = 'SELECT id_question, enonce, type, points, ordre FROM questions WHERE id_quizz = :id_quizz ORDER BY ordre ASC';
+      $stmtQuestions = $pdo->prepare($sqlQuestions);
+      $stmtQuestions->bindValue(':id_quizz', $editQuizId, PDO::PARAM_INT);
+      $stmtQuestions->execute();
+      $existingQuestions = $stmtQuestions->fetchAll();
+      
+      $oldQuizBuilderQuestions = [];
+      if (count($existingQuestions) > 0) {
+        for ($qi = 0; $qi < count($existingQuestions); $qi++) {
+          $qData = $existingQuestions[$qi];
+          $sqlAnswers = 'SELECT id_reponse, texte, est_correcte FROM reponses WHERE id_question = :id_question';
+          $stmtAnswers = $pdo->prepare($sqlAnswers);
+          $stmtAnswers->bindValue(':id_question', $qData['id_question'], PDO::PARAM_INT);
+          $stmtAnswers->execute();
+          $answerRows = $stmtAnswers->fetchAll();
+          
+          $answers = [];
+          for ($ai = 0; $ai < count($answerRows); $ai++) {
+            $answers[] = [
+              'key' => (string) $answerRows[$ai]['id_reponse'],
+              'text' => trim((string) $answerRows[$ai]['texte']),
+              'is_correct' => (bool) $answerRows[$ai]['est_correcte']
+            ];
+          }
+          
+          $oldQuizBuilderQuestions[] = [
+            'key' => (string) $qi,
+            'text' => trim((string) $qData['enonce']),
+            'type' => trim((string) $qData['type']),
+            'points' => (int) $qData['points'],
+            'tf_correct' => 'true',
+            'answers' => $answers
+          ];
+        }
+        $nextQuizBuilderQuestionIndex = count($oldQuizBuilderQuestions);
+      } else {
+        $oldQuizBuilderQuestions = defaultQuizBuilderQuestions();
+        $nextQuizBuilderQuestionIndex = 1;
+      }
+      $openQuizModal = true;
+    }
+  } catch (PDOException $e) {}
 }
 
 $recherche = isset($_GET['q']) ? trim($_GET['q']) : '';
 $niveauFiltre = isset($_GET['niveau']) ? trim($_GET['niveau']) : '';
 $niveauFiltreDb = '';
+$typeFiltre = isset($_GET['type']) ? trim($_GET['type']) : 'formations';
 
 if ($niveauFiltre !== '') {
     $niveauFiltreDb = normalizeNiveau($niveauFiltre);
@@ -1194,16 +2110,104 @@ $formations = [];
 
 try {
     $stmt = $pdo->prepare($sql);
-
     foreach ($params as $key => $value) {
         $stmt->bindValue($key, $value);
     }
-
     $stmt->execute();
     $formations = $stmt->fetchAll();
 } catch (PDOException $e) {
     $erreur = 'Erreur lors du chargement des formations.';
 }
+
+// Load workshops for display
+$workshops = [];
+try {
+    $sqlWorkshops = 'SELECT w.id_workshop, w.titre, w.description, w.mentor_id, w.duree, w.date_atelier, w.lieu, w.places_max, w.places_restantes, w.prix, w.certification, w.statut,
+                            TRIM(CONCAT(COALESCE(u.prenom, ""), " ", COALESCE(u.nom, ""))) AS mentor_nom,
+                            f.domaine AS formation_titre, wf.id_formation
+                     FROM workshops w
+                     LEFT JOIN `user` u ON u.id_user = w.mentor_id
+                     LEFT JOIN workshops_formation wf ON wf.id_workshop = w.id_workshop
+                     LEFT JOIN formations f ON f.id_formation = wf.id_formation
+                     ORDER BY w.id_workshop DESC';
+    $stmtWorkshops = $pdo->query($sqlWorkshops);
+    $workshops = $stmtWorkshops->fetchAll();
+} catch (PDOException $e) {}
+
+// Load quizzes for display - using flexible join to support both formation_id column and quizz_formations pivot table
+$quizzes = [];
+try {
+    $quizNotePassageExprList = 'NULL AS note_passage';
+    if ($hasQuizzNotePassageColumn) {
+        $quizNotePassageExprList = 'q.note_passage';
+    } elseif ($hasQuizzScoreColumn) {
+        $quizNotePassageExprList = 'q.score AS note_passage';
+    }
+
+    $quizNbTentativesExprList = 'NULL AS nb_tentatives';
+    if ($hasQuizzNbTentativesColumn) {
+        $quizNbTentativesExprList = 'q.nb_tentatives';
+    }
+
+    $quizDureeExprList = 'NULL AS duree_minutes';
+    if ($hasQuizzDureeMinutesColumn) {
+        $quizDureeExprList = 'q.duree_minutes';
+    } elseif ($hasQuizzDureeColumn) {
+        $quizDureeExprList = 'q.duree AS duree_minutes';
+    }
+
+    $quizDescriptionExprList = 'NULL AS description';
+    if ($hasQuizzDescriptionColumn) {
+        $quizDescriptionExprList = 'q.description';
+    }
+
+    $questionCountExprList = '0 AS nb_questions';
+    if ($hasQuizQuestionsTable) {
+        $questionCountExprList = '(SELECT COUNT(*) FROM questions qq WHERE qq.id_quizz = q.id_quizz) AS nb_questions';
+    }
+
+    // Build the formation link expression
+    $quizListLinkParts = [];
+    if ($hasQuizzFormationIdColumn) {
+        $quizListLinkParts[] = 'SELECT q2.id_quizz, q2.formation_id FROM quizz q2 WHERE q2.formation_id IS NOT NULL';
+    }
+    if ($hasQuizzFormationsTable) {
+        $quizListLinkParts[] = 'SELECT qf2.id_quizz, qf2.id_formation AS formation_id FROM quizz_formations qf2';
+    }
+
+    if (count($quizListLinkParts) > 0) {
+        $sqlQuizzes = 'SELECT q.id_quizz, q.titre,
+                              ' . $quizDescriptionExprList . ',
+                              ' . $quizNotePassageExprList . ',
+                              ' . $quizNbTentativesExprList . ',
+                              ' . $quizDureeExprList . ',
+                              ' . $questionCountExprList . ',
+                              lien.formation_id,
+                              f.domaine AS formation_titre
+                       FROM quizz q
+                       LEFT JOIN (
+                           SELECT id_quizz, MIN(formation_id) AS formation_id
+                           FROM (' . implode(' UNION ALL ', $quizListLinkParts) . ') merged
+                           GROUP BY id_quizz
+                       ) lien ON lien.id_quizz = q.id_quizz
+                       LEFT JOIN formations f ON f.id_formation = lien.formation_id
+                       ORDER BY q.id_quizz DESC';
+    } else {
+        $sqlQuizzes = 'SELECT q.id_quizz, q.titre,
+                              ' . $quizDescriptionExprList . ',
+                              ' . $quizNotePassageExprList . ',
+                              ' . $quizNbTentativesExprList . ',
+                              ' . $quizDureeExprList . ',
+                              ' . $questionCountExprList . ',
+                              NULL AS formation_id, NULL AS formation_titre
+                       FROM quizz q
+                       ORDER BY q.id_quizz DESC';
+    }
+
+    $stmtQuizzes = $pdo->prepare($sqlQuizzes);
+    $stmtQuizzes->execute();
+    $quizzes = $stmtQuizzes->fetchAll();
+} catch (PDOException $e) {}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -1296,10 +2300,225 @@ try {
   border-color: #c0392b !important;
   background: rgba(192, 57, 43, 0.06);
 }
+.admin-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 24px;
+  border-bottom: 2px solid var(--caramel);
+  flex-wrap: wrap;
+}
+.admin-tab {
+  padding: 10px 20px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--gris);
+  transition: all 0.3s;
+  font-size: 1rem;
+}
+.admin-tab.active {
+  color: var(--marron);
+  border-bottom: 3px solid var(--marron);
+  margin-bottom: -2px;
+}
+.admin-tab:hover {
+  color: var(--brun);
+}
+.tab-content {
+  display: none;
+}
+.tab-content.active {
+  display: block;
+}
+.table-container {
+  overflow-x: auto;
+}
+.workshop-mentor-cell, .quiz-formation-cell {
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Quiz Builder Styles */
+.quiz-builder-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.quiz-builder-question {
+  border: 1px solid rgba(196,154,108,0.35);
+  border-radius: 8px;
+  background: rgba(245,236,215,0.5);
+  padding: 10px;
+}
+
+.quiz-builder-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.quiz-builder-head strong {
+  color: var(--marron);
+  font-size: 0.85rem;
+}
+
+.quiz-remove-btn {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  background: #c0392b;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.quiz-remove-btn:hover {
+  background: #a93226;
+}
+
+.quiz-builder-answer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.quiz-builder-answer-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.quiz-builder-answer-row input[type="text"] {
+  padding: 6px 8px;
+  border: 1px solid rgba(196,154,108,0.5);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.quiz-builder-answer-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--gris);
+  white-space: nowrap;
+}
+
+.quiz-builder-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 4px;
+}
+
+.btn-inscrit.vert {
+  background: #27ae60;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.2s;
+}
+
+.btn-inscrit.vert:hover {
+  background: #219a52;
+}
+
+.quiz-builder-hidden {
+  display: none;
+}
+
+.front-form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.front-form-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.btn-cancel {
+  border: 1px solid rgba(196,154,108,0.5);
+  color: var(--gris);
+  background: transparent;
+  border-radius: 6px;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel:hover {
+  background: rgba(196,154,108,0.1);
+}
+
+.btn-save {
+  border: none;
+  color: var(--creme);
+  background: var(--marron);
+  border-radius: 6px;
+  padding: 9px 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-save:hover {
+  background: var(--brun);
+}
+
 @media (max-width: 800px) {
-  .form-row-2,
-  .form-row-3 {
+  .front-form-row-2,
+  .front-form-row-3 {
     grid-template-columns: 1fr;
+  }
+  .admin-tab {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+}
+.front-form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.front-form-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+@media (max-width: 800px) {
+  .front-form-row-2,
+  .front-form-row-3 {
+    grid-template-columns: 1fr;
+  }
+  .admin-tab {
+    padding: 8px 12px;
+    font-size: 0.85rem;
   }
 }
 </style>
@@ -1312,7 +2531,7 @@ try {
   </div>
   <nav class="sidebar-nav">
     <div class="nav-section-label">Modules</div>
-    <a class="nav-item active" href="back.php"><span class="icon">📜</span> Formations</a>
+    <a class="nav-item active" href="back.php"><span class="icon">📜</span> BackOffice</a>
     <a class="nav-item" href="front.php"><span class="icon">🌐</span> Front Formations</a>
   </nav>
   <div class="sidebar-footer">
@@ -1329,11 +2548,13 @@ try {
 <div class="main">
   <div class="topbar">
     <div class="breadcrumb">
-      Modules &rsaquo; <strong>Formations </strong>
+      Modules &rsaquo; <strong>BackOffice</strong>
     </div>
     <div class="topbar-actions simple-actions">
-      <a class="btn-primary btn-link" href="front.php?open_add=1">＋ Ajouter une formation</a>
-      <a class="btn-primary btn-link" href="front.php">Return</a>
+      <a class="btn-primary btn-link" href="back.php?open_add_formation=1">＋ Ajouter une formation</a>
+      <a class="btn-primary btn-link" href="back.php?open_add_workshop=1">＋ Ajouter un workshop</a>
+      <a class="btn-primary btn-link" href="back.php?open_add_quiz=1">＋ Ajouter un quiz</a>
+      <a class="btn-primary btn-link" href="front.php">Voir le front</a>
     </div>
   </div>
 
@@ -1346,17 +2567,16 @@ try {
       <div class="inline-alert success"><?php echo e($succes); ?></div>
     <?php endif; ?>
 
+    <!-- UPDATE FORMATION FORM (appears when editing a formation) -->
     <?php if ($afficherFormUpdate): ?>
       <div class="simple-panel">
         <h3>Modifier la formation #<?php echo e((string) $updateForm['id_formation']); ?></h3>
         <form method="post" action="back.php" id="formBackUpdateFormation" novalidate>
-          <input type="hidden" name="action" value="update">
+          <input type="hidden" name="action" value="update_formation">
           <input type="hidden" name="id_formation" value="<?php echo e((string) $updateForm['id_formation']); ?>">
-          <input type="hidden" name="workshop_id" value="<?php echo e((string) $updateForm['workshop_id']); ?>">
-          <input type="hidden" name="quiz_id" value="<?php echo e((string) $updateForm['quiz_id']); ?>">
           <div class="form-feedback" data-form-message></div>
 
-          <div class="form-row-2">
+          <div class="front-form-row-2">
             <div class="form-group">
               <label>Titre *</label>
               <input type="text" name="titre" value="<?php echo e($updateForm['titre']); ?>" placeholder="Ex: Initiation à la poterie" required>
@@ -1372,7 +2592,7 @@ try {
             <textarea name="description" rows="3" placeholder="Description de la formation"><?php echo e($updateForm['description']); ?></textarea>
           </div>
 
-          <div class="form-row-3">
+          <div class="front-form-row-3">
             <div class="form-group">
               <label>Niveau *</label>
               <select name="niveau">
@@ -1391,7 +2611,7 @@ try {
             </div>
           </div>
 
-          <div class="form-row-3">
+          <div class="front-form-row-3">
             <div class="form-group">
               <label>Certification</label>
               <select name="certification">
@@ -1406,104 +2626,16 @@ try {
                 <option value="Inactif" <?php echo ($updateForm['etat'] === 'Inactif' ? 'selected' : ''); ?>>Inactif</option>
                 <option value="Brouillon" <?php echo ($updateForm['etat'] === 'Brouillon' ? 'selected' : ''); ?>>Brouillon</option>
               </select>
-              <div class="form-group">
-                <label>Lien vidéo (optionnel)</label>
-                <input type="url" name="lien_video" value="<?php echo e($updateForm['lien_video']); ?>" placeholder="https://...">
-              </div>
             </div>
             <div class="form-group">
-              <label>Date de réalisation</label>
-              <input type="date" name="date_realisation" value="<?php echo e($updateForm['date_realisation']); ?>">
-            </div>
-          </div>
-
-          <div class="form-subtitle">Workshop lié à la formation (optionnel)</div>
-          
-          <div class="form-row-2">
-            <div class="form-group">
-              <label>Titre workshop</label>
-              <input type="text" name="workshop_titre" value="<?php echo e($updateForm['workshop_titre']); ?>" placeholder="Ex: Atelier pratique de poterie">
-            </div>
-            <div class="form-group">
-              <label>Mentor ID (optionnel)</label>
-              <input type="number" min="1" step="1" name="workshop_mentor_id" value="<?php echo e($updateForm['workshop_mentor_id']); ?>" placeholder="Ex: 3">
+              <label>Lien vidéo (optionnel)</label>
+              <input type="url" name="lien_video" value="<?php echo e($updateForm['lien_video']); ?>" placeholder="https://...">
             </div>
           </div>
 
           <div class="form-group">
-            <label>Description workshop</label>
-            <textarea name="workshop_description" rows="2" placeholder="Description du workshop"><?php echo e($updateForm['workshop_description']); ?></textarea>
-          </div>
-
-          <div class="form-row-3">
-            <div class="form-group">
-              <label>Durée workshop (heures)</label>
-              <input type="number" min="1" step="1" name="workshop_duree" value="<?php echo e($updateForm['workshop_duree']); ?>" placeholder="Ex: 2">
-            </div>
-            <div class="form-group">
-              <label>Date atelier (optionnel)</label>
-              <input type="datetime-local" name="workshop_date_atelier" value="<?php echo e($updateForm['workshop_date_atelier']); ?>">
-            </div>
-            <div class="form-group">
-              <label>Lieu workshop</label>
-              <input type="text" name="workshop_lieu" value="<?php echo e($updateForm['workshop_lieu']); ?>" placeholder="Ex: Tunis">
-            </div>
-          </div>
-
-          <div class="form-row-3">
-            <div class="form-group">
-              <label>Places max workshop</label>
-              <input type="number" min="1" step="1" name="workshop_places_max" value="<?php echo e($updateForm['workshop_places_max']); ?>" placeholder="Ex: 20">
-            </div>
-            <div class="form-group">
-              <label>Prix workshop (TND)</label>
-              <input type="number" min="0" step="0.01" name="workshop_prix" value="<?php echo e($updateForm['workshop_prix']); ?>" placeholder="Ex: 120">
-            </div>
-            <div class="form-group">
-              <label>Certification workshop</label>
-              <select name="workshop_certification">
-                <option value="oui" <?php echo ($updateForm['workshop_certification'] === 'oui' ? 'selected' : ''); ?>>Oui</option>
-                <option value="non" <?php echo ($updateForm['workshop_certification'] === 'non' ? 'selected' : ''); ?>>Non</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-row-2">
-            <div class="form-group">
-              <label>Statut workshop</label>
-              <select name="workshop_statut">
-                <option value="a_venir" <?php echo ($updateForm['workshop_statut'] === 'a_venir' ? 'selected' : ''); ?>>A venir</option>
-                <option value="en_cours" <?php echo ($updateForm['workshop_statut'] === 'en_cours' ? 'selected' : ''); ?>>En cours</option>
-                <option value="termine" <?php echo ($updateForm['workshop_statut'] === 'termine' ? 'selected' : ''); ?>>Termine</option>
-                <option value="annule" <?php echo ($updateForm['workshop_statut'] === 'annule' ? 'selected' : ''); ?>>Annule</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Questions du quiz</label>
-            <textarea name="quiz_questions" rows="5" placeholder="Entrez les questions du quiz..."><?php echo e($updateForm['quiz_questions']); ?></textarea>
-          </div>
-
-          <div class="form-subtitle">Quiz obligatoire de la formation</div>
-
-          <div class="form-group">
-            <label>Titre du quiz *</label>
-            <input type="text" name="quiz_titre" value="<?php echo e($updateForm['quiz_titre']); ?>" placeholder="Ex: Quiz final - Initiation à la poterie" required>
-          </div>
-
-          <div class="form-group">
-            <label>Description du quiz</label>
-            <textarea name="quiz_description" rows="3" placeholder="Description du quiz (optionnel)"><?php echo e($updateForm['quiz_description']); ?></textarea>
-          </div>
-
-          <input type="hidden" name="quiz_note_passage" value="<?php echo e($updateForm['quiz_note_passage']); ?>">
-          <input type="hidden" name="quiz_nb_tentatives" value="<?php echo e($updateForm['quiz_nb_tentatives']); ?>">
-
-          <div class="form-row-3">
-            <div class="form-group">
-              <label>Durée du quiz (minutes) *</label>
-              <input type="number" min="1" step="1" name="quiz_duree_minutes" value="<?php echo e($updateForm['quiz_duree_minutes']); ?>" required>
-            </div>
+            <label>Date de réalisation</label>
+            <input type="date" name="date_realisation" value="<?php echo e($updateForm['date_realisation']); ?>">
           </div>
 
           <div class="simple-actions">
@@ -1514,141 +2646,634 @@ try {
       </div>
     <?php endif; ?>
 
-    <div class="section-head">
-      <h2>Liste des formations</h2>
+    <!-- Admin Tabs -->
+    <div class="admin-tabs">
+      <button class="admin-tab <?php echo ($typeFiltre === 'formations' ? 'active' : ''); ?>" data-tab="formations">📜 Formations</button>
+      <button class="admin-tab <?php echo ($typeFiltre === 'workshops' ? 'active' : ''); ?>" data-tab="workshops">🔧 Workshops</button>
+      <button class="admin-tab <?php echo ($typeFiltre === 'quizzes' ? 'active' : ''); ?>" data-tab="quizzes">📝 Quiz</button>
     </div>
 
-    <form method="get" action="back.php" class="toolbar" id="formBackToolbarFilters" novalidate>
-      <div class="toolbar-search">
-        <input type="text" name="q" value="<?php echo e($recherche); ?>" placeholder="Rechercher par titre, mentor, description...">
+    <!-- FORMATIONS TAB -->
+    <div id="tab-formations" class="tab-content <?php echo ($typeFiltre === 'formations' ? 'active' : ''); ?>">
+      <div class="section-head">
+        <h2>Liste des formations</h2>
       </div>
-      <select name="niveau">
-        <option value="">Tous niveaux</option>
-        <option value="debutant" <?php echo ($niveauFiltreDb === 'debutant' ? 'selected' : ''); ?>>Débutant</option>
-        <option value="intermediaire" <?php echo ($niveauFiltreDb === 'intermediaire' ? 'selected' : ''); ?>>Intermédiaire</option>
-        <option value="avance" <?php echo ($niveauFiltreDb === 'avance' ? 'selected' : ''); ?>>Avancé</option>
-      </select>
-      <button type="submit" class="btn-primary">Filtrer</button>
-      <a href="back.php" class="btn-primary btn-link">Réinitialiser</a>
-    </form>
-    <div class="form-feedback" id="formBackToolbarFiltersMessage" data-form-message-for="formBackToolbarFilters"></div>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Titre</th>
-            <th>Mentor</th>
-            <th>Niveau</th>
-            <th>Durée</th>
-            <th>Inscrits</th>
-            <th>Certif.</th>
-            <th>Statut</th>
-            <th>Prix</th>
-            <th>Quiz requis</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php if (count($formations) === 0): ?>
+      <form method="get" action="back.php" class="toolbar" id="formBackToolbarFilters" novalidate>
+        <input type="hidden" name="type" value="formations">
+        <div class="toolbar-search">
+          <input type="text" name="q" value="<?php echo e($recherche); ?>" placeholder="Rechercher par titre, mentor, description...">
+        </div>
+        <select name="niveau">
+          <option value="">Tous niveaux</option>
+          <option value="debutant" <?php echo ($niveauFiltreDb === 'debutant' ? 'selected' : ''); ?>>Débutant</option>
+          <option value="intermediaire" <?php echo ($niveauFiltreDb === 'intermediaire' ? 'selected' : ''); ?>>Intermédiaire</option>
+          <option value="avance" <?php echo ($niveauFiltreDb === 'avance' ? 'selected' : ''); ?>>Avancé</option>
+        </select>
+        <button type="submit" class="btn-primary">Filtrer</button>
+        <a href="back.php?type=formations" class="btn-primary btn-link">Réinitialiser</a>
+      </form>
+
+      <div class="table-container">
+        <table>
+          <thead>
             <tr>
-              <td colspan="11" style="text-align:center;padding:20px;">Aucune formation trouvée.</td>
+              <th>ID</th>
+              <th>Titre</th>
+              <th>Mentor</th>
+              <th>Niveau</th>
+              <th>Durée</th>
+              <th>Inscrits</th>
+              <th>Certif.</th>
+              <th>Statut</th>
+              <th>Prix</th>
+              <th>Quiz requis</th>
+              <th>Action</th>
             </tr>
-          <?php else: ?>
-            <?php for ($i = 0; $i < count($formations); $i++): ?>
-              <?php $f = $formations[$i]; ?>
+          </thead>
+          <tbody>
+            <?php if (count($formations) === 0): ?>
               <tr>
-                <td>#<?php echo e($f['id_formation']); ?></td>
-                <td><strong><?php echo e($f['domaine']); ?></strong></td>
-                <td><?php echo e($f['formateur']); ?></td>
-                <td>
-                  <span class="badge <?php echo e(niveauBadgeClass($f['niveau'])); ?>"><?php echo e(niveauLabel($f['niveau'])); ?></span>
-                </td>
-                <td><?php echo e((string) $f['duree']); ?>h</td>
-                <td><?php echo e((string) $f['inscrits']); ?></td>
-                <td><?php echo (certifOui($f['certification']) ? '✅' : '—'); ?></td>
-                <td>
-                  <span class="badge <?php echo e(statutBadgeClass($f['etat'])); ?>"><?php echo e((string) $f['etat']); ?></span>
-                </td>
-                <td><?php echo e((string) $f['prix']); ?> TND</td>
-                <td>
-                  <?php if (trim((string) $f['quiz_titre']) === ''): ?>
-                    <span style="color:var(--gris);">Non configuré</span>
-                  <?php else: ?>
-                    <strong><?php echo e((string) $f['quiz_titre']); ?></strong><br>
-                    <span style="color:var(--gris);font-size:0.75rem;">Seuil: <?php echo e((string) (is_numeric($f['quiz_note_passage']) ? (int) $f['quiz_note_passage'] : 60)); ?>%</span>
-                  <?php endif; ?>
-                </td>
-                <td>
-                  <div class="action-cell">
-                    <form method="get" action="back.php">
-                      <input type="hidden" name="edit" value="<?php echo e((string) $f['id_formation']); ?>">
-                      <button type="submit" class="btn-action btn-edit">Modifier</button>
-                    </form>
-                    <form method="post" action="back.php" onsubmit="return confirm('Supprimer cette formation ?');">
-                      <input type="hidden" name="action" value="delete">
-                      <input type="hidden" name="id_formation" value="<?php echo e((string) $f['id_formation']); ?>">
-                      <button type="submit" class="btn-action btn-suppr">Supprimer</button>
-                    </form>
-                  </div>
-                </td>
+                <td colspan="11" style="text-align:center;padding:20px;">Aucune formation trouvée.</td>
               </tr>
-            <?php endfor; ?>
-          <?php endif; ?>
-        </tbody>
-      </table>
-      <div class="pagination">
-        <span><?php echo e((string) count($formations)); ?> formation(s)</span>
+            <?php else: ?>
+              <?php for ($i = 0; $i < count($formations); $i++): ?>
+                <?php $f = $formations[$i]; ?>
+                <tr>
+                  <td>#<?php echo e($f['id_formation']); ?></td>
+                  <td><strong><?php echo e($f['domaine']); ?></strong></td>
+                  <td><?php echo e($f['formateur']); ?></td>
+                  <td>
+                    <span class="badge <?php echo e(niveauBadgeClass($f['niveau'])); ?>"><?php echo e(niveauLabel($f['niveau'])); ?></span>
+                  </td>
+                  <td><?php echo e((string) $f['duree']); ?>h</td>
+                  <td><?php echo e((string) $f['inscrits']); ?></td>
+                  <td><?php echo (certifOui($f['certification']) ? '✅' : '—'); ?></td>
+                  <td>
+                    <span class="badge <?php echo e(statutBadgeClass($f['etat'])); ?>"><?php echo e((string) $f['etat']); ?></span>
+                  </td>
+                  <td><?php echo e((string) $f['prix']); ?> TND</td>
+                  <td>
+                    <?php if (trim((string) $f['quiz_titre']) === ''): ?>
+                      <span style="color:var(--gris);">Non configuré</span>
+                    <?php else: ?>
+                      <strong><?php echo e((string) $f['quiz_titre']); ?></strong><br>
+                      <span style="color:var(--gris);font-size:0.75rem;">Seuil: <?php echo e((string) (is_numeric($f['quiz_note_passage']) ? (int) $f['quiz_note_passage'] : 60)); ?>%</span>
+                    <?php endif; ?>
+                  </td>
+                  <td>
+                    <div class="action-cell">
+                      <form method="get" action="back.php">
+                        <input type="hidden" name="edit_formation" value="<?php echo e((string) $f['id_formation']); ?>">
+                        <button type="submit" class="btn-action btn-edit">Modifier</button>
+                      </form>
+                      <form method="post" action="back.php" onsubmit="return confirm('Supprimer cette formation ?');">
+                        <input type="hidden" name="action" value="delete_formation">
+                        <input type="hidden" name="id_formation" value="<?php echo e((string) $f['id_formation']); ?>">
+                        <button type="submit" class="btn-action btn-suppr">Supprimer</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <?php endfor; ?>
+            <?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- WORKSHOPS TAB -->
+    <div id="tab-workshops" class="tab-content <?php echo ($typeFiltre === 'workshops' ? 'active' : ''); ?>">
+      <div class="section-head">
+        <h2>Liste des workshops</h2>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Titre</th>
+              <th>Description</th>
+              <th>Mentor</th>
+              <th>Formation associée</th>
+              <th>Durée</th>
+              <th>Date</th>
+              <th>Lieu</th>
+              <th>Places</th>
+              <th>Prix</th>
+              <th>Certif.</th>
+              <th>Statut</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php if (count($workshops) === 0): ?>
+              <tr>
+                <td colspan="13" style="text-align:center;padding:20px;">Aucun workshop trouvé.</td>
+              </tr>
+            <?php else: ?>
+              <?php for ($i = 0; $i < count($workshops); $i++): ?>
+                <?php $w = $workshops[$i]; ?>
+                <tr>
+                  <td>#<?php echo e($w['id_workshop']); ?></td>
+                  <td><strong><?php echo e($w['titre']); ?></strong></td>
+                  <td class="workshop-mentor-cell" title="<?php echo e($w['description']); ?>"><?php echo e(mb_substr($w['description'], 0, 50)); ?>...</td>
+                  <td><?php echo e($w['mentor_nom'] ?: ($w['mentor_id'] ? 'ID: ' . $w['mentor_id'] : '—')); ?></td>
+                  <td><?php echo e($w['formation_titre'] ?: ($w['id_formation'] ? 'ID: ' . $w['id_formation'] : '—')); ?></td>
+                  <td><?php echo e((string) $w['duree']); ?>h</td>
+                  <td><?php echo e($w['date_atelier'] ? date('d/m/Y H:i', strtotime($w['date_atelier'])) : '—'); ?></td>
+                  <td><?php echo e($w['lieu']); ?></td>
+                  <td><?php echo e((string) $w['places_max']); ?></td>
+                  <td><?php echo e((string) $w['prix']); ?> TND</td>
+                  <td><?php echo (certifOui($w['certification']) ? '✅' : '—'); ?></td>
+                  <td>
+                    <span class="badge <?php echo e(statutBadgeClass($w['statut'])); ?>"><?php echo e($w['statut']); ?></span>
+                  </td>
+                  <td>
+                    <div class="action-cell">
+                      <form method="get" action="back.php">
+                        <input type="hidden" name="edit_workshop" value="<?php echo e((string) $w['id_workshop']); ?>">
+                        <button type="submit" class="btn-action btn-edit">Modifier</button>
+                      </form>
+                      <form method="post" action="back.php" onsubmit="return confirm('Supprimer ce workshop ?');">
+                        <input type="hidden" name="action" value="delete_workshop">
+                        <input type="hidden" name="id_workshop" value="<?php echo e((string) $w['id_workshop']); ?>">
+                        <button type="submit" class="btn-action btn-suppr">Supprimer</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <?php endfor; ?>
+            <?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- QUIZZES TAB -->
+    <div id="tab-quizzes" class="tab-content <?php echo ($typeFiltre === 'quizzes' ? 'active' : ''); ?>">
+      <div class="section-head">
+        <h2>Liste des quiz</h2>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Titre</th>
+              <th>Description</th>
+              <th>Formation associée</th>
+              <th>Note de passage</th>
+              <th>Tentatives</th>
+              <th>Durée</th>
+              <th>Questions</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php if (count($quizzes) === 0): ?>
+              <tr>
+                <td colspan="9" style="text-align:center;padding:20px;">Aucun quiz trouvé.</td>
+              </tr>
+            <?php else: ?>
+              <?php for ($i = 0; $i < count($quizzes); $i++): ?>
+                <?php $quizItem = $quizzes[$i]; ?>
+                <tr>
+                  <td>#<?php echo e($quizItem['id_quizz']); ?></td>
+                  <td><strong><?php echo e($quizItem['titre']); ?></strong></td>
+                  <td class="workshop-mentor-cell" title="<?php echo e((string) $quizItem['description']); ?>">
+                    <?php
+                      $quizDesc = trim((string) $quizItem['description']);
+                      echo $quizDesc !== '' ? e(mb_substr($quizDesc, 0, 55)) . (mb_strlen($quizDesc) > 55 ? '…' : '') : '<span style="color:var(--gris);">—</span>';
+                    ?>
+                  </td>
+                  <td class="quiz-formation-cell">
+                    <?php if (trim((string) $quizItem['formation_titre']) !== ''): ?>
+                      <strong><?php echo e($quizItem['formation_titre']); ?></strong>
+                      <br><span style="color:var(--gris);font-size:0.75rem;">ID: <?php echo e((string) $quizItem['formation_id']); ?></span>
+                    <?php elseif ($quizItem['formation_id']): ?>
+                      <span style="color:var(--gris);">ID: <?php echo e((string) $quizItem['formation_id']); ?></span>
+                    <?php else: ?>
+                      <span style="color:var(--gris);">—</span>
+                    <?php endif; ?>
+                  </td>
+                  <td>
+                    <?php $np = $quizItem['note_passage']; ?>
+                    <?php if (is_numeric($np)): ?>
+                      <span class="badge badge-actif"><?php echo e((string) (int) $np); ?>%</span>
+                    <?php else: ?>
+                      <span style="color:var(--gris);">—</span>
+                    <?php endif; ?>
+                  </td>
+                  <td>
+                    <?php $nt = $quizItem['nb_tentatives']; ?>
+                    <?php echo is_numeric($nt) ? e((string) (int) $nt) : '<span style="color:var(--gris);">—</span>'; ?>
+                  </td>
+                  <td>
+                    <?php $dm = $quizItem['duree_minutes']; ?>
+                    <?php echo is_numeric($dm) && (int) $dm > 0 ? e((string) (int) $dm) . ' min' : '<span style="color:var(--gris);">—</span>'; ?>
+                  </td>
+                  <td>
+                    <?php $nbQ = (int) ($quizItem['nb_questions'] ?? 0); ?>
+                    <?php if ($nbQ > 0): ?>
+                      <span class="badge badge-inter"><?php echo e((string) $nbQ); ?> question<?php echo $nbQ > 1 ? 's' : ''; ?></span>
+                    <?php else: ?>
+                      <span style="color:var(--gris);">Aucune</span>
+                    <?php endif; ?>
+                  </td>
+                  <td>
+                    <div class="action-cell">
+                      <form method="get" action="back.php">
+                        <input type="hidden" name="edit_quiz" value="<?php echo e((string) $quizItem['id_quizz']); ?>">
+                        <input type="hidden" name="type" value="quizzes">
+                        <button type="submit" class="btn-action btn-edit">Modifier</button>
+                      </form>
+                      <form method="post" action="back.php" onsubmit="return confirm('Supprimer ce quiz ?');">
+                        <input type="hidden" name="action" value="delete_quiz">
+                        <input type="hidden" name="id_quiz" value="<?php echo e((string) $quizItem['id_quizz']); ?>">
+                        <button type="submit" class="btn-action btn-suppr">Supprimer</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              <?php endfor; ?>
+            <?php endif; ?>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
 </div>
-<script>
-// Returns or creates the message container for a form.
-function ensureFormMessageNode(formElement)
-{
-  var inlineNode = formElement.querySelector('[data-form-message]');
-  if (inlineNode) {
-    return inlineNode;
-  }
 
+<!-- MODAL AJOUT FORMATION -->
+<div class="modal-overlay<?php echo ($openFormationModal ? ' open' : ''); ?>" id="modalAjoutFormation" onclick="fermerModalSiExterieur(event, 'modalAjoutFormation')">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2>Ajouter une formation</h2>
+        <p>Les données seront enregistrées dans la base</p>
+      </div>
+      <button class="modal-close" type="button" onclick="fermerModal('modalAjoutFormation')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="back.php" id="formAjoutFormation" novalidate>
+        <input type="hidden" name="action" value="add_formation">
+        <div class="form-feedback" data-form-message></div>
+
+        <div class="front-form-row-2">
+          <div class="form-group">
+            <label>Titre *</label>
+            <input type="text" name="titre" value="" placeholder="Ex: Initiation à la poterie" required>
+          </div>
+          <div class="form-group">
+            <label>Mentor *</label>
+            <input type="text" name="mentor" value="" placeholder="Ex: Fatma Ayari" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea name="description" rows="3" placeholder="Description de la formation"></textarea>
+        </div>
+
+        <div class="front-form-row-3">
+          <div class="form-group">
+            <label>Niveau *</label>
+            <select name="niveau">
+              <option value="debutant">Débutant</option>
+              <option value="intermediaire">Intermédiaire</option>
+              <option value="avance">Avancé</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Durée (heures) *</label>
+            <input type="text" name="duree" placeholder="Ex: 24" required>
+          </div>
+          <div class="form-group">
+            <label>Prix (TND) *</label>
+            <input type="text" name="prix" placeholder="Ex: 180" required>
+          </div>
+        </div>
+
+        <div class="front-form-row-3">
+          <div class="form-group">
+            <label>Certification</label>
+            <select name="certification">
+              <option value="oui">Oui</option>
+              <option value="non">Non</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Statut</label>
+            <select name="etat">
+              <option value="Actif">Actif</option>
+              <option value="Inactif">Inactif</option>
+              <option value="Brouillon">Brouillon</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Date de réalisation</label>
+            <input type="date" name="date_realisation">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Lien vidéo (optionnel)</label>
+          <input type="url" name="lien_video" placeholder="https://...">
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" onclick="fermerModal('modalAjoutFormation')">Annuler</button>
+          <button type="submit" class="btn-save">Ajouter</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AJOUT WORKSHOP -->
+<div class="modal-overlay<?php echo ($openWorkshopModal ? ' open' : ''); ?>" id="modalAjoutWorkshop" onclick="fermerModalSiExterieur(event, 'modalAjoutWorkshop')">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2><?php echo ($editWorkshopId > 0 ? 'Modifier' : 'Ajouter'); ?> un workshop</h2>
+        <p>Les données seront enregistrées dans la base</p>
+      </div>
+      <button class="modal-close" type="button" onclick="fermerModal('modalAjoutWorkshop')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="back.php" id="formAjoutWorkshop" novalidate>
+        <input type="hidden" name="action" value="<?php echo ($editWorkshopId > 0 ? 'update_workshop' : 'add_workshop'); ?>">
+        <?php if ($editWorkshopId > 0): ?>
+          <input type="hidden" name="id_workshop" value="<?php echo e((string) $workshopForm['id_workshop']); ?>">
+        <?php endif; ?>
+        <div class="form-feedback" data-form-message></div>
+
+        <div class="form-group">
+          <label>Titre workshop *</label>
+          <input type="text" name="titre" value="<?php echo e($workshopForm['titre']); ?>" placeholder="Ex: Atelier pratique de poterie" required>
+        </div>
+
+        <div class="form-group">
+          <label>Mentor ID (optionnel)</label>
+          <input type="number" min="1" step="1" name="mentor_id" value="<?php echo e($workshopForm['mentor_id']); ?>" placeholder="Ex: 3">
+        </div>
+
+        <div class="form-group">
+          <label>Formation associée *</label>
+          <select name="formation_id" required>
+            <option value="">-- Sélectionnez une formation --</option>
+            <?php for ($fi = 0; $fi < count($formations); $fi++): ?>
+              <?php $f = $formations[$fi]; ?>
+              <option value="<?php echo e((string) $f['id_formation']); ?>" <?php echo ($workshopForm['formation_id'] == $f['id_formation'] ? 'selected' : ''); ?>>
+                <?php echo e($f['domaine']); ?> (ID: <?php echo e((string) $f['id_formation']); ?>)
+              </option>
+            <?php endfor; ?>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Description workshop *</label>
+          <textarea name="description" rows="3" placeholder="Description du workshop" required><?php echo e($workshopForm['description']); ?></textarea>
+        </div>
+
+        <div class="front-form-row-3">
+          <div class="form-group">
+            <label>Durée workshop (heures) *</label>
+            <input type="number" min="1" step="1" name="duree" value="<?php echo e($workshopForm['duree']); ?>" placeholder="Ex: 2" required>
+          </div>
+          <div class="form-group">
+            <label>Date atelier (optionnel)</label>
+            <input type="datetime-local" name="date_atelier" value="<?php echo e($workshopForm['date_atelier']); ?>">
+          </div>
+          <div class="form-group">
+            <label>Lieu workshop *</label>
+            <input type="text" name="lieu" value="<?php echo e($workshopForm['lieu']); ?>" placeholder="Ex: Tunis" required>
+          </div>
+        </div>
+
+        <div class="front-form-row-3">
+          <div class="form-group">
+            <label>Places max workshop *</label>
+            <input type="number" min="1" step="1" name="places_max" value="<?php echo e($workshopForm['places_max']); ?>" placeholder="Ex: 20" required>
+          </div>
+          <div class="form-group">
+            <label>Prix workshop (TND) *</label>
+            <input type="number" min="0" step="0.01" name="prix" value="<?php echo e($workshopForm['prix']); ?>" placeholder="Ex: 120" required>
+          </div>
+          <div class="form-group">
+            <label>Certification workshop</label>
+            <select name="certification">
+              <option value="oui" <?php echo ($workshopForm['certification'] === 'oui' ? 'selected' : ''); ?>>Oui</option>
+              <option value="non" <?php echo ($workshopForm['certification'] === 'non' ? 'selected' : ''); ?>>Non</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Statut workshop</label>
+          <select name="statut">
+            <option value="a_venir" <?php echo ($workshopForm['statut'] === 'a_venir' ? 'selected' : ''); ?>>A venir</option>
+            <option value="en_cours" <?php echo ($workshopForm['statut'] === 'en_cours' ? 'selected' : ''); ?>>En cours</option>
+            <option value="termine" <?php echo ($workshopForm['statut'] === 'termine' ? 'selected' : ''); ?>>Termine</option>
+            <option value="annule" <?php echo ($workshopForm['statut'] === 'annule' ? 'selected' : ''); ?>>Annule</option>
+          </select>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" onclick="fermerModal('modalAjoutWorkshop')">Annuler</button>
+          <button type="submit" class="btn-save"><?php echo ($editWorkshopId > 0 ? 'Mettre à jour' : 'Ajouter'); ?></button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AJOUT/MODIFICATION QUIZ -->
+<div class="modal-overlay<?php echo ($openQuizModal ? ' open' : ''); ?>" id="modalAjoutQuiz" onclick="fermerModalSiExterieur(event, 'modalAjoutQuiz')">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <h2><?php echo ($editQuizId > 0 ? 'Modifier' : 'Ajouter'); ?> un quiz</h2>
+        <p>Les données seront enregistrées dans la base</p>
+      </div>
+      <button class="modal-close" type="button" onclick="fermerModal('modalAjoutQuiz')">✕</button>
+    </div>
+    <div class="modal-body">
+      <form method="post" action="back.php" id="formAjoutQuiz" novalidate>
+        <input type="hidden" name="action" value="<?php echo ($editQuizId > 0 ? 'update_quiz' : 'add_quiz'); ?>">
+        <?php if ($editQuizId > 0): ?>
+          <input type="hidden" name="id_quizz" value="<?php echo e((string) $quizForm['id_quizz']); ?>">
+        <?php endif; ?>
+        <div class="form-feedback" data-form-message></div>
+
+        <div class="form-group">
+          <label>Formation associée *</label>
+          <select name="formation_id" required>
+            <option value="">-- Sélectionnez une formation --</option>
+            <?php for ($fi = 0; $fi < count($formations); $fi++): ?>
+              <?php $f = $formations[$fi]; ?>
+              <option value="<?php echo e((string) $f['id_formation']); ?>" <?php echo ($quizForm['formation_id'] == $f['id_formation'] ? 'selected' : ''); ?>>
+                <?php echo e($f['domaine']); ?> (ID: <?php echo e((string) $f['id_formation']); ?>)
+              </option>
+            <?php endfor; ?>
+          </select>
+        </div>
+        <p class="form-note">Le quiz est généré automatiquement via Groq à partir de la formation sélectionnée (5 questions). La validation régénère les questions.</p>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-cancel" onclick="fermerModal('modalAjoutQuiz')">Annuler</button>
+          <button type="submit" class="btn-save"><?php echo ($editQuizId > 0 ? 'Regenerer' : 'Generer'); ?></button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+// Tab switching
+document.querySelectorAll('.admin-tab').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    var tabName = this.getAttribute('data-tab');
+    document.querySelectorAll('.admin-tab').forEach(function(t) { t.classList.remove('active'); });
+    this.classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(function(content) { content.classList.remove('active'); });
+    document.getElementById('tab-' + tabName).classList.add('active');
+    
+    var url = new URL(window.location.href);
+    url.searchParams.set('type', tabName);
+    url.searchParams.delete('edit_formation');
+    url.searchParams.delete('edit_workshop');
+    url.searchParams.delete('edit_quiz');
+    window.history.replaceState({}, '', url);
+  });
+});
+
+function fermerModal(modalId) {
+  var modal = document.getElementById(modalId);
+  if (modal) {
+    modal.classList.remove('open');
+  }
+  var url = new URL(window.location.href);
+  url.searchParams.delete('open_add_formation');
+  url.searchParams.delete('open_add_workshop');
+  url.searchParams.delete('open_add_quiz');
+  url.searchParams.delete('edit_formation');
+  url.searchParams.delete('edit_workshop');
+  url.searchParams.delete('edit_quiz');
+  window.history.replaceState({}, '', url);
+}
+
+function fermerModalSiExterieur(event, modalId) {
+  if (event.target && event.target.classList.contains('modal-overlay')) {
+    fermerModal(modalId);
+  }
+}
+
+// Quiz Builder Functions
+function quizBuilderEscapeHtml(value) {
+  var text = String(value);
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function quizBuilderAnswerRowMarkup(questionIndex, answerIndex, answerText, isCorrect) {
+  var checked = isCorrect ? ' checked' : '';
+  return '<div class="quiz-builder-answer-row"><input type="text" name="quiz_answer_text[' + questionIndex + '][' + answerIndex + ']" value="' + quizBuilderEscapeHtml(answerText) + '" placeholder="Texte de la réponse"><label><input type="checkbox" name="quiz_answer_correct[' + questionIndex + '][]" value="' + answerIndex + '"' + checked + '>Bonne réponse</label></div>';
+}
+
+function refreshQuizBuilderQuestionLabels() {
+  var container = document.getElementById('quizBuilderQuestions');
+  if (!container) return;
+  var cards = container.querySelectorAll('.quiz-builder-question');
+  for (var i = 0; i < cards.length; i++) {
+    var label = cards[i].querySelector('.quiz-builder-number');
+    if (label) label.textContent = String(i + 1);
+  }
+}
+
+function onQuizBuilderTypeChange(selectElement, questionIndex) {
+  var tfBox = document.getElementById('quizTrueFalseBox' + String(questionIndex));
+  var answersBox = document.getElementById('quizAnswersBox' + String(questionIndex));
+  if (!tfBox || !answersBox) return;
+  if (selectElement.value === 'vrai_faux') {
+    tfBox.classList.remove('quiz-builder-hidden');
+    answersBox.classList.add('quiz-builder-hidden');
+  } else {
+    tfBox.classList.add('quiz-builder-hidden');
+    answersBox.classList.remove('quiz-builder-hidden');
+  }
+}
+
+function addQuizBuilderAnswer(questionIndex) {
+  var questionCard = document.querySelector('.quiz-builder-question[data-question-index="' + String(questionIndex) + '"]');
+  if (!questionCard) return;
+  var answerList = document.getElementById('quizAnswerList' + String(questionIndex));
+  if (!answerList) return;
+  var nextAnswerIndex = parseInt(questionCard.getAttribute('data-next-answer-index'), 10);
+  if (isNaN(nextAnswerIndex) || nextAnswerIndex < 0) {
+    nextAnswerIndex = answerList.children.length;
+  }
+  answerList.insertAdjacentHTML('beforeend', quizBuilderAnswerRowMarkup(questionIndex, nextAnswerIndex, '', false));
+  questionCard.setAttribute('data-next-answer-index', String(nextAnswerIndex + 1));
+}
+
+function removeQuizBuilderQuestion(buttonElement) {
+  var card = buttonElement.closest('.quiz-builder-question');
+  if (!card) return;
+  var container = document.getElementById('quizBuilderQuestions');
+  card.remove();
+  refreshQuizBuilderQuestionLabels();
+  if (container && container.querySelectorAll('.quiz-builder-question').length === 0) {
+    addQuizBuilderQuestion();
+  }
+}
+
+function addQuizBuilderQuestion() {
+  var container = document.getElementById('quizBuilderQuestions');
+  if (!container) return;
+  var nextQuestionIndex = parseInt(container.getAttribute('data-next-question-index'), 10);
+  if (isNaN(nextQuestionIndex) || nextQuestionIndex < 0) {
+    nextQuestionIndex = container.querySelectorAll('.quiz-builder-question').length;
+  }
+  var questionIndex = String(nextQuestionIndex);
+  container.setAttribute('data-next-question-index', String(nextQuestionIndex + 1));
+  var html = '<div class="quiz-builder-question" data-question-index="' + questionIndex + '" data-next-answer-index="2"><div class="quiz-builder-head"><strong>Question <span class="quiz-builder-number">0</span></strong><button type="button" class="btn-cancel quiz-remove-btn" onclick="removeQuizBuilderQuestion(this)">Supprimer</button></div><div class="form-group"><label>Texte de la question *</label><input type="text" name="quiz_question_text[' + questionIndex + ']" placeholder="Ex: Quelle matière est utilisée en vannerie ?"></div><div class="front-form-row-3"><div class="form-group"><label>Type</label><select class="quiz-builder-type-select" data-question-index="' + questionIndex + '" name="quiz_question_type[' + questionIndex + ']" onchange="onQuizBuilderTypeChange(this, \'' + questionIndex + '\')"><option value="choix_unique">Choix unique</option><option value="choix_multiple">Choix multiple</option><option value="vrai_faux">Vrai / Faux</option></select></div><div class="form-group"><label>Points</label><input type="number" min="1" step="1" name="quiz_question_points[' + questionIndex + ']" value="1"></div><div class="form-group quiz-builder-hidden" id="quizTrueFalseBox' + questionIndex + '"><label>Bonne réponse (Vrai/Faux)</label><select name="quiz_tf_correct[' + questionIndex + ']"><option value="true">True</option><option value="false">False</option></select></div></div><div class="form-group" id="quizAnswersBox' + questionIndex + '"><label>Réponses *</label><div class="quiz-builder-answer-list" id="quizAnswerList' + questionIndex + '">' + quizBuilderAnswerRowMarkup(questionIndex, 0, '', false) + quizBuilderAnswerRowMarkup(questionIndex, 1, '', false) + '</div><button type="button" class="btn-inscrit vert" onclick="addQuizBuilderAnswer(\'' + questionIndex + '\')">+ Ajouter une réponse</button></div></div>';
+  container.insertAdjacentHTML('beforeend', html);
+  refreshQuizBuilderQuestionLabels();
+}
+
+// Form validation and message functions
+function ensureFormMessageNode(formElement) {
+  var inlineNode = formElement.querySelector('[data-form-message]');
+  if (inlineNode) return inlineNode;
   var formId = formElement.getAttribute('id');
   if (formId !== null && formId !== '') {
     var linkedNode = document.querySelector('[data-form-message-for="' + formId + '"]');
-    if (linkedNode) {
-      return linkedNode;
-    }
+    if (linkedNode) return linkedNode;
   }
-
   var messageNode = document.createElement('div');
   messageNode.className = 'form-feedback';
   messageNode.setAttribute('data-form-message', '1');
-
   if (formId !== null && formId !== '') {
     messageNode.setAttribute('data-form-message-for', formId);
   }
-
   formElement.insertAdjacentElement('afterend', messageNode);
   return messageNode;
 }
 
-// Clears a form-level message.
-function clearFormMessage(formElement)
-{
+function clearFormMessage(formElement) {
   var messageNode = ensureFormMessageNode(formElement);
   messageNode.textContent = '';
   messageNode.classList.remove('show', 'error', 'success');
 }
 
-// Displays a form-level message.
-function showFormMessage(formElement, status, message)
-{
+function showFormMessage(formElement, status, message) {
   var messageNode = ensureFormMessageNode(formElement);
   messageNode.textContent = message;
   messageNode.classList.remove('error', 'success');
   messageNode.classList.add('show');
-
   if (status === 'success') {
     messageNode.classList.add('success');
   } else {
@@ -1656,110 +3281,41 @@ function showFormMessage(formElement, status, message)
   }
 }
 
-// Removes all visual field errors from a form.
-function clearInputErrors(formElement)
-{
+function clearInputErrors(formElement) {
   var fields = formElement.querySelectorAll('.input-error');
   for (var i = 0; i < fields.length; i++) {
     fields[i].classList.remove('input-error');
   }
 }
 
-// Returns true when value exists in the allowed list.
-function isAllowedOption(value, allowedValues)
-{
+function isAllowedOption(value, allowedValues) {
   for (var i = 0; i < allowedValues.length; i++) {
-    if (value === allowedValues[i]) {
-      return true;
-    }
+    if (value === allowedValues[i]) return true;
   }
-
   return false;
 }
 
-// Returns true when a YYYY-MM-DD value is a valid date.
-function isValidDateValue(value)
-{
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false;
-  }
-
+function isValidDateValue(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   var parts = value.split('-');
   var year = parseInt(parts[0], 10);
   var month = parseInt(parts[1], 10);
   var day = parseInt(parts[2], 10);
   var dateObj = new Date(year, month - 1, day);
-
-  return dateObj.getFullYear() === year
-    && (dateObj.getMonth() + 1) === month
-    && dateObj.getDate() === day;
+  return dateObj.getFullYear() === year && (dateObj.getMonth() + 1) === month && dateObj.getDate() === day;
 }
 
-// Returns true when datetime-local value is valid.
-function isValidDateTimeValue(value)
-{
-  if (value === '') {
-    return true;
-  }
-
-  return !isNaN(Date.parse(value));
-}
-
-// Validates filter form values.
-function validateBackFilterForm(formElement)
-{
+function validateBackUpdateForm(formElement) {
   clearFormMessage(formElement);
   clearInputErrors(formElement);
-
-  var isValid = true;
-  var firstError = '';
-  var queryField = formElement.querySelector('[name="q"]');
-  var niveauField = formElement.querySelector('[name="niveau"]');
-
-  if (queryField) {
-    var queryValue = queryField.value.trim();
-    if (queryValue !== '' && queryValue.length < 2) {
-      queryField.classList.add('input-error');
-      isValid = false;
-      firstError = 'Saisissez au moins 2 caracteres pour la recherche.';
-    }
-  }
-
-  if (niveauField && !isAllowedOption(niveauField.value, ['', 'debutant', 'intermediaire', 'avance'])) {
-    niveauField.classList.add('input-error');
-    isValid = false;
-    if (firstError === '') {
-      firstError = 'Le niveau selectionne est invalide.';
-    }
-  }
-
-  if (!isValid) {
-    showFormMessage(formElement, 'error', firstError);
-  }
-
-  return isValid;
-}
-
-// Validates update form values.
-function validateBackUpdateForm(formElement)
-{
-  clearFormMessage(formElement);
-  clearInputErrors(formElement);
-
   var integerPattern = /^\d+$/;
   var isValid = true;
   var firstError = '';
 
-  function registerError(fieldElement, message)
-  {
-    if (fieldElement) {
-      fieldElement.classList.add('input-error');
-    }
-
+  function registerError(fieldElement, message) {
+    if (fieldElement) fieldElement.classList.add('input-error');
     isValid = false;
-    if (firstError === '') {
-      firstError = message;
-    }
+    if (firstError === '') firstError = message;
   }
 
   var titreField = formElement.querySelector('[name="titre"]');
@@ -1770,185 +3326,53 @@ function validateBackUpdateForm(formElement)
   var certificationField = formElement.querySelector('[name="certification"]');
   var etatField = formElement.querySelector('[name="etat"]');
   var dateField = formElement.querySelector('[name="date_realisation"]');
-  var quizTitreField = formElement.querySelector('[name="quiz_titre"]');
-  var quizDureeField = formElement.querySelector('[name="quiz_duree_minutes"]');
 
   var titreValue = titreField ? titreField.value.trim() : '';
-  if (titreValue === '' || titreValue.length < 3) {
-    registerError(titreField, 'Le titre doit contenir au moins 3 caracteres.');
-  }
-
+  if (titreValue === '' || titreValue.length < 3) registerError(titreField, 'Le titre doit contenir au moins 3 caracteres.');
   var mentorValue = mentorField ? mentorField.value.trim() : '';
-  if (mentorValue === '') {
-    registerError(mentorField, 'Le mentor est obligatoire.');
-  }
-
-  if (niveauField && !isAllowedOption(niveauField.value, ['debutant', 'intermediaire', 'avance'])) {
-    registerError(niveauField, 'Le niveau selectionne est invalide.');
-  }
-
+  if (mentorValue === '') registerError(mentorField, 'Le mentor est obligatoire.');
+  if (niveauField && !isAllowedOption(niveauField.value, ['debutant', 'intermediaire', 'avance'])) registerError(niveauField, 'Le niveau selectionne est invalide.');
   var dureeValue = dureeField ? dureeField.value.trim() : '';
-  if (!integerPattern.test(dureeValue) || parseInt(dureeValue, 10) <= 0) {
-    registerError(dureeField, 'La duree doit etre un entier superieur a 0.');
-  }
-
+  if (!integerPattern.test(dureeValue) || parseInt(dureeValue, 10) <= 0) registerError(dureeField, 'La duree doit etre un entier superieur a 0.');
   var prixValue = prixField ? prixField.value.trim().replace(',', '.') : '';
-  if (prixValue === '' || isNaN(parseFloat(prixValue))) {
-    registerError(prixField, 'Le prix doit etre un nombre valide.');
-  }
-
-  if (certificationField && !isAllowedOption(certificationField.value, ['oui', 'non'])) {
-    registerError(certificationField, 'La certification selectionnee est invalide.');
-  }
-
-  if (etatField && !isAllowedOption(etatField.value, ['Actif', 'Inactif', 'Brouillon'])) {
-    registerError(etatField, 'Le statut selectionne est invalide.');
-  }
-
+  if (prixValue === '' || isNaN(parseFloat(prixValue))) registerError(prixField, 'Le prix doit etre un nombre valide.');
+  if (certificationField && !isAllowedOption(certificationField.value, ['oui', 'non'])) registerError(certificationField, 'La certification selectionnee est invalide.');
+  if (etatField && !isAllowedOption(etatField.value, ['Actif', 'Inactif', 'Brouillon'])) registerError(etatField, 'Le statut selectionne est invalide.');
   var dateValue = dateField ? dateField.value.trim() : '';
-  if (dateValue !== '' && !isValidDateValue(dateValue)) {
-    registerError(dateField, 'La date de realisation est invalide.');
-  }
+  if (dateValue !== '' && !isValidDateValue(dateValue)) registerError(dateField, 'La date de realisation est invalide.');
 
-  var quizTitreValue = quizTitreField ? quizTitreField.value.trim() : '';
-  if (quizTitreValue === '' || quizTitreValue.length < 3) {
-    registerError(quizTitreField, 'Le titre du quiz doit contenir au moins 3 caracteres.');
-  }
-
-  var quizDureeValue = quizDureeField ? quizDureeField.value.trim() : '';
-  if (!integerPattern.test(quizDureeValue) || parseInt(quizDureeValue, 10) <= 0) {
-    registerError(quizDureeField, 'La duree du quiz doit etre un entier superieur a 0.');
-  }
-
-  var workshopTitreField = formElement.querySelector('[name="workshop_titre"]');
-  var workshopDescriptionField = formElement.querySelector('[name="workshop_description"]');
-  var workshopMentorField = formElement.querySelector('[name="workshop_mentor_id"]');
-  var workshopDureeField = formElement.querySelector('[name="workshop_duree"]');
-  var workshopDateField = formElement.querySelector('[name="workshop_date_atelier"]');
-  var workshopLieuField = formElement.querySelector('[name="workshop_lieu"]');
-  var workshopPlacesField = formElement.querySelector('[name="workshop_places_max"]');
-  var workshopPrixField = formElement.querySelector('[name="workshop_prix"]');
-  var workshopCertificationField = formElement.querySelector('[name="workshop_certification"]');
-  var workshopStatutField = formElement.querySelector('[name="workshop_statut"]');
-
-  var workshopTitre = workshopTitreField ? workshopTitreField.value.trim() : '';
-  var workshopDescription = workshopDescriptionField ? workshopDescriptionField.value.trim() : '';
-  var workshopMentor = workshopMentorField ? workshopMentorField.value.trim() : '';
-  var workshopDuree = workshopDureeField ? workshopDureeField.value.trim() : '';
-  var workshopDate = workshopDateField ? workshopDateField.value.trim() : '';
-  var workshopLieu = workshopLieuField ? workshopLieuField.value.trim() : '';
-  var workshopPlaces = workshopPlacesField ? workshopPlacesField.value.trim() : '';
-  var workshopPrix = workshopPrixField ? workshopPrixField.value.trim() : '';
-  var workshopCertification = workshopCertificationField ? workshopCertificationField.value : 'non';
-  var workshopStatut = workshopStatutField ? workshopStatutField.value : 'a_venir';
-
-  var hasWorkshopInput = (
-    workshopTitre !== '' ||
-    workshopDescription !== '' ||
-    workshopMentor !== '' ||
-    workshopDuree !== '' ||
-    workshopDate !== '' ||
-    workshopLieu !== '' ||
-    workshopPlaces !== '' ||
-    workshopPrix !== ''
-  );
-
-  if (hasWorkshopInput) {
-    if (workshopTitre === '' || workshopTitre.length < 3) {
-      registerError(workshopTitreField, 'Le titre du workshop doit contenir au moins 3 caracteres.');
-    }
-
-    if (workshopDescription === '' || workshopDescription.length < 10) {
-      registerError(workshopDescriptionField, 'La description du workshop doit contenir au moins 10 caracteres.');
-    }
-
-    if (workshopMentor !== '' && (!integerPattern.test(workshopMentor) || parseInt(workshopMentor, 10) <= 0)) {
-      registerError(workshopMentorField, 'Le mentor ID du workshop doit etre un entier positif.');
-    }
-
-    if (!integerPattern.test(workshopDuree) || parseInt(workshopDuree, 10) <= 0) {
-      registerError(workshopDureeField, 'La duree du workshop doit etre un entier superieur a 0.');
-    }
-
-    if (!isValidDateTimeValue(workshopDate)) {
-      registerError(workshopDateField, 'La date atelier du workshop est invalide.');
-    }
-
-    if (workshopLieu === '' || workshopLieu.length < 2) {
-      registerError(workshopLieuField, 'Le lieu du workshop est obligatoire (min. 2 caracteres).');
-    }
-
-    if (!integerPattern.test(workshopPlaces) || parseInt(workshopPlaces, 10) <= 0) {
-      registerError(workshopPlacesField, 'Le nombre de places max du workshop doit etre un entier superieur a 0.');
-    }
-
-    var workshopPrixNormalized = workshopPrix.replace(',', '.');
-    if (workshopPrixNormalized === '' || isNaN(parseFloat(workshopPrixNormalized))) {
-      registerError(workshopPrixField, 'Le prix du workshop doit etre un nombre valide.');
-    } else if (parseFloat(workshopPrixNormalized) < 0) {
-      registerError(workshopPrixField, 'Le prix du workshop doit etre superieur ou egal a 0.');
-    }
-
-    if (!isAllowedOption(workshopCertification, ['oui', 'non'])) {
-      registerError(workshopCertificationField, 'La certification du workshop est invalide.');
-    }
-
-    if (!isAllowedOption(workshopStatut, ['a_venir', 'en_cours', 'termine', 'annule'])) {
-      registerError(workshopStatutField, 'Le statut du workshop est invalide.');
-    }
-  }
-
-  if (!isValid) {
-    showFormMessage(formElement, 'error', firstError);
-  }
-
+  if (!isValid) showFormMessage(formElement, 'error', firstError);
   return isValid;
 }
 
-document.addEventListener('DOMContentLoaded', function () {
-  var filterForm = document.getElementById('formBackToolbarFilters');
-  if (filterForm) {
-    filterForm.addEventListener('submit', function (event) {
-      if (!validateBackFilterForm(filterForm)) {
-        event.preventDefault();
-      }
-    });
-
-    var filterFields = filterForm.querySelectorAll('input, select');
-    for (var i = 0; i < filterFields.length; i++) {
-      (function (fieldElement) {
-        var eventName = fieldElement.tagName === 'SELECT' ? 'change' : 'input';
-        fieldElement.addEventListener(eventName, function () {
-          fieldElement.classList.remove('input-error');
-          clearFormMessage(filterForm);
-        });
-      })(filterFields[i]);
-    }
-  }
-
+document.addEventListener('DOMContentLoaded', function() {
   var updateForm = document.getElementById('formBackUpdateFormation');
   if (updateForm) {
-    updateForm.addEventListener('submit', function (event) {
-      if (!validateBackUpdateForm(updateForm)) {
-        event.preventDefault();
-      }
+    updateForm.addEventListener('submit', function(event) {
+      if (!validateBackUpdateForm(updateForm)) event.preventDefault();
     });
-
     var updateFields = updateForm.querySelectorAll('input, textarea, select');
     for (var j = 0; j < updateFields.length; j++) {
-      (function (fieldElement) {
-        var eventName = 'input';
-        if (fieldElement.tagName === 'SELECT' || fieldElement.type === 'checkbox' || fieldElement.type === 'radio') {
-          eventName = 'change';
-        }
-
-        fieldElement.addEventListener(eventName, function () {
+      (function(fieldElement) {
+        var eventName = fieldElement.tagName === 'SELECT' ? 'change' : 'input';
+        fieldElement.addEventListener(eventName, function() {
           fieldElement.classList.remove('input-error');
           clearFormMessage(updateForm);
         });
       })(updateFields[j]);
     }
   }
+  
+  var typeSelects = document.querySelectorAll('.quiz-builder-type-select');
+  for (var ts = 0; ts < typeSelects.length; ts++) {
+    var typeSelect = typeSelects[ts];
+    var questionIndex = typeSelect.getAttribute('data-question-index');
+    if (questionIndex !== null && questionIndex !== '') {
+      onQuizBuilderTypeChange(typeSelect, questionIndex);
+    }
+  }
+  
+  refreshQuizBuilderQuestionLabels();
 });
 </script>
 </body>
