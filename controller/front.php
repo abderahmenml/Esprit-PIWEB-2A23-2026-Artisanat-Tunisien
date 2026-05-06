@@ -71,7 +71,7 @@ function translateWithGroq($text)
         return ['ar' => '', 'en' => ''];
     }
 
-    $apiKey = defined('GROQ_API_KEY') ? GROQ_API_KEY : '';
+    //$apiKey = defined('GROQ_API_KEY') ? GROQ_API_KEY : '';
     if ($apiKey === '') {
         return ['ar' => '', 'en' => ''];
     }
@@ -98,7 +98,7 @@ function translateWithGroq($text)
         ]
     ]);
 
-    $response = @file_get_contents('https://api.groq.com/openai/v1/chat/completions', false, $ctx);
+    //$response = @file_get_contents('https://api.groq.com/openai/v1/chat/completions', false, $ctx);
     if ($response === false) {
         return ['ar' => '', 'en' => ''];
     }
