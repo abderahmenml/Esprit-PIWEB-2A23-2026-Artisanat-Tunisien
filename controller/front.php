@@ -5336,6 +5336,6 @@ async function speakDarijaTextGoogle(buttonElement, text) {
 }
 </script>
 
-<?php include 'ai_widget_front.php'; ?>
+
 </body>
 </html>
