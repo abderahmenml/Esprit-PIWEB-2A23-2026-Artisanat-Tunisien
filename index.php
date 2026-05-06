@@ -260,6 +260,30 @@ switch ($uriPath) {
         }
         break;
 
+    case '/profil/generatePpeiAi':
+        if ($method === 'POST') {
+            $profilController->generatePpeiAi();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
+case '/profil/chatbot':
+    if ($method === 'POST') {
+        $profilController->chatbot();
+    } else {
+        $methodNotAllowed = true;
+    }
+    break;
+
+    case '/profil/generateBioFromText':
+        if ($method === 'POST') {
+            $profilController->generateBioFromText();
+        } else {
+            $methodNotAllowed = true;
+        }
+        break;
+
     case '/profil/optimizeCvAi':
         if ($method === 'POST') {
             $profilController->optimizeCvAi();

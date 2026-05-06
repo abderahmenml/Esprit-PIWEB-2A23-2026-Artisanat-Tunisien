@@ -578,7 +578,7 @@ class AdminController
 
         try {
             $pdo = getPDO();
-            $stmt = $pdo->prepare("\n                INSERT INTO competences (nom_competence, description, id_user, niveau, ordre, bio)\n                VALUES (?, ?, 0, 100, 0, NULL)\n            ");
+            $stmt = $pdo->prepare("\n                INSERT INTO competences (nom_competence, description, id_user, niveau, ordre)\n                VALUES (?, ?, 0, 100, 0)\n            ");
             $stmt->execute([$nom, $description]);
             $this->flashAdmin('success', 'Competence ajoutee.');
         } catch (Exception) {

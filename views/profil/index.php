@@ -7,6 +7,7 @@ $profileCssVersion = (string)(@filemtime(__DIR__ . '/../../public/css/style.css'
 $profileJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/index.js') ?: time());
 $cvBuilderJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/cv-builder.js') ?: time());
 $chatbotJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/chatbot-widget.js') ?: time());
+$bioHandlerJsVersion = (string)(@filemtime(__DIR__ . '/../../public/js/bio-handler.js') ?: time());
 $chatbotProfileId = (int)($user['id_user'] ?? ($_SESSION['user_id'] ?? 0));
 $cvSeedData = [
     'personal' => [
@@ -46,11 +47,7 @@ $cvSeedData = [
         'impact' => (int)($popularityScore ?? 0),
         'readability' => 78
     ],
-    'tips' => [
-        'Ajoutez des resultats mesurables dans vos experiences.',
-        'Conservez uniquement les competences les plus pertinentes.',
-        'Gardez un resume de 4 a 6 lignes pour maximiser la lisibilite.'
-    ],
+    'tips' => [],
     'language' => 'fr',
     'template' => 'moderne',
     'primaryColor' => '#2E6B3E'
@@ -71,12 +68,13 @@ $cvSeedData = [
     <script src="<?= htmlspecialchars(app_url('/public/js/cv-builder.js?v=' . $cvBuilderJsVersion)) ?>" defer></script>
     <script>
         window.ChatbotConfig = {
-            endpoint: <?= json_encode(app_url('/api/chatbot.php')) ?>,
+            endpoint: <?= json_encode(app_url('/profil/chatbot')) ?>,
             profilId: <?= (int)$chatbotProfileId ?>,
             provider: 'ollama'
         };
     </script>
     <script src="<?= htmlspecialchars(app_url('/public/js/chatbot-widget.js?v=' . $chatbotJsVersion)) ?>" defer></script>
+    <script src="<?= htmlspecialchars(app_url('/public/js/bio-handler.js?v=' . $bioHandlerJsVersion)) ?>" defer></script>
     <script type="application/json" id="cv-ai-seed">
 <?= json_encode($cvSeedData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) ?>
     </script>
@@ -123,6 +121,9 @@ $cvSeedData = [
                         <div class="avatar-badge"></div>
                     </div>
                     <div class="profile-name"><?= htmlspecialchars($user['prenom'] . ' ' . $user['nom']) ?></div>
+                    <?php if (trim((string)$bio) !== ''): ?>
+                        <div class="profile-bio"><?= nl2br(htmlspecialchars((string)$bio)) ?></div>
+                    <?php endif; ?>
                     <div class="profile-title"><?= htmlspecialchars($specialite) ?></div>
                     <div class="profile-location">📍 <?= htmlspecialchars($ville) ?></div>
                     <?php
@@ -158,6 +159,33 @@ $cvSeedData = [
                         <div class="stat-num"><?= $total_mentores ?></div>
                         <div class="stat-label">Mentorés</div>
                     </div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="section-title">PPÉI</div>
+                <div class="stats-row" style="margin-top:.3rem;">
+                    <div class="stat-item">
+                        <div class="stat-num"><?= (int)$profileScore ?>%</div>
+                        <div class="stat-label">Score</div>
+                    </div>
+                    <div class="stat-divider"></div>
+                    <div class="stat-item">
+                        <div class="stat-num"><?= (int)$completionScore ?>%</div>
+                        <div class="stat-label">Complétion</div>
+                    </div>
+                    <div class="stat-divider"></div>
+                    <div class="stat-item">
+                        <div class="stat-num"><?= (int)$popularityScore ?>%</div>
+                        <div class="stat-label">Impact</div>
+                    </div>
+                </div>
+                <div id="ppei-summary-sidebar" style="margin-top:.9rem;line-height:1.6;color:var(--marron);font-size:.95rem;">
+                    <?= htmlspecialchars((string)$professionalSummary) ?>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:.45rem;margin-top:.9rem;">
+                    <span class="badge <?= $isTrending ? 'green' : 'orange' ?>"><?= $isTrending ? 'Profil en tendance' : 'Potentiel à renforcer' ?></span>
+                    <span class="badge green"><?= (int)$suggestedOpportunities ?> opportunités</span>
+                    <span class="badge"><?= (int)count($skillGaps) ?> écarts de compétences</span>
                 </div>
             </div>
             <!-- Disponibilité -->
@@ -200,10 +228,97 @@ $cvSeedData = [
             <!-- Onglets -->
             <div class="card" style="padding:.75rem 1rem;">
                 <div class="tabs" id="profile-tabs">
+                    <div class="tab" onclick="switchTab('ppei')">🧠 PPÉI</div>
                     <div class="tab active" onclick="switchTab('bio')">📋 Bio</div>
                     <div class="tab" onclick="switchTab('portfolio')">🖼️ Portfolio</div>
                     <div class="tab" onclick="switchTab('experiences')">💼 Expériences</div>
                     <div class="tab" onclick="switchTab('avis')">⭐ Avis</div>
+                </div>
+            </div>
+            <div class="tab-panel" id="panel-ppei">
+                <div class="card">
+                    <div class="section-title">PPÉI - Profil Professionnel Évolutif Intelligent</div>
+                    <div class="stats-row" style="margin-top:.5rem;">
+                        <div class="stat-item">
+                            <div class="stat-num"><?= (int)$profileScore ?>%</div>
+                            <div class="stat-label">Score global</div>
+                        </div>
+                        <div class="stat-divider"></div>
+                        <div class="stat-item">
+                            <div class="stat-num"><?= (int)$completionScore ?>%</div>
+                            <div class="stat-label">Profil complété</div>
+                        </div>
+                        <div class="stat-divider"></div>
+                        <div class="stat-item">
+                            <div class="stat-num"><?= (int)$popularityScore ?>%</div>
+                            <div class="stat-label">Impact marché</div>
+                        </div>
+                    </div>
+
+                    <div id="ppei-summary-panel" style="margin-top:1rem;padding:1rem;border-radius:1rem;background:#f8f5f0;border:1px solid #eee0cb;line-height:1.8;color:var(--marron);">
+                        <?= htmlspecialchars((string)$professionalSummary) ?>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin-top:1rem;">
+                        <div style="padding:1rem;border-radius:1rem;background:#fff;border:1px solid #eee0cb;">
+                            <div class="section-title" style="margin-top:0;">Compétences à renforcer</div>
+                            <?php if (!empty($skillGaps)): ?>
+                                <ul style="margin:.5rem 0 0;padding-left:1.2rem;line-height:1.7;">
+                                    <?php foreach (array_slice((array)$skillGaps, 0, 4) as $gap): ?>
+                                        <li><?= htmlspecialchars((string)$gap) ?></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php else: ?>
+                                <p class="empty-text" style="margin-bottom:0;">Aucun écart critique détecté.</p>
+                            <?php endif; ?>
+                        </div>
+                        <div style="padding:1rem;border-radius:1rem;background:#fff;border:1px solid #eee0cb;">
+                            <div class="section-title" style="margin-top:0;">Pistes de carrière</div>
+                            <?php if (!empty($careerPaths)): ?>
+                                <ul style="margin:.5rem 0 0;padding-left:1.2rem;line-height:1.7;">
+                                    <?php foreach (array_slice((array)$careerPaths, 0, 4) as $path): ?>
+                                        <li><?= htmlspecialchars((string)$path) ?></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            <?php else: ?>
+                                <p class="empty-text" style="margin-bottom:0;">Aucune piste prioritaire détectée.</p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <div style="margin-top:1rem;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;">
+                        <div style="padding:1rem;border-radius:1rem;background:#fff7ee;border:1px solid #eee0cb;">
+                            <div class="section-title" style="margin-top:0;">Jobs suggérés</div>
+                            <?php if (!empty($suggestedJobs)): ?>
+                                <div style="display:flex;flex-wrap:wrap;gap:.45rem;">
+                                    <?php foreach (array_slice((array)$suggestedJobs, 0, 6) as $job): ?>
+                                        <span class="badge green"><?= htmlspecialchars((string)$job) ?></span>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php else: ?>
+                                <p class="empty-text" style="margin-bottom:0;">Aucune suggestion disponible.</p>
+                            <?php endif; ?>
+                        </div>
+                        <div style="padding:1rem;border-radius:1rem;background:#fff;border:1px solid #eee0cb;">
+                            <div class="section-title" style="margin-top:0;">État du profil</div>
+                            <p style="margin:.4rem 0 0;line-height:1.7;">
+                                <?= $isTrending ? 'Votre profil montre une dynamique forte sur le marché.' : 'Votre profil est solide, mais certains signaux peuvent encore progresser.' ?>
+                            </p>
+                            <p style="margin:.75rem 0 0;color:#8b5a3a;">
+                                Dernière synchronisation : <?= htmlspecialchars((string)($insightLastCalcAt ?? 'mise à jour à la volée')) ?>
+                            </p>
+                        </div>
+                    </div>
+
+                            <div style="margin-top:1rem;display:flex;flex-wrap:wrap;gap:.55rem;">
+                                        <button type="button" id="ppei-generate-btn" class="cv-ia-mini-btn" onclick="if(document.getElementById('bio-generate')) { document.getElementById('bio-generate').click(); switchTab('bio'); } else { alert('Allez dans l\"onglet Bio pour générer'); }">🚀 Générer bio professionnelle</button>
+                                <button type="button" class="cv-ia-mini-btn" onclick="window.location.href='<?= htmlspecialchars(app_url('/profil/gestion_competences')) ?>';">💡 Compétences</button>
+                                <button type="button" class="cv-ia-mini-btn" onclick="window.location.href='<?= htmlspecialchars(app_url('/profil/gestion_certifications')) ?>';">🎓 Certifications</button>
+                                <button type="button" class="cv-ia-mini-btn" onclick="switchTab('experiences');document.querySelector('#panel-experiences .card').scrollIntoView({behavior:'smooth',block:'start'});">💼 Expériences</button>
+                                <button type="button" class="cv-ia-mini-btn" onclick="switchTab('portfolio');document.querySelector('[data-doc-tools=\"true\"]').scrollIntoView({behavior:'smooth',block:'start'});">🖼️ Portfolio</button>
+                                <button type="button" class="cv-ia-mini-btn" onclick="switchTab('bio');document.getElementById('cv-ia-studio').scrollIntoView({behavior:'smooth',block:'start'});">🧠 IA intégrée</button>
+                                <button type="button" class="cv-ia-mini-btn" onclick="document.querySelector('[data-completion-submit=\"true\"]').click();">📈 Recalcul IA</button>
+                            </div>
                 </div>
             </div>
             <!-- Panel Bio -->
@@ -211,25 +326,25 @@ $cvSeedData = [
                 <div class="card">
                     <div class="section-title">À propos</div>
                     <?php $hasBio = trim((string)$bio) !== ''; ?>
-                    <form id="bio-inline-form" action="<?= htmlspecialchars(app_url($hasBio ? '/profil/updateBio' : '/profil/addBio')) ?>" method="post" data-ajax-add="true" data-ajax-bio="true" style="background:#f8f5f0;padding:1rem;border-radius:1rem;">
-                        <label for="bio-inline" style="display:block;font-weight:600;color:var(--marron);margin-bottom:.5rem;">Votre bio professionnelle</label>
-                        <textarea id="bio-inline" name="bio" maxlength="2000" rows="6" placeholder="Saisissez votre bio ici..." style="width:100%;padding:.75rem;border-radius:.75rem;border:1px solid #e0d6c3;background:#fff7ee;resize:vertical;"><?= htmlspecialchars($hasBio ? $bio : '') ?></textarea>
-                        <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:.75rem;">
-                            <?php if ($hasBio): ?>
-                                <button type="submit" class="btn-primary" data-bio-submit="true">Modifier une bio existante</button>
-                            <?php else: ?>
-                                <button type="submit" class="btn-primary" data-bio-submit="true">Ajouter une bio</button>
-                            <?php endif; ?>
+                    <!-- Zone d'affichage de la bio -->
+                    <div id="bio-display" style="margin-bottom:1rem; padding:1rem; background:#f8f5f0; border-radius:0.75rem;">
+                        <div style="font-weight:600; color:var(--vert); margin-bottom:0.5rem;">📝 Bio professionnelle</div>
+                        <div id="bio-text" style="line-height:1.6; white-space:pre-wrap;">
+                            <?= $hasBio ? htmlspecialchars((string)$bio) : 'Aucune bio pour le moment. Cliquez sur "Générer" pour en créer une.' ?>
                         </div>
-                    </form>
-                    <?php if ($hasBio): ?>
-                        <form action="<?= htmlspecialchars(app_url('/profil/deleteBio')) ?>" method="post" style="margin-top:.75rem;display:flex;justify-content:flex-end;" onsubmit="return confirm('Supprimer votre bio ?');">
-                            <button type="submit" class="btn-secondary">Supprimer une bio</button>
-                        </form>
-                        <p class="bio-text" data-bio-display="true" style="margin-top:1rem;"><?= nl2br(htmlspecialchars($bio)) ?></p>
-                    <?php else: ?>
-                        <p class="bio-text" data-bio-display="true" style="margin-top:1rem;color:#777;">Aucune biographie disponible.</p>
-                    <?php endif; ?>
+                    </div>
+
+                    <!-- Zone d'édition (cachée par défaut) -->
+                    <div id="bio-edit" style="display:none;">
+                        <textarea id="bio-textarea" rows="4" style="width:100%; padding:0.75rem; border-radius:0.75rem; border:1px solid #e0d6c3;"><?= $hasBio ? htmlspecialchars((string)$bio) : '' ?></textarea>
+                        <button id="bio-save" class="btn-secondary" style="margin-top:0.5rem;">💾 Sauvegarder</button>
+                        <button id="bio-cancel" class="btn-secondary" style="margin-top:0.5rem;">❌ Annuler</button>
+                    </div>
+
+                    <button id="bio-edit-btn" class="btn-secondary" style="margin-bottom:1rem;">✏️ Modifier la bio</button>
+                    <button id="bio-generate" class="btn-primary">🚀 Générer une version professionnelle (Ollama)</button>
+
+                    <div id="bio-status" style="margin-top:0.75rem; font-size:0.9rem; color:#666;"></div>
                 </div>
                 <div class="card">
                     <div class="section-title">Informations professionnelles</div>
@@ -313,11 +428,11 @@ $cvSeedData = [
                 <div class="card cv-ia-studio" id="cv-ia-studio" style="margin-top:1.5rem;">
                     <div class="cv-ia-header-row">
                         <div>
-                            <div class="section-title" style="margin-bottom:.3rem;">🦙 CV Studio Intelligent avec Ollama</div>
-                            <p class="cv-ia-subtitle">Générateur de CV intelligent alimenté par Ollama local. Personnalisez vos informations, générez avec IA, optimisez et téléchargez en PDF professionnel.</p>
+                            <div class="section-title" style="margin-bottom:.3rem;">🤖 CV Studio Intelligent avec IA intégrée</div>
+                            <p class="cv-ia-subtitle">Générateur de CV intelligent alimenté par une IA locale. Personnalisez vos informations, générez avec IA, optimisez et téléchargez en PDF professionnel.</p>
                         </div>
                         <div class="cv-ia-badges">
-                            <span class="cv-ia-badge" title="Powered by Ollama">🦙 Ollama</span>
+                            <span class="cv-ia-badge" title="Moteur IA local">🧠 IA locale</span>
                             <span class="cv-ia-badge" title="ATS Optimized">✅ ATS</span>
                             <span class="cv-ia-badge" title="PDF Export">📄 PDF</span>
                             <span class="cv-ia-badge" title="Multi-Language">🌍 Multilingue</span>
@@ -325,7 +440,7 @@ $cvSeedData = [
                     </div>
 
                     <div class="cv-ia-actions-row">
-                        <button type="button" class="cv-ia-btn cv-ia-btn-generate" id="cv-ia-generate">🚀 Générer avec Ollama</button>
+                        <button type="button" class="cv-ia-btn cv-ia-btn-generate" id="cv-ia-generate">🚀 Générer avec IA intégrée</button>
                         <button type="button" class="cv-ia-btn cv-ia-btn-optimize" id="cv-ia-optimize">⚡ Optimiser IA</button>
                         <button type="button" class="cv-ia-btn cv-ia-btn-download" id="cv-ia-download">📥 Télécharger (PDF)</button>
                         <span class="cv-ia-status" id="cv-ia-status"></span>
@@ -370,7 +485,7 @@ $cvSeedData = [
                             </div>
 
                             <div class="cv-ia-tab-panel" data-cv-panel="skills">
-                                <p style="font-size:.85rem;color:#666;margin-bottom:.75rem;">Ajoutez vos compétences professionnelles. Ollama les reformulera de manière plus impactante.</p>
+                                <p style="font-size:.85rem;color:#666;margin-bottom:.75rem;">Ajoutez vos compétences professionnelles. L'IA locale les reformulera de manière plus impactante.</p>
                                 <div class="cv-ia-inline-tools">
                                     <button type="button" class="cv-ia-mini-btn" id="cv-add-skill">➕ Ajouter compétence</button>
                                 </div>
@@ -410,7 +525,7 @@ $cvSeedData = [
                                 </div>
                                 <div class="cv-ia-grid-two" style="margin-top:.75rem;">
                                     <div>
-                                        <label>Modèle Ollama</label>
+                                        <label>Modèle IA locale</label>
                                         <select id="cv-model">
                                             <option value="mistral" selected>Mistral (rapide)</option>
                                             <option value="llama3">Llama 3 (précis)</option>
@@ -425,7 +540,7 @@ $cvSeedData = [
                                     </div>
                                 </div>
                                 <div style="margin-top:1rem;padding:.75rem;background:#f8f5f0;border-radius:.75rem;border-left:4px solid #2E6B3E;">
-                                    <p style="font-size:.85rem;color:#555;"><strong>💡 Conseil:</strong> Ollama doit être lancé sur <code>localhost:11434</code> pour que la génération fonctionne.</p>
+                                    <p style="font-size:.85rem;color:#555;"><strong>💡 Conseil:</strong> Le moteur IA local doit être lancé sur <code>localhost:11434</code> pour que la génération fonctionne.</p>
                                 </div>
                             </div>
                         </div>
@@ -437,7 +552,7 @@ $cvSeedData = [
                                 <div class="cv-score"><span class="cv-score-label">Lisibilité</span> <strong>—</strong></div>
                             </div>
                             <div class="cv-ia-tips" id="cv-ia-tips">
-                                <div class="cv-tip">💡 Remplissez vos informations pour voir les recommandations</div>
+                                <div class="cv-tip">💡 Cliquez sur « Générer PPÉI (Ollama) » pour obtenir des conseils IA personnalisés.</div>
                             </div>
                             <div class="cv-ia-preview cv-template-moderne" id="cv-preview">
                                 <p style="padding:2rem;text-align:center;color:#999;">Aperçu du CV apparaîtra ici...</p>
@@ -866,6 +981,217 @@ $cvSeedData = [
                         </div>
         </main>
     </div>
+    <script>
+        (function(){
+            function setBusy(on){
+                var btn = document.getElementById('ppei-generate-btn');
+                var inline = document.getElementById('ppei-generate-inline');
+                if(btn) btn.disabled = on;
+                if(inline) inline.disabled = on;
+            }
+
+            async function generatePpei(){
+                setBusy(true);
+                try{
+                    var resp = await fetch('<?= htmlspecialchars(app_url('/profil/generatePpeiAi')) ?>', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {'X-Requested-With':'XMLHttpRequest'},
+                        body: new URLSearchParams({language: 'fr', model: 'mistral'})
+                    });
+                    var json = await resp.json().catch(function(){return null;});
+                    if(!json || !json.success){
+                        alert('Erreur: génération IA impossible.');
+                        return;
+                    }
+                    var bio = (json.data && json.data.bio) ? json.data.bio : '';
+                    // Update displays
+                    var display = document.getElementById('bio-generated-display');
+                    if(display){ display.innerHTML = bio ? bio.replace(/\n/g, '<br>') : '<span style="color:#777;">Aucune biographie disponible.</span>'; }
+                    var side = document.getElementById('ppei-summary-sidebar');
+                    if(side){ side.textContent = bio || ''; }
+                    var panel = document.getElementById('ppei-summary-panel');
+                    if(panel){ panel.textContent = bio || ''; }
+                    // Update IA tips if provided
+                    try{
+                        var tipsEl = document.getElementById('cv-ia-tips');
+                        if(tipsEl){
+                            tipsEl.innerHTML = '';
+                            var tips = json.data && json.data.tips ? json.data.tips : [];
+                            if(Array.isArray(tips) && tips.length > 0){
+                                tips.forEach(function(t){
+                                    var d = document.createElement('div');
+                                    d.className = 'cv-tip';
+                                    d.textContent = '• ' + t;
+                                    tipsEl.appendChild(d);
+                                });
+                            } else {
+                                tipsEl.innerHTML = '<div class="cv-tip">💡 Aucun conseil IA généré.</div>';
+                            }
+                        }
+                    }catch(e){
+                        console.error('Erreur mise à jour conseils IA', e);
+                    }
+
+                    alert('PPÉI généré avec Ollama.');
+                }catch(e){
+                    console.error(e);
+                    alert('Erreur réseau lors de la génération IA.');
+                }finally{
+                    setBusy(false);
+                }
+            }
+
+            var btn = document.getElementById('ppei-generate-btn');
+            if(btn){ btn.addEventListener('click', function(){ if(confirm('Générer le PPÉI avec Ollama ? Le texte sera enregistré automatiquement.')) generatePpei(); }); }
+            var inlineBtn = document.getElementById('ppei-generate-inline');
+            if(inlineBtn){ inlineBtn.addEventListener('click', function(){ if(confirm('Générer le PPÉI avec Ollama ? Le texte sera enregistré automatiquement.')) generatePpei(); }); }
+        })();
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var bioDisplay = document.getElementById('bio-display');
+            var bioEdit = document.getElementById('bio-edit');
+            var bioText = document.getElementById('bio-text');
+            var bioTextarea = document.getElementById('bio-textarea');
+            var bioEditBtn = document.getElementById('bio-edit-btn');
+            var bioSave = document.getElementById('bio-save');
+            var bioCancel = document.getElementById('bio-cancel');
+            var bioGenerate = document.getElementById('bio-generate');
+            var bioStatus = document.getElementById('bio-status');
+
+            if (!bioDisplay || !bioEdit || !bioText || !bioTextarea || !bioEditBtn || !bioSave || !bioCancel || !bioGenerate || !bioStatus) {
+                return;
+            }
+
+            function setStatus(message, color) {
+                bioStatus.textContent = message || '';
+                if (color) {
+                    bioStatus.style.color = color;
+                } else {
+                    bioStatus.style.color = '#666';
+                }
+            }
+
+            bioEditBtn.addEventListener('click', function() {
+                bioDisplay.style.display = 'none';
+                bioEdit.style.display = 'block';
+                bioTextarea.value = bioText.innerText.trim();
+                setStatus('');
+            });
+
+            bioCancel.addEventListener('click', function() {
+                bioDisplay.style.display = 'block';
+                bioEdit.style.display = 'none';
+                setStatus('');
+            });
+
+            bioSave.addEventListener('click', function() {
+                var newBio = bioTextarea.value.trim();
+                if (!newBio) {
+                    setStatus('❌ La bio ne peut pas être vide', '#ef4444');
+                    return;
+                }
+
+                bioSave.disabled = true;
+                bioSave.textContent = 'Sauvegarde...';
+                setStatus('');
+
+                var formData = new URLSearchParams();
+                formData.append('bio', newBio);
+
+                fetch(appUrl('/profil/updateBio'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: formData
+                })
+                .then(function(resp) {
+                    if (!resp.ok) {
+                        throw new Error('Erreur HTTP ' + resp.status);
+                    }
+                    var contentType = resp.headers.get('content-type') || '';
+                    if (contentType.indexOf('application/json') !== -1) {
+                        return resp.json();
+                    }
+                    return resp.text();
+                })
+                .then(function(data) {
+                    var isSuccess = true;
+                    if (data && typeof data === 'object' && typeof data.success !== 'undefined') {
+                        isSuccess = !!data.success;
+                    }
+                    if (isSuccess) {
+                        bioText.innerText = newBio;
+                        bioDisplay.style.display = 'block';
+                        bioEdit.style.display = 'none';
+                        setStatus('✅ Bio sauvegardée', '#10b981');
+                        setTimeout(function() { setStatus(''); }, 3000);
+                    } else {
+                        setStatus('❌ Erreur lors de la sauvegarde', '#ef4444');
+                    }
+                })
+                .catch(function() {
+                    setStatus('❌ Erreur lors de la sauvegarde', '#ef4444');
+                })
+                .finally(function() {
+                    bioSave.disabled = false;
+                    bioSave.textContent = '💾 Sauvegarder';
+                });
+            });
+
+            bioGenerate.addEventListener('click', function() {
+                bioGenerate.disabled = true;
+                bioGenerate.textContent = 'Génération en cours...';
+                setStatus('⏳ Connexion à Ollama...', '#666');
+
+                var formData = new URLSearchParams();
+                formData.append('language', 'fr');
+                formData.append('model', 'mistral');
+
+                fetch(appUrl('/profil/generatePpeiAi'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: formData
+                })
+                .then(function(resp) {
+                    if (!resp.ok) {
+                        throw new Error('Erreur HTTP ' + resp.status);
+                    }
+                    return resp.json();
+                })
+                .then(function(data) {
+                    if (data.success && data.data && data.data.bio) {
+                        var newBio = data.data.bio;
+                        bioText.innerText = newBio;
+                        bioTextarea.value = newBio;
+                        setStatus('✅ Bio générée avec succès !', '#10b981');
+                        bioDisplay.style.display = 'block';
+                        bioEdit.style.display = 'none';
+                    } else {
+                        throw new Error(data.message || 'Erreur');
+                    }
+                })
+                .catch(function(err) {
+                    setStatus('❌ ' + (err.message || 'Erreur de génération'), '#ef4444');
+                })
+                .finally(function() {
+                    bioGenerate.disabled = false;
+                    bioGenerate.textContent = '🚀 Générer une version professionnelle (Ollama)';
+                    setTimeout(function() {
+                        if (bioStatus.textContent.indexOf('succès') !== -1) {
+                            setStatus('');
+                        }
+                    }, 5000);
+                });
+            });
+        });
+    </script>
 
     <div id="chatbot-widget" class="chatbot-widget" aria-live="polite">
         <button type="button" id="chatbot-toggle" class="chatbot-toggle" aria-label="Ouvrir assistant">
@@ -876,7 +1202,7 @@ $cvSeedData = [
             <header class="chatbot-header">
                 <div>
                     <div class="chatbot-title">Assistant IA</div>
-                    <div class="chatbot-subtitle" id="chatbot-provider-label">Ollama</div>
+                    <div class="chatbot-subtitle" id="chatbot-provider-label">IA intégrée</div>
                 </div>
                 <button type="button" id="chatbot-close" class="chatbot-close" aria-label="Fermer assistant">✕</button>
             </header>

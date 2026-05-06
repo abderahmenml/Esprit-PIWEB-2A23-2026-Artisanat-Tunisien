@@ -3,7 +3,7 @@
 session_start();
 require_once __DIR__ . '/../config/config.php';
 
-header('Content-Type: application/json; charset=utf-8');
+header("Content-Type: application/json");
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -158,8 +158,8 @@ if (!empty($user['specialite'])) {
 
 function callOllama(array $messages, bool $warmup = false): ?string
 {
-    $baseUrl = rtrim((string)(getenv('OLLAMA_BASE_URL') ?: 'http://127.0.0.1:11434'), '/');
-    $model = trim((string)(getenv('OLLAMA_MODEL') ?: 'phi3:mini'));
+    $baseUrl = rtrim((string)get_ollama_base_url(), '/');
+    $model = get_ollama_model();
 
     $payload = [
         'model' => $model,
@@ -270,6 +270,19 @@ if ($reply !== null && $reply !== '') {
 
 if ($reply === null || $reply === '') {
     $reply = 'Je rencontre un souci temporaire de réponse. Reformulez votre question en une phrase simple, et je vous répondrai avec précision.';
+}
+
+// Persist chat messages (non-fatal)
+try {
+    $pdo = getPDO();
+    $userId = (int)($_SESSION['user_id'] ?? 0);
+    // store user message
+    $stmt = $pdo->prepare("INSERT INTO chat_messages (profil_id, user_id, role, content) VALUES (?, ?, ?, ?)");
+    $stmt->execute([$profilId, $userId, 'user', $body['message'] ?? '']);
+    // store assistant reply
+    $stmt->execute([$profilId, $userId, 'assistant', $reply]);
+} catch (Exception $e) {
+    // ignore persistence errors
 }
 
 echo json_encode([

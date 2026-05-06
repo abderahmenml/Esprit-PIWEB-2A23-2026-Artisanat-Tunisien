@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HERFA - Intelligent and Adaptive CV</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <div class="brand">HERFA</div>
+      <h1>Intelligent and Adaptive CV</h1>
+      <p class="subtitle">Rule-based CV assistant for career orientation.</p>
+    </header>
+
+    <main class="layout">
+      <section class="card wizard">
+        <div class="card-header">
+          <h2>Professional Project Assistant</h2>
+          <div class="step-indicator" id="step-indicator">Step 1 of 4</div>
+        </div>
+
+        <div class="steps" id="steps">
+          <div class="step is-active" data-step="1">
+            <label for="job-select">Target job or sector</label>
+            <select id="job-select">
+              <option value="">Select a target job</option>
+              <option value="web_dev">Web Developer</option>
+              <option value="ux_ui">UX/UI Designer</option>
+              <option value="data_analyst">Data Analyst</option>
+              <option value="digital_marketing">Digital Marketing</option>
+              <option value="artisan">Crafts Artisan</option>
+            </select>
+            <div class="helper">This choice drives skills, keywords, and objective.</div>
+          </div>
+
+          <div class="step" data-step="2">
+            <label>Top 3 skills</label>
+            <div class="input-grid">
+              <input type="text" id="skill-1" placeholder="Skill 1" />
+              <input type="text" id="skill-2" placeholder="Skill 2" />
+              <input type="text" id="skill-3" placeholder="Skill 3" />
+            </div>
+            <div class="helper">Use short keywords like "HTML", "Branding", "Excel".</div>
+          </div>
+
+          <div class="step" data-step="3">
+            <label for="experience">Experience</label>
+            <textarea id="experience" rows="4" placeholder="Internship, personal project, volunteering..."></textarea>
+            <div class="helper">Briefly describe what you did and results.</div>
+          </div>
+
+          <div class="step" data-step="4">
+            <label for="education">Education level (optional)</label>
+            <select id="education">
+              <option value="">Select level</option>
+              <option value="high_school">High school</option>
+              <option value="bachelor">Bachelor</option>
+              <option value="master">Master</option>
+              <option value="training">Professional training</option>
+            </select>
+            <div class="helper">This will be used in the objective line.</div>
+          </div>
+        </div>
+
+        <div class="wizard-actions">
+          <button type="button" class="btn ghost" id="prev-btn">Previous</button>
+          <button type="button" class="btn" id="next-btn">Next</button>
+        </div>
+      </section>
+
+      <section class="card results">
+        <div class="card-header">
+          <h2>Generated CV Insights</h2>
+          <button type="button" class="btn ghost" id="reset-btn">Reset</button>
+        </div>
+
+        <div class="result-grid">
+          <div class="result-block">
+            <div class="label">CV Title</div>
+            <div class="value" id="cv-title">-</div>
+          </div>
+          <div class="result-block">
+            <div class="label">Objective</div>
+            <div class="value" id="cv-objective">-</div>
+          </div>
+          <div class="result-block">
+            <div class="label">Suggested Skills</div>
+            <div class="tags" id="cv-skills"></div>
+          </div>
+          <div class="result-block">
+            <div class="label">Relevant Interests</div>
+            <div class="tags" id="cv-interests"></div>
+          </div>
+        </div>
+
+        <div class="score-block">
+          <div class="label">Job Matching Score</div>
+          <div class="score-row">
+            <div class="progress">
+              <div class="progress-bar" id="score-bar"></div>
+            </div>
+            <div class="score-value" id="score-value">0%</div>
+          </div>
+        </div>
+
+        <div class="result-block">
+          <div class="label">Missing Keywords (ATS)</div>
+          <div class="tags" id="missing-keywords"></div>
+        </div>
+
+        <div class="sheet">
+          <div class="sheet-header">
+            <h3>CV Improvement Sheet</h3>
+            <button type="button" class="btn ghost" id="download-btn">Download</button>
+          </div>
+          <div class="sheet-body" id="improvement-sheet"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

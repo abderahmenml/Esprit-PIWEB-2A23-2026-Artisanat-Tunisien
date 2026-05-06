@@ -31,6 +31,31 @@ class Config {
 function getPDO() {
     return Config::getConnexion();
 }
+function get_ollama_base_url(): string
+{
+    // Forcer IPv4 - très important sous Windows
+    return 'http://127.0.0.1:11434';
+}
+
+// Ajouter cette fonction pour les appels cURL
+function init_ollama_curl($url) {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,  // FORCER IPv4
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false
+    ]);
+    return $ch;
+}
+function get_ollama_model(): string
+{
+    $m = trim((string)getenv('OLLAMA_MODEL'));
+    // Utiliser un modèle plus performant comme mistral ou llama3.2
+    return $m !== '' ? $m : 'mistral'; // ou 'llama3.2:3b' pour plus de pertinence
+}
 
 function app_base_path(): string {
     $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');

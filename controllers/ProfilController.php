@@ -2053,7 +2053,7 @@ class ProfilController
 
     private function getOllamaBaseUrl(): string
     {
-        // Use explicit IPv4 loopback to avoid IPv6/localhost resolution issues on Windows
+        // Use localhost:11434 as the default local Ollama endpoint (see advice in UI)
         return 'http://127.0.0.1:11434';
     }
 
@@ -2125,12 +2125,17 @@ class ProfilController
     private function callOllamaCvGenerate(array $profileData, string $language, string $userPrompt, string $model = 'mistral'): ?array
     {
         $prompt = $this->buildOllamaPrompt($profileData, $language, $userPrompt);
-
         $payload = [
             'model' => $model,
             'prompt' => $prompt,
             'stream' => false,
-            'temperature' => 0.7
+            'keep_alive' => '10m',
+            'options' => [
+                'temperature' => 0.7,
+                'num_predict' => 200,
+                'top_k' => 40,
+                'top_p' => 0.9
+            ]
         ];
 
         $url = $this->getOllamaBaseUrl() . '/api/generate';
@@ -2358,34 +2363,17 @@ class ProfilController
             $language = 'fr';
         }
 
-        if (!in_array($model, ['mistral', 'llama3', 'llama2', 'neural-chat', 'starling-lm'], true)) {
-            $model = 'mistral';
-        }
-
-        // Build seed data from database
         $seed = $this->buildCvSeedData($userId);
+        $ollamaData = $this->callOllamaCvGenerate($seed, $language, $prompt, $model);
+        $cvData = $this->parseOllamaResponse($ollamaData, $seed);
 
-        // Call Ollama API
-        $ollamaResponse = $this->callOllamaCvGenerate($seed, $language, $prompt, $model);
-
-        // Parse response (fallback to local generation if Ollama fails)
-        $cvData = $this->parseOllamaResponse($ollamaResponse, $seed);
-
-        // If AJAX request, return JSON
         if ($this->isAjaxRequest()) {
-            $this->jsonResponse(
-                true,
-                $ollamaResponse !== null ? 'CV généré avec Ollama' : 'CV généré localement',
-                200,
-                $cvData
-            );
+            $this->jsonResponse(true, 'CV généré avec succès', 200, $cvData);
         }
 
-        // For regular POST, save and redirect
-        $this->flash('success', $ollamaResponse !== null ? 'CV généré avec Ollama' : 'CV généré localement');
+        $this->flash('success', 'CV généré avec Ollama');
         $this->redirect('/profil');
     }
-
     public function optimizeCvAi(): void
     {
         $userId = $this->requireAuth();
@@ -2418,28 +2406,185 @@ class ProfilController
         $optimizationPrompt .= "Fournisse des recommandations précises pour améliorer chaque section.";
 
         $ollamaResponse = $this->callOllamaCvGenerate($parsed, $language, $optimizationPrompt, $model);
-
-        if ($ollamaResponse !== null && isset($ollamaResponse['recommandations'])) {
-            $parsed['recommendations'] = is_array($ollamaResponse['recommandations']) 
-                ? $ollamaResponse['recommandations'] 
-                : [$ollamaResponse['recommandations']];
-        } elseif ($ollamaResponse !== null && isset($ollamaResponse['recommendations'])) {
-            $parsed['recommendations'] = is_array($ollamaResponse['recommendations']) 
-                ? $ollamaResponse['recommendations'] 
-                : [$ollamaResponse['recommendations']];
-        }
+        $optimized = $this->parseOllamaResponse($ollamaResponse, $parsed);
 
         if ($this->isAjaxRequest()) {
             $this->jsonResponse(
                 true,
                 $ollamaResponse !== null ? 'CV optimisé avec Ollama' : 'CV optimisé localement',
                 200,
-                $parsed
+                $optimized
             );
         }
 
-        $this->flash('success', $ollamaResponse !== null ? 'CV optimisé avec Ollama' : 'CV optimisé localement');
+    }
+
+/**
+ * Generate PPÉI (profile narrative) using Ollama and persist into profil_professionnel.bio
+ */
+public function generatePpeiAi(): void
+{
+    $userId = $this->requireAuth();
+    
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        if ($this->isAjaxRequest()) {
+            $this->jsonResponse(false, 'Méthode non autorisée', 405);
+        }
         $this->redirect('/profil');
+    }
+
+    // Récupérer les données du profil
+    $user = $this->model->getUserById($userId);
+    $specialite = (string)($user['specialite'] ?? 'professionnel');
+    $ville = (string)($user['ville'] ?? 'Tunisie');
+    $prenom = (string)($user['prenom'] ?? '');
+    $nom = (string)($user['nom'] ?? '');
+    
+    // Récupérer les compétences
+    $competences = $this->getUserCompetencesManyToMany($userId);
+    $skillsText = '';
+    $count = 0;
+    foreach ($competences as $s) {
+        if ($count++ >= 5) break;
+        $skillsText .= "- " . ($s['nom_competence'] ?? '') . "\n";
+    }
+    
+    // PROMPT pour générer une bio professionnelle
+    $prompt = "Tu es un expert en rédaction de biographies professionnelles.
+
+Écris une bio professionnelle de 2-3 phrases pour cette personne:
+
+Prénom et Nom: $prenom $nom
+Spécialité: $specialite
+Localisation: $ville
+
+Compétences réelles:
+$skillsText
+
+RÈGLES:
+- Ton: professionnel, chaleureux
+- Longueur: 2-3 phrases
+- Langue: français
+- N'invente rien
+
+Bio professionnelle:";
+
+    // Créer le payload
+    $payload = [
+        'model' => 'mistral',
+        'prompt' => $prompt,
+        'stream' => false,
+        'options' => [
+            'num_predict' => 250,
+            'temperature' => 0.7
+        ]
+    ];
+    
+    // Méthode qui fonctionne (fichier temporaire)
+    $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE);
+    $tempFile = sys_get_temp_dir() . '/ollama_' . uniqid() . '.json';
+    file_put_contents($tempFile, $jsonPayload);
+    
+    $command = 'curl -s --max-time 60 -X POST http://127.0.0.1:11434/api/generate -H "Content-Type: application/json" -d @' . escapeshellarg($tempFile);
+    $output = shell_exec($command);
+    unlink($tempFile);
+    
+    if (!$output) {
+        if ($this->isAjaxRequest()) {
+            $this->jsonResponse(false, 'Ollama ne répond pas', 502);
+        }
+        $this->flash('error', 'Erreur Ollama');
+        $this->redirect('/profil');
+    }
+    
+    $result = json_decode($output, true);
+    $generatedBio = trim($result['response'] ?? '');
+    
+    if ($generatedBio === '') {
+        if ($this->isAjaxRequest()) {
+            $this->jsonResponse(false, 'Génération échouée', 502);
+        }
+        $this->flash('error', 'Génération échouée');
+        $this->redirect('/profil');
+    }
+    
+    // Sauvegarder la bio
+    $this->model->updateBioForUser($userId, $generatedBio);
+    $this->refreshInsightCache($userId);
+    
+    if ($this->isAjaxRequest()) {
+        $this->jsonResponse(true, 'Bio générée avec succès', 200, [
+            'bio' => $generatedBio,
+            'saved' => true
+        ]);
+    }
+    
+    $this->flash('success', 'Bio générée et sauvegardée');
+    $this->redirect('/profil');
+}
+    private function callOllamaPpeiGenerate(array $profileData, string $language = 'fr', string $model = 'mistral'): ?array
+    {
+        $prompt = $this->buildPpeiPrompt($profileData, $language);
+
+        $payload = [
+            'model' => $model,
+            'prompt' => $prompt,
+            'stream' => false,
+            'temperature' => 0.6
+        ];
+
+        $url = $this->getOllamaBaseUrl() . '/api/generate';
+
+        $data = null;
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            if ($ch !== false) {
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 8);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 90);
+                curl_setopt($ch, CURLOPT_POST, true);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+                curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Accept: application/json']);
+                if (defined('CURLOPT_IPRESOLVE') && defined('CURL_IPRESOLVE_V4')) {
+                    curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+                }
+                $response = curl_exec($ch);
+                $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curlErr = null;
+                if ($response === false) {
+                    $curlErr = curl_error($ch);
+                }
+                curl_close($ch);
+                if ($response !== false && $httpCode === 200) {
+                    $data = json_decode($response, true);
+                } else {
+                    error_log('[ProfilController] Ollama PPÉI cURL error: ' . ($curlErr ?: 'http_code=' . $httpCode));
+                }
+            }
+        }
+
+        if ((!is_array($data) || !isset($data['response'])) && function_exists('stream_context_create')) {
+            $ctxOpts = ['http' => ['method' => 'POST','header' => "Content-Type: application/json\r\nAccept: application/json\r\n","content" => json_encode($payload),'timeout' => 90]];
+            $ctx = stream_context_create($ctxOpts);
+            $resp = @file_get_contents($url, false, $ctx);
+            if ($resp !== false) {
+                $data = json_decode($resp, true);
+            }
+        }
+
+        if (!is_array($data) || !isset($data['response'])) {
+            return null;
+        }
+
+        $responseText = (string)($data['response'] ?? '');
+        if (preg_match('/\{[\s\S]*\}/', $responseText, $m)) {
+            $parsed = json_decode($m[0], true);
+            if (is_array($parsed)) {
+                return $parsed;
+            }
+        }
+
+        return null;
     }
 
     public function addPortfolioFile()
@@ -2544,4 +2689,143 @@ class ProfilController
 
         $this->redirect('/profil');
     }
+/**
+ * Chatbot - Répond aux questions des visiteurs
+ */
+public function chatbot(): void
+{
+    // Vérifier que c'est une requête POST
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        $this->jsonResponse(false, 'Méthode non autorisée', 405);
+        return;
+    }
+
+    // Lire le message
+    $raw = file_get_contents('php://input');
+    if (!is_string($raw) || trim($raw) === '') {
+        $this->jsonResponse(false, 'Message vide', 400);
+        return;
+    }
+
+    $data = json_decode($raw, true);
+    if (!is_array($data)) {
+        $this->jsonResponse(false, 'JSON invalide', 400);
+        return;
+    }
+
+    $message = trim((string)($data['message'] ?? ''));
+    $profilId = (int)($data['profil_id'] ?? 0);
+    $warmup = !empty($data['warmup']);
+
+    // Mode warmup - tester la connexion
+    if ($warmup) {
+        $this->jsonResponse(true, 'Warmup', 200, ['reply' => '', 'suggestions' => []]);
+        return;
+    }
+
+    if ($message === '' || $profilId === 0) {
+        $this->jsonResponse(false, 'Message requis', 400);
+        return;
+    }
+
+    // Récupérer les informations du profil
+    try {
+        $pdo = getPDO();
+        
+        $stmt = $pdo->prepare("
+            SELECT u.prenom, u.nom, u.email,
+                   pp.specialite, pp.ville, pp.bio
+            FROM user u
+            LEFT JOIN profil_professionnel pp ON u.id_user = pp.id_user
+            WHERE u.id_user = ?
+        ");
+        $stmt->execute([$profilId]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            $this->jsonResponse(false, 'Profil introuvable', 404);
+            return;
+        }
+        
+        // Récupérer les compétences
+        $stmt = $pdo->prepare("
+            SELECT nom_competence, niveau 
+            FROM competences 
+            WHERE id_user = ? 
+            LIMIT 8
+        ");
+        $stmt->execute([$profilId]);
+        $competences = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+    } catch (PDOException $e) {
+        $this->jsonResponse(false, 'Erreur base de données', 500);
+        return;
+    }
+
+    // Construire les compétences en texte
+    $skillsText = '';
+    foreach ($competences as $c) {
+        $skillsText .= "- " . ($c['nom_competence'] ?? '') . "\n";
+    }
+
+    $prenom = $user['prenom'] ?? 'le professionnel';
+    $specialite = $user['specialite'] ?? 'artisanat';
+    $ville = $user['ville'] ?? 'Tunisie';
+
+    // PROMPT pour Ollama (version courte et efficace)
+    $prompt = "Tu es l'assistant de $prenom, spécialiste en $specialite à $ville.
+
+Ses compétences:
+$skillsText
+
+Le client demande: $message
+
+Réponds en français, de manière professionnelle, en 2-3 phrases maximum.
+Utilise les compétences listées si pertinent.
+Réponse:";
+
+    // Appel à Ollama avec la méthode qui fonctionne
+    $payload = [
+        'model' => 'mistral',
+        'prompt' => $prompt,
+        'stream' => false,
+        'options' => [
+            'temperature' => 0.5,
+            'num_predict' => 180
+        ]
+    ];
+    
+    $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE);
+    $tempFile = sys_get_temp_dir() . '/ollama_chat_' . uniqid() . '.json';
+    file_put_contents($tempFile, $jsonPayload);
+    
+    $command = 'curl -s --max-time 30 -X POST http://127.0.0.1:11434/api/generate -H "Content-Type: application/json" -d @' . escapeshellarg($tempFile);
+    $output = shell_exec($command);
+    unlink($tempFile);
+    
+    if (!$output) {
+        // Réponse de secours si Ollama ne répond pas
+        $reply = "Bonjour ! Je suis l'assistant de $prenom. Comment puis-je vous aider concernant $specialite ?";
+    } else {
+        $result = json_decode($output, true);
+        $reply = trim($result['response'] ?? '');
+        if ($reply === '') {
+            $reply = "Je vous invite à contacter $prenom directement pour plus d'informations sur $specialite.";
+        }
+    }
+
+    // Suggestions de questions
+    $suggestions = [
+        'Quels sont vos services ?',
+        'Comment puis-je vous contacter ?',
+        'Quels sont vos tarifs ?'
+    ];
+
+    $this->jsonResponse(true, 'OK', 200, [
+        'reply' => $reply,
+        'provider' => 'ollama',
+        'suggestions' => $suggestions
+    ]);
+}
+
 }
