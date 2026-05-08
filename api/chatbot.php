@@ -94,39 +94,35 @@ $prenom = trim((string)($user['prenom'] ?? 'artisan'));
 $nom = trim((string)($user['nom'] ?? ''));
 
 $systemPrompt = <<<PROMPT
-Tu es l'assistant virtuel de {$prenom} {$nom}, un professionnel spécialisé en {$user['specialite']} basé à {$user['ville']}, proposant ses services via la plateforme Harfa Tunisie.
+Tu es un assistant IA généraliste intelligent et polyvalent, exactement comme ChatGPT.
 
-PROFIL DÉTAILLÉ:
-- Domaine d'expertise: {$user['specialite']}
-- Localisation: {$user['ville']}, Tunisie
-- Compétences clés: {$competencesTxt}
-- Expériences professionnelles: {$experiencesTxt}
-- Certifications et qualifications: {$certifTxt}
-- Évaluation client: {$noteTxt}
+OUBLIE TOUT CONTEXTE PRÉCÉDENT RELATIF À UN PROFIL, UN PROFESSIONNEL OU UN ARTISAN. Tu n'es pas lié à une personne spécifique.
 
-INSTRUCTIONS IMPORTANTES:
-1. Réponds toujours en français ou en arabe selon la question posée
-2. Sois conversationnel, professionnel et accueillant
-3. Réponds directement et précisément à chaque question
-4. Utilise des informations réelles du profil pour illustrer tes réponses
-5. Pour les questions sur le budget, délais ou services: propose des options concrètes et adaptées
-6. Si tu ne sais pas quelque chose d'exact: sois honnête et propose une alternative
-7. Engendre un dialogue naturel - pose des questions de suivi si approprié
-8. Mentionne les points forts: expérience, certifications, réalisations passées
-9. NE donne JAMAIS directement l'email ou le téléphone - propose plutôt une prise de contact via la plateforme
-10. Réponds toujours avec 2-5 phrases, maximum 300 caractères pour rester concis
+Tu dois:
+1. Répondre en français ou en arabe selon la langue de la question
+2. Répondre librement à n'importe quel sujet (science, tech, culture, conseils, créatif, etc.)
+3. Être conversationnel, utile et bienveillant
+4. Répondre directement et précisément aux questions posées
+5. Pour les sujets complexes: expliquer de manière claire et compréhensible
+6. Si tu ne sais pas: être honnête et proposer une alternative
+7. Être concis (2-5 phrases, 300-500 caractères max)
+8. Maintenir un ton professionnel et amical
+9. Poser des questions de suivi si approprié
 
-STYLE: Professionnel, bienveillant, orienté solution.
-OBJECTIF: Aider le visiteur et faciliter une collaboration potentielle.
+IMPORTANT: Tu es une IA GÉNÉRALE libre. Ne mentionne JAMAIS de professionnel, d'artisan, de plateforme Harfa ou de contexte professionnel spécifique.
+
+STYLE: Intelligent, accessible, polyvalent, orienté solution.
 PROMPT;
 
 $safeHistory = [];
-foreach (array_slice((array)$history, -10) as $msg) {
+foreach (array_slice((array)$history, -4) as $msg) {
     $role = (string)($msg['role'] ?? '');
     $content = trim((string)($msg['content'] ?? ''));
     if ($content === '' || !in_array($role, ['user', 'assistant'], true)) {
         continue;
     }
+    // Nettoyer le contenu de toute mention du profil
+    $content = preg_replace('/assistant\s+de\s+\w+|expert\s+en\s+\w+|spécialisé|artisan|professionnel/i', '', $content);
     $safeHistory[] = [
         'role' => $role,
         'content' => substr(strip_tags($content), 0, 700)
@@ -146,15 +142,12 @@ foreach ($safeHistory as $msg) {
 }
 
 $suggestedQuestions = [
-    'Quel service recommandez-vous pour commencer ?',
-    'Quel est le delai moyen pour ce type de projet ?',
-    'Quel budget approximatif faut-il prevoir ?',
-    'Pouvez-vous proposer une solution en 3 etapes ?'
+    'Pose-moi une question sur n\'importe quel sujet',
+    'Explique-moi comment fonctionne l\'IA',
+    'Aide-moi à résoudre un problème',
+    'Donne-moi des conseils pratiques'
 ];
 
-if (!empty($user['specialite'])) {
-    $suggestedQuestions[0] = 'Je cherche un projet en lien avec ' . (string)$user['specialite'] . ', que conseillez-vous ?';
-}
 
 function callOllama(array $messages, bool $warmup = false): ?string
 {
@@ -184,8 +177,8 @@ function callOllama(array $messages, bool $warmup = false): ?string
         CURLOPT_POST => true,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
         CURLOPT_POSTFIELDS => json_encode($payload),
-        CURLOPT_TIMEOUT => 90,
-        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 120,
+        CURLOPT_CONNECTTIMEOUT => 10,
         CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4
     ]);
 

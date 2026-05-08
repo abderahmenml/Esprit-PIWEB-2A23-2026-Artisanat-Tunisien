@@ -443,6 +443,7 @@ $cvSeedData = [
                         <button type="button" class="cv-ia-btn cv-ia-btn-generate" id="cv-ia-generate">🚀 Générer avec IA intégrée</button>
                         <button type="button" class="cv-ia-btn cv-ia-btn-optimize" id="cv-ia-optimize">⚡ Optimiser IA</button>
                         <button type="button" class="cv-ia-btn cv-ia-btn-download" id="cv-ia-download">📥 Télécharger (PDF)</button>
+                        <button type="button" class="cv-ia-btn cv-ia-btn-import" id="cv-ia-import-pdf">📤 Importer PDF</button>
                         <span class="cv-ia-status" id="cv-ia-status"></span>
                     </div>
 

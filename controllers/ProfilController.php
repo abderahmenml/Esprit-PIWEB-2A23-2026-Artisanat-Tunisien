@@ -2691,6 +2691,7 @@ Bio professionnelle:";
     }
 /**
  * Chatbot - Répond aux questions des visiteurs
+ * Version optimisée avec timeout court et réponse de secours
  */
 public function chatbot(): void
 {
@@ -2700,7 +2701,6 @@ public function chatbot(): void
         return;
     }
 
-    // Lire le message
     $raw = file_get_contents('php://input');
     if (!is_string($raw) || trim($raw) === '') {
         $this->jsonResponse(false, 'Message vide', 400);
@@ -2714,12 +2714,19 @@ public function chatbot(): void
     }
 
     $message = trim((string)($data['message'] ?? ''));
+    $history = $data['history'] ?? [];
     $profilId = (int)($data['profil_id'] ?? 0);
     $warmup = !empty($data['warmup']);
 
-    // Mode warmup - tester la connexion
+    // Mode warmup - simple test de connexion
     if ($warmup) {
-        $this->jsonResponse(true, 'Warmup', 200, ['reply' => '', 'suggestions' => []]);
+        // Test rapide de la connexion à Ollama
+        $ollamaReachable = $this->testOllamaConnection();
+        $this->jsonResponse(true, 'Warmup', 200, [
+            'reply' => '',
+            'suggestions' => [],
+            'ollama_ready' => $ollamaReachable
+        ]);
         return;
     }
 
@@ -2772,53 +2779,26 @@ public function chatbot(): void
     $specialite = $user['specialite'] ?? 'artisanat';
     $ville = $user['ville'] ?? 'Tunisie';
 
-    // PROMPT pour Ollama (version courte et efficace)
+    // PROMPT optimisé et court pour Ollama
     $prompt = "Tu es l'assistant de $prenom, spécialiste en $specialite à $ville.
+Ses compétences: $skillsText
+Client demande: $message
+Réponds en français, pro, 2-3 phrases max.";
 
-Ses compétences:
-$skillsText
-
-Le client demande: $message
-
-Réponds en français, de manière professionnelle, en 2-3 phrases maximum.
-Utilise les compétences listées si pertinent.
-Réponse:";
-
-    // Appel à Ollama avec la méthode qui fonctionne
-    $payload = [
-        'model' => 'mistral',
-        'prompt' => $prompt,
-        'stream' => false,
-        'options' => [
-            'temperature' => 0.5,
-            'num_predict' => 180
-        ]
-    ];
+    // Appel à Ollama avec timeout court (10 secondes max)
+    $reply = $this->callOllamaWithTimeout($prompt, 10);
     
-    $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE);
-    $tempFile = sys_get_temp_dir() . '/ollama_chat_' . uniqid() . '.json';
-    file_put_contents($tempFile, $jsonPayload);
-    
-    $command = 'curl -s --max-time 30 -X POST http://127.0.0.1:11434/api/generate -H "Content-Type: application/json" -d @' . escapeshellarg($tempFile);
-    $output = shell_exec($command);
-    unlink($tempFile);
-    
-    if (!$output) {
-        // Réponse de secours si Ollama ne répond pas
-        $reply = "Bonjour ! Je suis l'assistant de $prenom. Comment puis-je vous aider concernant $specialite ?";
-    } else {
-        $result = json_decode($output, true);
-        $reply = trim($result['response'] ?? '');
-        if ($reply === '') {
-            $reply = "Je vous invite à contacter $prenom directement pour plus d'informations sur $specialite.";
-        }
+    if ($reply === null) {
+        // Réponse de secours sans IA
+        $reply = $this->getFallbackResponse($prenom, $specialite, $message);
     }
 
-    // Suggestions de questions
+    // Suggestions de questions basées sur le contexte
     $suggestions = [
-        'Quels sont vos services ?',
-        'Comment puis-je vous contacter ?',
-        'Quels sont vos tarifs ?'
+        "Quels sont les services de $prenom ?",
+        "Comment contacter $prenom ?",
+        "Quel est le délai pour ce type de prestation ?",
+        "Proposez-vous des devis gratuits ?"
     ];
 
     $this->jsonResponse(true, 'OK', 200, [
@@ -2827,5 +2807,154 @@ Réponse:";
         'suggestions' => $suggestions
     ]);
 }
+/**
+ * Test rapide de la connexion à Ollama
+ */
+private function testOllamaConnection(): bool
+{
+    $ch = curl_init('http://127.0.0.1:11434/api/tags');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 2);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
+    curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    return $httpCode === 200;
+}
 
+/**
+ * Appel Ollama avec timeout strict
+ */
+private function callOllamaWithTimeout(string $prompt, int $timeoutSeconds = 10): ?string
+{
+    $payload = [
+        'model' => 'mistral',
+        'prompt' => $prompt,
+        'stream' => false,
+        'options' => [
+            'temperature' => 0.5,
+            'num_predict' => 180,
+            'top_k' => 30,
+            'top_p' => 0.85
+        ]
+    ];
+    
+    $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE);
+    $tempFile = sys_get_temp_dir() . '/ollama_' . uniqid() . '.json';
+    file_put_contents($tempFile, $jsonPayload);
+    
+    // Utiliser curl avec timeout court
+    $ch = curl_init('http://127.0.0.1:11434/api/generate');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonPayload);
+    curl_setopt($ch, CURLOPT_TIMEOUT, $timeoutSeconds);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 3);
+    curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+    
+    unlink($tempFile);
+    
+    if ($response && $httpCode === 200) {
+        $result = json_decode($response, true);
+        $reply = trim($result['response'] ?? '');
+        if ($reply !== '') {
+            return $reply;
+        }
+    }
+    
+    error_log("Chatbot Ollama error: HTTP $httpCode - $curlError");
+    return null;
+}
+
+/**
+ * Construire le prompt pour la génération PPEI
+ */
+private function buildPpeiPrompt(array $profileData, string $language = 'fr'): string
+{
+    $fullName = (string)($profileData['personal']['fullName'] ?? 'Professional');
+    $title = (string)($profileData['personal']['title'] ?? 'Specialist');
+    $email = (string)($profileData['personal']['email'] ?? '');
+    $phone = (string)($profileData['personal']['phone'] ?? '');
+    $city = (string)($profileData['personal']['city'] ?? 'Tunisie');
+    $summary = (string)($profileData['personal']['summary'] ?? '');
+    
+    $skillsText = '';
+    if (!empty($profileData['skills'])) {
+        $skillsText = "Key Skills:\n";
+        foreach ($profileData['skills'] as $skill) {
+            $skillName = (string)($skill['name'] ?? '');
+            $skillLevel = (int)($skill['level'] ?? 0);
+            if ($skillName !== '') {
+                $skillsText .= "- $skillName ($skillLevel%)\n";
+            }
+        }
+    }
+    
+    if ($language === 'fr') {
+        return "Tu es un expert en création de profils professionnels optimisés.
+
+Génère un profil professionnel amélioré pour:
+
+Nom: $fullName
+Titre: $title
+Email: $email
+Téléphone: $phone
+Localisation: $city
+Résumé actuel: $summary
+
+$skillsText
+
+Crée une version améliorée du résumé professionnel en français, 2-3 phrases, professionnel et percutant.";
+    } else {
+        return "You are an expert in creating optimized professional profiles.
+
+Generate an improved professional profile for:
+
+Name: $fullName
+Title: $title
+Email: $email
+Phone: $phone
+Location: $city
+Current Summary: $summary
+
+$skillsText
+
+Create an improved version of the professional summary in English, 2-3 sentences, professional and impactful.";
+    }
+}
+
+/**
+ * Réponse de secours sans IA
+ */
+private function getFallbackResponse(string $prenom, string $specialite, string $message): string
+{
+    $messageLower = strtolower($message);
+    
+    if (strpos($messageLower, 'service') !== false || strpos($messageLower, 'propos') !== false) {
+        return "Je suis l'assistant de $prenom, spécialiste en $specialite. Nous proposons des services adaptés à vos besoins. Souhaitez-vous plus de détails ?";
+    }
+    
+    if (strpos($messageLower, 'contact') !== false || strpos($messageLower, 'joindre') !== false) {
+        return "Pour contacter $prenom, veuillez utiliser le formulaire de contact sur notre plateforme ou laisser votre message, nous vous répondrons rapidement.";
+    }
+    
+    if (strpos($messageLower, 'tarif') !== false || strpos($messageLower, 'prix') !== false || strpos($messageLower, 'budget') !== false) {
+        return "Les tarifs varient selon la complexité du projet. $prenom établit des devis personnalisés. Puis-je vous aider à définir votre besoin ?";
+    }
+    
+    if (strpos($messageLower, 'délai') !== false || strpos($messageLower, 'delai') !== false) {
+        return "Les délais dépendent du projet. $prenom s'engage à respecter les échéances convenues. Quel type de projet avez-vous en tête ?";
+    }
+    
+    // Réponse générique
+    return "Bonjour ! Je suis l'assistant de $prenom, expert en $specialite. Comment puis-je vous aider aujourd'hui ?";
+}
 }

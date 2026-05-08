@@ -431,6 +431,140 @@
             });
         }
 
+        // Ajouter le bouton d'import PDF
+        var importPdfBtn = byId('cv-ia-import-pdf');
+        if (importPdfBtn) {
+            importPdfBtn.addEventListener('click', function () {
+                var fileInput = byId('cv-pdf-file-input');
+                if (!fileInput) {
+                    var hidden = document.createElement('input');
+                    hidden.type = 'file';
+                    hidden.id = 'cv-pdf-file-input';
+                    hidden.accept = 'application/pdf';
+                    hidden.style.display = 'none';
+                    hidden.addEventListener('change', function (e) {
+                        if (this.files && this.files[0]) {
+                            uploadAndParsePdf(this.files[0], state);
+                        }
+                        this.value = '';
+                    });
+                    document.body.appendChild(hidden);
+                    fileInput = hidden;
+                }
+                fileInput.click();
+            });
+        }
+
+        function uploadAndParsePdf(file, state) {
+            var status = byId('cv-ia-status');
+            if (!status) return;
+
+            status.textContent = 'Traitement du PDF...';
+            status.className = 'cv-status loading';
+
+            var formData = new FormData();
+            formData.append('pdf', file);
+
+            fetch(getAppUrl('/api/pdf-import'), {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+                .then(function (resp) {
+                    if (!resp.ok) {
+                        throw new Error('HTTP ' + resp.status);
+                    }
+                    return resp.json();
+                })
+                .then(function (result) {
+                    if (!result.success || !result.data) {
+                        throw new Error(result.message || 'Impossible d\'importer le PDF');
+                    }
+
+                    var data = result.data;
+
+                    // Remplir les champs personnels
+                    if (data.personal) {
+                        if (data.personal.fullName && byId('cv-full-name')) {
+                            byId('cv-full-name').value = data.personal.fullName;
+                            state.personal.fullName = data.personal.fullName;
+                        }
+                        if (data.personal.title && byId('cv-title')) {
+                            byId('cv-title').value = data.personal.title;
+                            state.personal.title = data.personal.title;
+                        }
+                        if (data.personal.email && byId('cv-email')) {
+                            byId('cv-email').value = data.personal.email;
+                            state.personal.email = data.personal.email;
+                        }
+                        if (data.personal.phone && byId('cv-phone')) {
+                            byId('cv-phone').value = data.personal.phone;
+                            state.personal.phone = data.personal.phone;
+                        }
+                        if (data.personal.city && byId('cv-city')) {
+                            byId('cv-city').value = data.personal.city;
+                            state.personal.city = data.personal.city;
+                        }
+                        if (data.personal.summary && byId('cv-summary')) {
+                            byId('cv-summary').value = data.personal.summary;
+                            state.personal.summary = data.personal.summary;
+                        }
+                    }
+
+                    // Remplir les compétences
+                    if (Array.isArray(data.skills) && data.skills.length > 0) {
+                        state.skills = data.skills;
+                    }
+
+                    // Remplir les expériences
+                    if (Array.isArray(data.experiences) && data.experiences.length > 0) {
+                        state.experiences = data.experiences;
+                    }
+
+                    // Remplir les formations
+                    if (Array.isArray(data.education) && data.education.length > 0) {
+                        state.education = data.education;
+                    }
+
+                    // Rafraîchir l'interface
+                    rerenderEditors(state);
+                    refresh(state);
+
+                    status.textContent = '✅ PDF importé avec succès! ' + 
+                        (data.skills.length + data.experiences.length + data.education.length) + 
+                        ' éléments extraits.';
+                    status.className = 'cv-status success';
+                    notify('PDF importé et parsé avec succès!', 'success');
+
+                    // Afficher les informations extraites
+                    var summary = '📋 Éléments importés:\n';
+                    if (data.personal.fullName) summary += '👤 ' + data.personal.fullName + '\n';
+                    if (data.personal.email) summary += '📧 ' + data.personal.email + '\n';
+                    if (data.skills.length > 0) summary += '🎯 ' + data.skills.length + ' compétences\n';
+                    if (data.experiences.length > 0) summary += '💼 ' + data.experiences.length + ' expériences\n';
+                    if (data.education.length > 0) summary += '🎓 ' + data.education.length + ' formations\n';
+                    console.log(summary);
+
+                    setTimeout(function () {
+                        status.textContent = '';
+                        status.className = '';
+                    }, 5000);
+                })
+                .catch(function (err) {
+                    console.error('Erreur PDF:', err);
+                    status.textContent = '❌ Erreur: ' + (err.message || 'Impossible d\'importer le PDF');
+                    status.className = 'cv-status error';
+                    notify('Erreur lors de l\'import du PDF: ' + (err.message || 'Vérifiez le format'), 'error');
+
+                    setTimeout(function () {
+                        status.textContent = '';
+                        status.className = '';
+                    }, 5000);
+                });
+        }
+
         if (downloadBtn) {
             downloadBtn.addEventListener('click', function () {
                 var element = byId('cv-preview');

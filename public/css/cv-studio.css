@@ -116,6 +116,16 @@
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
 }
 
+.cv-ia-btn-import {
+    background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+    color: white;
+}
+
+.cv-ia-btn-import:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+}
+
 .cv-ia-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
