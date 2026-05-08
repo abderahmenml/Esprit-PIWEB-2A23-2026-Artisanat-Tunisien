@@ -1,8 +1,34 @@
 <?php
-include '../../Controller/IdeaController.php';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+if (!isset($_SESSION['user_id'])) {
+    header('Location: ../FrontOffice/login.php');
+    exit;
+}
+if (($_SESSION['role'] ?? '') !== 'admin') {
+    header('Location: ../FrontOffice/homepage.html');
+    exit;
+}
+
+require_once __DIR__ . '/../../Controller/IdeaController.php';
+
+$baseUrl = rtrim(APP_URL, '/');
+if (preg_match('/\.html?$/i', $baseUrl)) {
+    $baseUrl = rtrim(dirname($baseUrl), '/');
+}
+
+$ideasUrl = $baseUrl . '/admin/index.php?action=ideas';
+$updateIdeaUrl = $baseUrl . '/View/BackOffice/updateIdea.php';
+$deleteIdeaUrl = $baseUrl . '/View/BackOffice/deleteIdea.php';
+
+$pageTitle = 'Gestion des idees';
+$currentPage = 'ideas';
+$extraStyles = [$baseUrl . '/View/BackOffice/assets/css/backoffice.css?v=2'];
+
 $ideaC = new IdeaController();
 $projects = $ideaC->listProjects();
-$currentUserId = getCurrentUserId();
 
 $editId = 0;
 if (isset($_GET['edit'])) {
@@ -40,9 +66,11 @@ if ($editProject) {
   }
 }
 
-function e($value)
-{
-    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+if (!function_exists('e')) {
+    function e($value)
+    {
+        return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+    }
 }
 
 $total = count($projects);
@@ -63,73 +91,9 @@ foreach ($projects as $project) {
         $closed += 1;
     }
 }
+
+require_once __DIR__ . '/../partials/admin_header.php';
 ?>
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Backoffice - Idees de projet</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;900&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/backoffice.css?v=2">
-</head>
-<body>
-  <header class="bo-topbar">
-    <div>
-      <h1>Backoffice - Idees</h1>
-    </div>
-    <div>
-      <?php if ($currentUserId > 0): ?>
-        <a class="btn" href="../FrontOffice/logout.php">Deconnexion</a>
-      <?php else: ?>
-        <a class="btn" href="../FrontOffice/login.php">Connexion</a>
-      <?php endif; ?>
-      <a class="btn" href="../FrontOffice/index.php">Retour site</a>
-    </div>
-  </header>
-
-  <main class="bo-layout">
-    <aside class="bo-sidebar">
-      <div class="bo-sidebar-header">
-        <span>Admin</span>
-        <strong>Back Office</strong>
-      </div>
-      <nav class="bo-nav">
-        <div class="bo-nav-section">
-          <div class="bo-nav-title">Tableau de bord</div>
-          <a class="bo-nav-link is-active" href="index.php">Dashboard</a>
-        </div>
-
-        <div class="bo-nav-section">
-          <div class="bo-nav-title">Modules</div>
-          <a class="bo-nav-link" href="#">
-            Profils Pro
-            <span class="bo-nav-badge">3</span>
-          </a>
-          <a class="bo-nav-link" href="#">Utilisateurs</a>
-          <a class="bo-nav-link" href="#">Projets</a>
-          <a class="bo-nav-link" href="#">Formations</a>
-          <a class="bo-nav-link" href="#">Investissements</a>
-          <a class="bo-nav-link" href="#">Offres d'emploi</a>
-        </div>
-
-        <div class="bo-nav-section">
-          <div class="bo-nav-title">Systeme</div>
-          <a class="bo-nav-link" href="#">Competences</a>
-          <a class="bo-nav-link" href="#">Parametres</a>
-          <a class="bo-nav-link" href="#">Logs</a>
-        </div>
-      </nav>
-      <div class="bo-sidebar-footer">
-        <div class="bo-sidebar-avatar">SA</div>
-        <div class="bo-sidebar-user">
-          <strong>Super Admin</strong>
-          <span>CraftLink Tunisie</span>
-        </div>
-      </div>
-    </aside>
 
     <div class="bo-content">
       <section class="stats">
@@ -154,7 +118,7 @@ foreach ($projects as $project) {
     <?php if ($editProject): ?>
       <section class="card">
         <h2>Modifier une idee</h2>
-        <form method="post" action="updateIdea.php" class="edit-form">
+        <form method="post" action="<?php echo e($updateIdeaUrl); ?>" class="edit-form">
           <input type="hidden" name="id" value="<?php echo e($editProject['id_projet']); ?>">
 
           <label>
@@ -280,7 +244,7 @@ foreach ($projects as $project) {
           </label>
 
           <div class="form-actions">
-            <a class="btn" href="index.php">Annuler</a>
+            <a class="btn" href="<?php echo e($ideasUrl); ?>">Annuler</a>
             <button class="btn primary" type="submit">Enregistrer</button>
           </div>
         </form>
@@ -355,8 +319,8 @@ foreach ($projects as $project) {
                   </td>
                   <td><?php echo e($dateDisplay); ?></td>
                   <td class="actions">
-                    <a class="btn small" href="index.php?edit=<?php echo e($project['id_projet']); ?>" onclick="return confirm('Voulez-vous modifier cette idee ?');">Editer</a>
-                    <form method="post" action="deleteIdea.php" class="inline-form" onsubmit="return confirm('Voulez-vous supprimer cette idee ?');">
+                    <a class="btn small" href="<?php echo e($ideasUrl); ?>&edit=<?php echo e($project['id_projet']); ?>" onclick="return confirm('Voulez-vous modifier cette idee ?');">Editer</a>
+                    <form method="post" action="<?php echo e($deleteIdeaUrl); ?>" class="inline-form" onsubmit="return confirm('Voulez-vous supprimer cette idee ?');">
                       <input type="hidden" name="id" value="<?php echo e($project['id_projet']); ?>">
                       <button class="btn small danger" type="submit">Supprimer</button>
                     </form>
@@ -369,7 +333,6 @@ foreach ($projects as $project) {
       </div>
     </section>
     </div>
-  </main>
 
   <script>
     (function () {
@@ -433,5 +396,4 @@ foreach ($projects as $project) {
       });
     })();
   </script>
-</body>
-</html>
+<?php require_once __DIR__ . '/../partials/admin_footer.php'; ?>

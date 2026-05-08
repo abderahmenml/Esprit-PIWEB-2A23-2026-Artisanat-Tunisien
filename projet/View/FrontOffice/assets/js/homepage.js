@@ -3,49 +3,49 @@ const galleryData = [
     title: "Tissage de Nabeul",
     category: "textile",
     size: "wide",
-    image: "https://images.unsplash.com/photo-1616628182509-6f64f18f561c?auto=format&fit=crop&w=1200&q=80"
+    image: "assets/images/homepage/about.jpg"
   },
   {
     title: "Email ceramique",
     category: "ceramique",
     size: "square",
-    image: "https://images.unsplash.com/photo-1618220179428-22790b461013?auto=format&fit=crop&w=900&q=80"
+    image: "assets/images/homepage/products-01.jpg"
   },
   {
     title: "Sculpture bois",
     category: "bois",
     size: "tall",
-    image: "https://images.unsplash.com/photo-1545239351-1141bd82e8a6?auto=format&fit=crop&w=900&q=80"
+    image: "assets/images/homepage/intro11.jpg"
   },
   {
     title: "Collection bijoux",
     category: "bijoux",
     size: "square",
-    image: "https://images.unsplash.com/photo-1599643477877-530eb83abc8e?auto=format&fit=crop&w=900&q=80"
+    image: "assets/images/homepage/product-03.webp"
   },
   {
     title: "Finitions broderie",
     category: "textile",
     size: "square",
-    image: "https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=900&q=80"
+    image: "assets/images/homepage/products-02.jpg"
   },
   {
     title: "Argile locale",
     category: "ceramique",
     size: "wide",
-    image: "https://images.unsplash.com/photo-1491557345352-5929e343eb89?auto=format&fit=crop&w=1200&q=80"
+    image: "assets/images/homepage/taswira.jpg"
   },
   {
     title: "MosaIque artisanale",
     category: "ceramique",
     size: "square",
-    image: "https://images.unsplash.com/photo-1523413651479-597eb2da0ad6?auto=format&fit=crop&w=900&q=80"
+    image: "assets/images/homepage/picture_old.jpg"
   },
   {
     title: "Bois grave",
     category: "bois",
     size: "square",
-    image: "https://images.unsplash.com/photo-1505692952047-1a78307da8f2?auto=format&fit=crop&w=900&q=80"
+    image: "assets/images/homepage/bg.png"
   }
 ];
 
@@ -57,7 +57,7 @@ const projectsData = [
     budget: "1800 DT",
     text: "Serie limitee orientee export avec motifs revisites et coupe premium.",
     tags: ["broderie", "patronage", "photo produit"],
-    image: "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=1100&q=80"
+    image: "assets/images/homepage/intro.jpg"
   },
   {
     title: "Atelier ceramique utilitaire",
@@ -66,7 +66,7 @@ const projectsData = [
     budget: "2300 DT",
     text: "Collection vaisselle locale avec email alimentaire et packaging ecoresponsable.",
     tags: ["argile", "email", "branding"],
-    image: "https://images.unsplash.com/photo-1517685352821-92cf88aee5a5?auto=format&fit=crop&w=1100&q=80"
+    image: "assets/images/homepage/products-01.jpg"
   },
   {
     title: "Mobilier bois olive",
@@ -75,7 +75,7 @@ const projectsData = [
     budget: "3200 DT",
     text: "Pieces haut de gamme inspirees des formes tunisiennes traditionnelles.",
     tags: ["ebenisterie", "finitions", "livraison"],
-    image: "https://images.unsplash.com/photo-1461418559055-6f020c5a91e7?auto=format&fit=crop&w=1100&q=80"
+    image: "assets/images/homepage/ood.jpg"
   },
   {
     title: "Bijoux cuivre grave",
@@ -84,7 +84,7 @@ const projectsData = [
     budget: "950 DT",
     text: "Mini collection avec gravure fine et storytelling digital pour reseaux sociaux.",
     tags: ["gravure", "shooting", "vente web"],
-    image: "https://images.unsplash.com/photo-1573408301185-9146fe634ad0?auto=format&fit=crop&w=1100&q=80"
+    image: "assets/images/homepage/product-03.webp"
   },
   {
     title: "Textile maison naturel",
@@ -93,7 +93,7 @@ const projectsData = [
     budget: "1400 DT",
     text: "Ligne de coussins et nappes avec colorants naturels et finitions manuelles.",
     tags: ["teinture", "tissage", "distribution"],
-    image: "https://images.unsplash.com/photo-1598300056393-4aac492f4344?auto=format&fit=crop&w=1100&q=80"
+    image: "assets/images/homepage/taswira.jpg"
   },
   {
     title: "Serie pots design",
@@ -102,7 +102,7 @@ const projectsData = [
     budget: "1700 DT",
     text: "Edition decorative pour concept stores, avec identite visuelle epuree.",
     tags: ["moulage", "email", "catalogue"],
-    image: "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=1100&q=80"
+    image: "assets/images/homepage/about_original.jpg"
   }
 ];
 
@@ -406,6 +406,37 @@ function setupHeroParallax() {
   });
 }
 
+function updateAuthUI() {
+  const loginBtn = document.getElementById("loginBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const phpReturnLink = document.getElementById("phpReturnLink");
+
+  const hasSession = Boolean(
+    sessionStorage.getItem("cl_email") ||
+    sessionStorage.getItem("cl_nom") ||
+    sessionStorage.getItem("cl_role")
+  );
+
+  if (loginBtn) {
+    loginBtn.classList.toggle("is-hidden", hasSession);
+  }
+
+  if (logoutBtn) {
+    logoutBtn.classList.toggle("is-hidden", !hasSession);
+    logoutBtn.addEventListener("click", () => {
+      sessionStorage.removeItem("cl_nom");
+      sessionStorage.removeItem("cl_prenom");
+      sessionStorage.removeItem("cl_email");
+      sessionStorage.removeItem("cl_role");
+      window.location.href = "logout.php";
+    });
+  }
+
+  if (phpReturnLink) {
+    phpReturnLink.setAttribute("href", hasSession ? "index.php" : "login.php");
+  }
+}
+
 renderGallery("all");
 renderProjects();
 startHeroSlider();
@@ -417,3 +448,4 @@ setupProjectFilters();
 setupLightboxHandlers();
 setupQuickButtons();
 setupHeroParallax();
+updateAuthUI();

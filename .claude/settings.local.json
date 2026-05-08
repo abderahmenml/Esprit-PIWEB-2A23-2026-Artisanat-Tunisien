@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"c:/xampp/htdocs/web$/web$/projet/config/config.local.php\")",
+      "Read(//c/xampp/htdocs/web$/web$/projet/config/**)",
+      "Bash(mysql -u root -e \"SHOW TABLES FROM craftlink_db;\")",
+      "Bash(ls \"C:/xampp/mysql/bin/mysql.exe\")",
+      "Read(//c/xampp/mysql/bin/**)",
+      "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root -e \"SHOW TABLES FROM craftlink_db;\")",
+      "Bash(\"C:/xampp/mysql/bin/mysql.exe\" -u root -e \"DESCRIBE craftlink_db.user;\")",
+      "Bash(ls \"c:/xampp/htdocs/web$/web$/projet/core/Validator.php\" \"c:/xampp/htdocs/web$/web$/projet/core/SupabaseSync.php\" \"c:/xampp/htdocs/web$/web$/projet/Model/PendingUserModel.php\" \"c:/xampp/htdocs/web$/web$/projet/Model/PasswordResetModel.php\" \"c:/xampp/htdocs/web$/web$/projet/security/LoginSecurity.php\" \"c:/xampp/htdocs/web$/web$/projet/Authentification intelligente RF/FaceRecognitionService.php\")",
+      "Read(//c/xampp/htdocs/web$/web$/projet/core/**)",
+      "Bash(ls \"C:/xampp/apache/logs/error.log\")",
+      "Read(//c/xampp/apache/logs/**)"
+    ]
+  }
+}

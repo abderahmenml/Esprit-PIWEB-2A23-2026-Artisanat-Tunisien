@@ -3,6 +3,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+require_once __DIR__ . '/config/config.php';
+
 class config
 {
     private static $pdo = null;
@@ -10,14 +12,15 @@ class config
     public static function getConnexion()
     {
         if (!isset(self::$pdo)) {
-            $servername = 'localhost';
-            $username = 'root';
-            $password = '';
-            $dbname = 'projet';
+            $servername = defined('DB_HOST') ? DB_HOST : 'localhost';
+            $username = defined('DB_USER') ? DB_USER : 'root';
+            $password = defined('DB_PASS') ? DB_PASS : '';
+            $dbname = defined('DB_NAME') ? DB_NAME : 'craftlink_db';
+            $charset = defined('DB_CHARSET') ? DB_CHARSET : 'utf8mb4';
 
             try {
                 self::$pdo = new PDO(
-                    "mysql:host=$servername;dbname=$dbname;charset=utf8mb4",
+                    "mysql:host=$servername;dbname=$dbname;charset=$charset",
                     $username,
                     $password
                 );

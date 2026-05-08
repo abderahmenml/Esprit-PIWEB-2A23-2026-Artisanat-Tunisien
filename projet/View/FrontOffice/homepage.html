@@ -9,17 +9,17 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f4f1ea;
-      --ink: #1c2120;
-      --soft-ink: #4d5752;
-      --accent: #bb5a2b;
-      --accent-2: #2e6f61;
-      --surface: rgba(255, 255, 255, 0.82);
-      --surface-strong: #ffffff;
-      --line: rgba(28, 33, 32, 0.14);
-      --ok: #2d7f5e;
-      --warn: #b86e18;
-      --focus: 0 0 0 3px rgba(46, 111, 97, 0.3);
+      --bg: #f5ecd7;
+      --ink: #3b2314;
+      --soft-ink: #6b3f28;
+      --accent: #8b5a3a;
+      --accent-2: #2e6b3e;
+      --surface: rgba(245, 236, 215, 0.86);
+      --surface-strong: #ede0c4;
+      --line: rgba(59, 35, 20, 0.18);
+      --ok: #2e6b3e;
+      --warn: #c49a6c;
+      --focus: 0 0 0 3px rgba(46, 107, 62, 0.32);
       --radius-xl: 28px;
       --radius-lg: 20px;
       --radius-md: 14px;
@@ -40,9 +40,9 @@
       margin: 0;
       color: var(--ink);
       background:
-        radial-gradient(1300px 700px at -10% -20%, rgba(46, 111, 97, 0.22), transparent 56%),
-        radial-gradient(800px 560px at 108% 6%, rgba(187, 90, 43, 0.2), transparent 55%),
-        linear-gradient(180deg, #f6f3ec 0%, #f3efe7 100%);
+        radial-gradient(1300px 700px at -10% -20%, rgba(46, 107, 62, 0.2), transparent 56%),
+        radial-gradient(800px 560px at 108% 6%, rgba(196, 154, 108, 0.24), transparent 55%),
+        linear-gradient(180deg, #f5ecd7 0%, #ede0c4 100%);
       font-family: "Space Grotesk", "Segoe UI", sans-serif;
       min-height: 100vh;
       overflow-x: hidden;
@@ -75,13 +75,13 @@
     .float-orb.one {
       top: -100px;
       left: -120px;
-      background: radial-gradient(circle at 30% 30%, #6ca59a, transparent 70%);
+      background: radial-gradient(circle at 30% 30%, #8b6a4a, transparent 70%);
     }
 
     .float-orb.two {
       bottom: -130px;
       right: -100px;
-      background: radial-gradient(circle at 60% 40%, #d08258, transparent 72%);
+      background: radial-gradient(circle at 60% 40%, #c49a6c, transparent 72%);
       animation-delay: 1.2s;
     }
 
@@ -168,19 +168,49 @@
 
     .top-action {
       border: none;
-      background: linear-gradient(120deg, var(--accent) 0%, #a94825 100%);
+      background: linear-gradient(120deg, var(--accent) 0%, #6b3f28 100%);
       color: #fff;
       font-weight: 600;
       padding: 10px 18px;
       border-radius: 999px;
       cursor: pointer;
       transition: 0.22s ease;
-      box-shadow: 0 10px 22px rgba(169, 72, 37, 0.3);
+      box-shadow: 0 10px 22px rgba(107, 63, 40, 0.3);
     }
 
     .top-action:hover {
       transform: translateY(-2px);
-      box-shadow: 0 14px 28px rgba(169, 72, 37, 0.36);
+      box-shadow: 0 14px 28px rgba(107, 63, 40, 0.36);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .auth-btn {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--ink);
+      font-weight: 600;
+      padding: 9px 16px;
+      border-radius: 999px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: 0.22s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .auth-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 14px rgba(20, 26, 24, 0.12);
+    }
+
+    .auth-btn.is-hidden {
+      display: none;
     }
 
     .top-action:focus-visible,
@@ -810,6 +840,7 @@
       .site-header {
         border-radius: 20px;
         padding: 12px;
+        flex-wrap: wrap;
       }
 
       .main-nav {
@@ -817,6 +848,15 @@
       }
 
       .top-action {
+        width: 100%;
+      }
+
+      .header-actions {
+        width: 100%;
+        flex-direction: column;
+      }
+
+      .auth-btn {
         width: 100%;
       }
 
@@ -847,7 +887,7 @@
 
   <header class="site-header">
     <div class="brand">
-      <img src="assets/images/logo.png" alt="Logo 7erfa Tunisie">
+      <img src="assets/images/homepage/logo_herfa.png" alt="Logo 7erfa Tunisie">
       <div>
         <p class="name">7erfa Tunisie</p>
         <p class="sub">Craft stories reimagined</p>
@@ -862,20 +902,24 @@
       <a href="#contact">Contact</a>
     </nav>
 
-    <button class="top-action" id="jumpProjectsBtn" type="button">Voir les projets</button>
+    <div class="header-actions">
+      <button class="top-action" id="jumpProjectsBtn" type="button">Voir les projets</button>
+      <a class="auth-btn" id="loginBtn" href="login.php">Connexion</a>
+      <button class="auth-btn is-hidden" id="logoutBtn" type="button">Deconnexion</button>
+    </div>
   </header>
 
   <main>
     <section class="hero surface" id="home">
       <div class="hero-media" id="heroMedia">
         <div class="hero-slide active">
-          <img src="https://images.unsplash.com/photo-1512436991641-6745cdb1723f?auto=format&fit=crop&w=1400&q=80" alt="Textile artisanal">
+          <img src="assets/images/homepage/intro.jpg" alt="Textile artisanal">
         </div>
         <div class="hero-slide">
-          <img src="https://images.unsplash.com/photo-1512061942530-e6a4e9a5cf27?auto=format&fit=crop&w=1400&q=80" alt="Ceramique traditionnelle">
+          <img src="assets/images/homepage/products-01.jpg" alt="Ceramique traditionnelle">
         </div>
         <div class="hero-slide">
-          <img src="https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?auto=format&fit=crop&w=1400&q=80" alt="Atelier de bijouterie">
+          <img src="assets/images/homepage/products-04.jpg" alt="Atelier de bijouterie">
         </div>
         <div class="hero-chip">Plateforme visuelle dynamique</div>
       </div>
@@ -932,9 +976,9 @@
         </article>
 
         <div class="media-stack">
-          <img class="tall" src="https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=900&q=80" alt="Tissage artisanal">
-          <img src="https://images.unsplash.com/photo-1523419409543-45f7f6dcb8e2?auto=format&fit=crop&w=900&q=80" alt="Details ceramique peinte">
-          <img src="https://images.unsplash.com/photo-1513475382585-d06e58bcb0e0?auto=format&fit=crop&w=900&q=80" alt="Objets faits main">
+          <img class="tall" src="assets/images/homepage/about.jpg" alt="Tissage artisanal">
+          <img src="assets/images/homepage/products-02.jpg" alt="Details ceramique peinte">
+          <img src="assets/images/homepage/taswira.jpg" alt="Objets faits main">
         </div>
       </div>
     </section>
@@ -995,12 +1039,12 @@
           mais elle est deja fonctionnelle comme modele front moderne avec interactions avancees.
         </p>
         <div class="hero-actions">
-          <a class="btn primary" href="index.php">Retour vers votre page PHP</a>
+          <a class="btn primary" id="phpReturnLink" href="index.php">Retour vers votre page PHP</a>
           <a class="btn ghost" href="#home">Revenir en haut</a>
         </div>
       </div>
       <div class="cover">
-        <img src="https://images.unsplash.com/photo-1504274066651-8d31a536b11a?auto=format&fit=crop&w=1200&q=80" alt="Atelier artisanal tunisien">
+        <img src="assets/images/homepage/ood.jpg" alt="Atelier artisanal tunisien">
       </div>
     </section>
   </main>
