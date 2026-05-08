@@ -236,7 +236,7 @@ if ($hasProjects) {
 
     <nav class="top-menu" aria-label="Menu principal">
       <button class="menu-link active" type="button">Idee de projet</button>
-      <button class="menu-link" type="button">Mon profil</button>
+      <button class="menu-link" type="button" onclick="window.location.href='/syrine/gitt/profil'">Mon profil</button>
       <button class="menu-link" type="button">Formation</button>
       <button class="menu-link" type="button">Offre d'emploi</button>
     </nav>
